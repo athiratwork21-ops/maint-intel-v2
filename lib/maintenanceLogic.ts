@@ -20,48 +20,29 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
     let stockQuery = supabase.from('Stock').select('*');
     let machinesQuery = supabase.from('Machine').select('*');
     let historyQuery = supabase.from('ChangeHistory').select('*').order('ChangeDate', { ascending: true });
-    let leadTimeQuery = supabase.from('LeadTime').select('*'); // 🌟 ดึงข้อมูล Lead Time จริงมาคำนวณ
 
-    // 🌟 ระบบแยกแผนก
     if (activeDepartment) {
       partsQuery = partsQuery.eq('DepartmentID', activeDepartment);
       stockQuery = stockQuery.eq('DepartmentID', activeDepartment);
       machinesQuery = machinesQuery.eq('DepartmentID', activeDepartment);
       historyQuery = historyQuery.eq('DepartmentID', activeDepartment);
-      leadTimeQuery = leadTimeQuery.eq('DepartmentID', activeDepartment);
     }
 
     const [
       { data: partsData },
       { data: stockData },
       { data: machinesData },
-      { data: historyData },
-      { data: leadTimeData }
-    ] = await Promise.all([partsQuery, stockQuery, machinesQuery, historyQuery, leadTimeQuery]);
+      { data: historyData }
+    ] = await Promise.all([partsQuery, stockQuery, machinesQuery, historyQuery]);
 
     const rawParts = partsData || [];
     const rawStock = stockData || [];
     const rawMachines = machinesData || [];
     const rawHistory = historyData || [];
-    const rawLeadTime = leadTimeData || [];
     
     const rawLines = Array.from(new Set(rawMachines.map(m => m.LineName).filter(Boolean)));
 
-    // 🌟 1. คำนวณระยะเวลารอของเฉลี่ย (Average Lead Time) จากประวัติจริง
-    const avgLeadTimeData: { [partId: string]: number } = {};
-    const leadTimeSpans: { [partId: string]: number[] } = {};
-    rawLeadTime.forEach(lt => {
-      if (!leadTimeSpans[lt.PartID]) leadTimeSpans[lt.PartID] = [];
-      leadTimeSpans[lt.PartID].push(lt.LeadTimeDays);
-    });
-    Object.keys(leadTimeSpans).forEach(pId => {
-      const spans = leadTimeSpans[pId];
-      if (spans.length > 0) {
-        avgLeadTimeData[pId] = Math.ceil(spans.reduce((a, b) => a + b, 0) / spans.length);
-      }
-    });
-
-    // 🌟 2. คำนวณ MTBF แยกตาม "จุดติดตั้ง (Position)"
+    // 1. คำนวณ MTBF แยกตามจุดติดตั้ง (Position)
     const failureSpans: { [machine_part_pos: string]: number[] } = {};
     const lastChangeDates: { [machine_part_pos: string]: string } = {};
 
@@ -94,7 +75,7 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
       }
     });
 
-    // 🌟 3. คำนวณ AI Predictions (แยกตาม Position + ใช้ Lead Time จริง)
+    // 2. คำนวณ AI Predictions
     const predictions: any[] = [];
     Object.keys(lastChangeDates).forEach(key => {
       const [machineId, partId, pos] = key.split('_');
@@ -102,21 +83,19 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
       if (!partInfo) return;
 
       const mtbf = mtbfData[key] || 180; 
-      
-      // 🌟 ใช้ Lead Time เฉลี่ยจากสถิติจริง ถ้าไม่มีให้ใช้ SafetyBufferDays ที่ตั้งไว้ตอนแรก
-      const actualLeadTime = avgLeadTimeData[partId] || partInfo.SafetyBufferDays || 7;
-      
+      const bufferDays = partInfo.SafetyBufferDays || 7;
       const lastDate = new Date(lastChangeDates[key]);
+      
       const predictedFailDate = new Date(lastDate);
       predictedFailDate.setDate(predictedFailDate.getDate() + mtbf);
       
       const orderDate = new Date(predictedFailDate);
-      orderDate.setDate(orderDate.getDate() - actualLeadTime); // 👈 คำนวณวันสั่งของตรงนี้
+      orderDate.setDate(orderDate.getDate() - bufferDays);
 
       predictions.push({
         machineId,
         partId,
-        position: pos, 
+        position: pos,
         mtbfDays: mtbf,
         predictedFailDate: predictedFailDate.toISOString().split('T')[0],
         orderDate: orderDate.toISOString().split('T')[0],
@@ -124,30 +103,32 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
       });
     });
 
-    // 4. รวม Stock
+    // 3. รวม Stock จริงจากหน้าตู้
     const totalStock: { [partId: string]: number } = {};
     rawStock.forEach(s => {
       totalStock[s.PartID] = (totalStock[s.PartID] || 0) + (s.Balance || 0);
     });
 
-    // 5. สร้าง Dashboard Report
-    const scheduleData: DashboardReport[] = [];
+    // 🌟 🌟 🌟 FIX BUG: ใส่ยอดสต๊อกให้ "อะไหล่ทุกชิ้น" (แม้จะเพิ่งแอดใหม่และไม่เคยเสีย) 
     const allocations: { [partId: string]: { physical: number, reserved: number, available: number, machines: string[] } } = {};
+    
+    rawParts.forEach(p => {
+      allocations[p.PartID] = {
+        physical: totalStock[p.PartID] || 0,
+        reserved: 0,
+        available: totalStock[p.PartID] || 0,
+        machines: []
+      };
+    });
+
+    // 4. สร้าง Dashboard Report & หักยอดจองล่วงหน้า
+    const scheduleData: DashboardReport[] = [];
     const today = new Date();
 
     predictions.forEach(pred => {
       const mInfo = rawMachines.find(m => m.MachineID === pred.machineId);
       const pInfo = rawParts.find(p => p.PartID === pred.partId);
       if (!mInfo || !pInfo) return;
-
-      if (!allocations[pred.partId]) {
-        allocations[pred.partId] = {
-          physical: totalStock[pred.partId] || 0,
-          reserved: 0,
-          available: totalStock[pred.partId] || 0,
-          machines: []
-        };
-      }
 
       const pOrderDate = new Date(pred.orderDate);
       const diffDays = Math.ceil((pOrderDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
