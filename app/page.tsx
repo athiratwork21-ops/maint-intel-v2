@@ -383,6 +383,23 @@ export default function MaintenanceDashboard() {
     });
   };
 
+  // ... (โค้ดลูป for อัปเดตสต๊อกและเปลี่ยน Status เป็น Approved) ...
+          
+          // 🌟 แทรกโค้ดแจ้งเตือนช่างเข้า LINE ตรงนี้! 🌟
+          try {
+            const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧 ช่าง: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
+            await fetch('/api/send-line', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: lineMsg })
+            });
+          } catch (err) {
+            console.error('Line Notify Error:', err);
+          }
+          // 🌟 สิ้นสุดโค้ดแทรก 🌟
+
+          showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData();
+  
   const handleLogRecord = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); const formData = new FormData(e.currentTarget); 
     const mIdStr = formData.get('machineId') as string; const mId = mIdStr.split(' - ')[0]; 
