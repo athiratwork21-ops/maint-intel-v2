@@ -225,6 +225,27 @@ export default function RequestPartShoppingPage() {
       const { error } = await supabase.from('PartRequests').insert(insertData);
       if (error) throw error;
 
+      // =========================================================
+      // 🌟 เพิ่มโค้ดส่งแจ้งเตือนเข้า LINE ตรงนี้ (LINE API) 🌟
+      // =========================================================
+      try {
+        const itemNames = Object.keys(cart).map(itemId => {
+          const isPart = cart[itemId].type === 'part';
+          return isPart ? parts.find(p => p.PartID === itemId)?.PartName : consumables.find(c => c.ItemID === itemId)?.ItemName;
+        }).join(', ');
+        
+        const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 แอดมินโปรดตรวจสอบในระบบครับ`;
+        
+        await fetch('/api/send-line', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: lineMsg })
+        });
+      } catch (err) {
+        console.error('Line Notify Error:', err);
+      }
+      // =========================================================
+
       showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success');
       setCart({}); 
       setIsCheckoutOpen(false);
