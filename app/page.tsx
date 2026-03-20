@@ -379,10 +379,10 @@ export default function MaintenanceDashboard() {
           }
 
           // =========================================================
-          // 🌟 โค้ดแจ้งเตือนช่างเข้า LINE (ต้องอยู่ข้างใน try นี้นะครับ)
+          // 🌟 โค้ดแจ้งเตือนช่างเข้า LINE (ย้ายเข้ามาอยู่ในนี้แล้ว ปลอดภัย!)
           // =========================================================
           try {
-            const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧ช่าง: ${group.pickerName}\n📦 เตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
+            const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧 ช่าง: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
             await fetch('/api/send-line', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
