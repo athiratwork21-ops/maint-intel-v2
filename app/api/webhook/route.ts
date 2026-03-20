@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         // =================================================================
         // 🌟 ท่าไม้ตาย: ยิง HTTP Request ไปหา Gemini API ตรงๆ โดยไม่ใช้ Package
         // =================================================================
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`;
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
         
         const geminiResponse = await fetch(geminiUrl, {
           method: 'POST',
