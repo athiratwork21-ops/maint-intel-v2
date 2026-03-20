@@ -30,7 +30,6 @@ export default function RequestPartShoppingPage() {
   const [stockAllocations, setStockAllocations] = useState<any>({}); 
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   
-  // 🌟 เก็บประวัติแยกตาม Machine + Part
   const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); 
   
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +46,9 @@ export default function RequestPartShoppingPage() {
 
   const [toast, setToast] = useState<{message: string, type: 'success' | 'warning' | 'info' | 'error'} | null>(null);
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
+
+  // 🌟 เพิ่ม State สำหรับเปิด/ปิด Dropdown
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     const d = localStorage.getItem('mechanicDept');
@@ -97,12 +99,11 @@ export default function RequestPartShoppingPage() {
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept);
       setConsumables(consData || []);
 
-      // 🌟 ดึงข้อมูลประวัติ โดยเอา MachineID มาผูกด้วย
       const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
       const posMap: Record<string, Set<string>> = {};
       historyData?.forEach(h => {
         if (!h.MachineID || !h.PartID) return;
-        const key = `${h.MachineID}_${h.PartID}`; // ผูกกุญแจเป็น รหัสเครื่อง_รหัสอะไหล่
+        const key = `${h.MachineID}_${h.PartID}`;
         if (!posMap[key]) posMap[key] = new Set();
         if (h.Position && h.Position !== '-') posMap[key].add(h.Position);
       });
@@ -113,7 +114,6 @@ export default function RequestPartShoppingPage() {
     } catch (error) { console.error(error); showToast('โหลดข้อมูลล้มเหลว', 'error'); } finally { setIsLoading(false); }
   };
 
-  // 🌟 ให้ช่างอ้างอิงจาก Physical Stock (ของจริงในตู้) ไม่ใช่ Available
   const getRealAvailableQty = (itemId: string, type: 'part' | 'consumable') => {
     const otherMechanicsPendingQty = pendingRequests.filter(r => r.PartID === itemId).reduce((s, r) => s + (r.Qty || 0), 0);
     const currentCartQty = cart[itemId]?.qty || 0;
@@ -324,16 +324,11 @@ export default function RequestPartShoppingPage() {
             const alloc = stockAllocations[part.PartID] || { available: 0, physical: 0, reserved: 0, machines: [] };
             const otherPendingQty = pendingRequests.filter(r => r.PartID === part.PartID).reduce((s, r) => s + (r.Qty || 0), 0);
             
-            // 🌟 คำนวณสต๊อกจริงในตู้ (เพื่อเช็คว่าหมดของจริงไหม)
             const realPhysicalQty = alloc.physical - otherPendingQty;
-            
-            // 🌟 คำนวณสต๊อกที่ AI แนะนำ (เพื่อเช็คว่าติดจองไหม)
             const aiAvailableQty = alloc.available - otherPendingQty;
-
             const inCartQty = cart[part.PartID]?.qty || 0;
             
             const isOutOfStock = realPhysicalQty <= 0 && inCartQty === 0;
-            // 🌟 เงื่อนไขของติดจอง: ของในตู้ยังมี แต่ AI บอกว่าไม่เหลือแล้ว
             const isEatingReserved = realPhysicalQty > 0 && aiAvailableQty <= 0;
 
             return (
@@ -442,7 +437,6 @@ export default function RequestPartShoppingPage() {
 
             <form onSubmit={handleConfirmSubmit} className="p-6 overflow-y-auto flex-1 flex flex-col gap-5">
               
-              {/* 🌟 1. สลับข้อมูลเครื่องจักรมาไว้ด้านบน 🌟 */}
               {hasSparePartsInCart && (
                 <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4">
                   <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1"><i className="bi bi-info-circle-fill"></i> ข้อมูลสำหรับเบิกอะไหล่</p>
@@ -452,13 +446,17 @@ export default function RequestPartShoppingPage() {
                 </div>
               )}
 
-              {/* 🌟 2. รายการตะกร้า เลื่อนมาไว้ด้านล่าง 🌟 */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">รายการในตะกร้า ({Object.keys(cart).length})</h4>
                 <div className="space-y-4 max-h-48 overflow-y-auto pr-2">
                   {Object.keys(cart).map(itemId => {
                     const isPart = cart[itemId].type === 'part';
                     const name = isPart ? parts.find(p => p.PartID === itemId)?.PartName : consumables.find(c => c.ItemID === itemId)?.ItemName;
+                    
+                    // 🌟 หาตัวเลือก Dropdown ของอะไหล่ชิ้นนี้ 🌟
+                    const positions = selectedMachine ? (historicalPositions[`${selectedMachine}_${itemId}`] || []) : [];
+                    const filteredPositions = positions.filter(p => p.toLowerCase().includes((cart[itemId].position || '').toLowerCase()));
+
                     return (
                       <div key={itemId} className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-start text-sm">
@@ -467,25 +465,40 @@ export default function RequestPartShoppingPage() {
                           </span>
                           <span className={`font-black px-2 py-0.5 rounded-md ${isPart ? 'text-blue-600 bg-blue-50' : 'text-pink-600 bg-pink-50'}`}>x{cart[itemId].qty}</span>
                         </div>
-                        {/* 🌟 จุดติดตั้ง (Position) + Datalist คำแนะนำ (ดึงจาก Machine + Part) */}
+                        
+                        {/* 🌟 จุดติดตั้ง (Position) แบบ Custom Dropdown สวยๆ 🌟 */}
                         {isPart && (
                           <div className="mt-1 relative">
                             <input 
                               type="text" 
-                              list={`pos-${itemId}`}
                               required
                               disabled={!selectedMachine}
                               placeholder={selectedMachine ? "ระบุจุดที่ติดตั้ง (เช่น ซ้าย, ขวา)" : "โปรดเลือกเครื่องจักรด้านบนก่อน"}
                               value={cart[itemId].position || ''}
                               onChange={(e) => setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: e.target.value } }))}
-                              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 disabled:opacity-50 disabled:bg-slate-100" 
+                              onFocus={() => setActiveDropdown(itemId)}
+                              onBlur={() => setTimeout(() => setActiveDropdown(null), 200)} // หน่วงเวลาให้กดเมนูทัน
+                              className="w-full p-3 pl-4 pr-10 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 disabled:opacity-50 disabled:bg-slate-100 transition-all" 
                             />
-                            {selectedMachine && (
-                              <datalist id={`pos-${itemId}`}>
-                                {historicalPositions[`${selectedMachine}_${itemId}`]?.map(pos => <option key={pos} value={pos} />)}
-                              </datalist>
+                            <i className="bi bi-geo-alt absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                            
+                            {/* 🌟 เมนู Dropdown ลอยทับ 🌟 */}
+                            {activeDropdown === itemId && filteredPositions.length > 0 && (
+                              <ul className="absolute z-[100] w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-1.5 max-h-40 overflow-y-auto top-full left-0 origin-top animate-in fade-in zoom-in-95 duration-150">
+                                {filteredPositions.map(pos => (
+                                  <li 
+                                    key={pos} 
+                                    onClick={() => {
+                                      setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: pos } }));
+                                      setActiveDropdown(null);
+                                    }}
+                                    className="px-4 py-3.5 text-sm text-slate-700 font-bold hover:bg-blue-50 hover:text-blue-600 cursor-pointer border-b border-slate-50 last:border-0 flex items-center gap-2 transition-colors active:bg-blue-100"
+                                  >
+                                    <i className="bi bi-clock-history text-slate-400 text-xs"></i> {pos}
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                            <i className="bi bi-geo-alt absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                           </div>
                         )}
                       </div>
