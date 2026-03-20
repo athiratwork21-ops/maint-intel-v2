@@ -382,7 +382,7 @@ export default function MaintenanceDashboard() {
           // 🌟 โค้ดแจ้งเตือนช่างเข้า LINE (ต้องอยู่ข้างใน try นี้นะครับ)
           // =========================================================
           try {
-            const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧ผู้หยิบ: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
+            const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧ช่าง: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
             await fetch('/api/send-line', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
