@@ -18,20 +18,20 @@ const searchDictionary: Record<string, string[]> = {
 };
 
 export default function RequestPartShoppingPage() {
-  // 🌟 State สำหรับ Setup (เลือกแผนกและชื่อ)
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [departments, setDepartments] = useState<any[]>([]);
   const [activeDept, setActiveDept] = useState('');
   const [pickerName, setPickerName] = useState('');
 
-  // 🌟 State ข้อมูลหลัก
   const [parts, setParts] = useState<any[]>([]);
   const [consumables, setConsumables] = useState<any[]>([]); 
   const [machines, setMachines] = useState<any[]>([]);
   const [lines, setLines] = useState<string[]>([]);
   const [stockAllocations, setStockAllocations] = useState<any>({}); 
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); // 🌟 เก็บประวัติ Position
+  
+  // 🌟 เก็บประวัติแยกตาม Machine + Part
+  const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); 
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,7 +48,6 @@ export default function RequestPartShoppingPage() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'warning' | 'info' | 'error'} | null>(null);
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
 
-  // 🌟 โหลดข้อมูล Setup เริ่มต้น
   useEffect(() => {
     const d = localStorage.getItem('mechanicDept');
     const n = localStorage.getItem('mechanicName');
@@ -83,31 +82,29 @@ export default function RequestPartShoppingPage() {
     fetchDepartmentsForSetup();
   };
 
-  // 🌟 ดึงข้อมูลตามแผนก (Department Isolation)
   const fetchInitialData = async (dept: string) => {
     setIsLoading(true);
     try {
-      // 1. ดึงข้อมูลหลักจาก Logic
       const data = await getSmartMaintenanceData(dept);
       setMachines(data.rawMachines.filter(m => m.Active !== false));
       setLines(data.rawLines);
       setParts(data.rawParts);
       setStockAllocations(data.allocations);
 
-      // 2. ดึงตั๋วที่รอจ่ายของแผนกตัวเอง
       const { data: reqData } = await supabase.from('PartRequests').select('*').eq('Status', 'Pending').eq('DepartmentID', dept);
       setPendingRequests(reqData || []);
 
-      // 3. ดึงของสิ้นเปลืองเฉพาะแผนก
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept);
       setConsumables(consData || []);
 
-      // 🌟 4. ดึงประวัติ Position ของอะไหล่แต่ละตัวมาทำเป็น Dropdown แนะนำ
-      const { data: historyData } = await supabase.from('ChangeHistory').select('PartID, Position').eq('DepartmentID', dept);
+      // 🌟 ดึงข้อมูลประวัติ โดยเอา MachineID มาผูกด้วย
+      const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
       const posMap: Record<string, Set<string>> = {};
       historyData?.forEach(h => {
-        if (!posMap[h.PartID]) posMap[h.PartID] = new Set();
-        if (h.Position && h.Position !== '-') posMap[h.PartID].add(h.Position);
+        if (!h.MachineID || !h.PartID) return;
+        const key = `${h.MachineID}_${h.PartID}`; // ผูกกุญแจเป็น รหัสเครื่อง_รหัสอะไหล่
+        if (!posMap[key]) posMap[key] = new Set();
+        if (h.Position && h.Position !== '-') posMap[key].add(h.Position);
       });
       const formattedMap: Record<string, string[]> = {};
       Object.keys(posMap).forEach(k => formattedMap[k] = Array.from(posMap[k]));
@@ -116,13 +113,14 @@ export default function RequestPartShoppingPage() {
     } catch (error) { console.error(error); showToast('โหลดข้อมูลล้มเหลว', 'error'); } finally { setIsLoading(false); }
   };
 
+  // 🌟 ให้ช่างอ้างอิงจาก Physical Stock (ของจริงในตู้) ไม่ใช่ Available
   const getRealAvailableQty = (itemId: string, type: 'part' | 'consumable') => {
     const otherMechanicsPendingQty = pendingRequests.filter(r => r.PartID === itemId).reduce((s, r) => s + (r.Qty || 0), 0);
     const currentCartQty = cart[itemId]?.qty || 0;
 
     if (type === 'part') {
-      const alloc = stockAllocations[itemId] || { available: 0 };
-      return alloc.available - otherMechanicsPendingQty - currentCartQty;
+      const alloc = stockAllocations[itemId] || { physical: 0 };
+      return alloc.physical - otherMechanicsPendingQty - currentCartQty; 
     } else {
       const cons = consumables.find(c => c.ItemID === itemId);
       const balance = cons ? cons.Balance : 0;
@@ -131,12 +129,12 @@ export default function RequestPartShoppingPage() {
   };
 
   const handleUpdateCart = (itemId: string, type: 'part' | 'consumable', delta: number) => {
-    const realAvailable = getRealAvailableQty(itemId, type);
+    const realPhysicalAvailable = getRealAvailableQty(itemId, type);
     const currentQty = cart[itemId]?.qty || 0;
     const newQty = currentQty + delta;
 
-    if (delta > 0 && realAvailable <= 0) {
-      return showToast('ของในคลังหมด หรือมีคนเบิกไปแล้วครับ!', 'error');
+    if (delta > 0 && realPhysicalAvailable <= 0) {
+      return showToast('ของในตู้หมด หรือมีคนทำเรื่องเบิกไปแล้วครับ!', 'error');
     }
 
     if (newQty <= 0) {
@@ -172,19 +170,16 @@ export default function RequestPartShoppingPage() {
   const cartItemsCount = Object.values(cart).reduce((sum, item) => sum + item.qty, 0);
   const hasSparePartsInCart = Object.values(cart).some(item => item.type === 'part');
 
-  // 🌟 ฟังก์ชันส่งใบเบิก (ป้องกัน Race Condition ของหมดกระทันหัน)
   const handleConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (hasSparePartsInCart && !selectedMachine) return showToast('กรุณาเลือกเครื่องจักรสำหรับอะไหล่', 'warning');
     
-    // เช็คว่ากรอก Position ครบไหมสำหรับอะไหล่
     const missingPos = Object.keys(cart).find(id => cart[id].type === 'part' && !cart[id].position?.trim());
     if (missingPos) return showToast('กรุณาระบุ "จุดที่ติดตั้ง" ให้ครบทุกรายการ', 'warning');
 
     setIsSubmitting(true);
 
     try {
-      // 🌟 1. ดับเบิ้ลเช็คสต๊อกแบบ Real-time (Race Condition Defense)
       const { data: freshReqs } = await supabase.from('PartRequests').select('PartID, Qty').eq('Status', 'Pending').eq('DepartmentID', activeDept);
       const { data: freshStocks } = await supabase.from('Stock').select('PartID, Balance').eq('DepartmentID', activeDept);
       const { data: freshCons } = await supabase.from('Consumable').select('ItemID, Balance').eq('DepartmentID', activeDept);
@@ -208,26 +203,22 @@ export default function RequestPartShoppingPage() {
         }
       }
 
-      // 🌟 2. ถ้าสต๊อกผ่านหมด ก็บันทึกได้เลย!
       const baseId = Date.now(); 
       const insertData = Object.keys(cart).map((itemId, idx) => ({
         RequestID: `REQ-${baseId}-${idx + 1}`, 
         MachineID: cart[itemId].type === 'part' ? selectedMachine : 'GENERAL',
         PartID: itemId,
         Qty: cart[itemId].qty,
-        Position: cart[itemId].type === 'part' ? cart[itemId].position : '-', // 🌟 บันทึก Position
+        Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
         Reason: cart[itemId].type === 'part' ? reason : 'Consumable',
         PickerName: pickerName,
         Status: 'Pending',
-        DepartmentID: activeDept // 🌟 บันทึกแผนก
+        DepartmentID: activeDept
       }));
 
       const { error } = await supabase.from('PartRequests').insert(insertData);
       if (error) throw error;
 
-      // =========================================================
-      // 🌟 เพิ่มโค้ดส่งแจ้งเตือนเข้า LINE ตรงนี้ (LINE API) 🌟
-      // =========================================================
       try {
         const itemNames = Object.keys(cart).map(itemId => {
           const isPart = cart[itemId].type === 'part';
@@ -244,16 +235,15 @@ export default function RequestPartShoppingPage() {
       } catch (err) {
         console.error('Line Notify Error:', err);
       }
-      // =========================================================
 
-      showToast('ส่งคำขอสำเร็จ!', 'success');
+      showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success');
       setCart({}); 
       setIsCheckoutOpen(false);
       setSelectedLine(''); setSelectedMachine('');
       fetchInitialData(activeDept); 
     } catch (error: any) { 
       showToast(error.message, 'error'); 
-      fetchInitialData(activeDept); // รีเฟรชหน้าจอใหม่ให้เห็นสต๊อกจริง
+      fetchInitialData(activeDept); 
     } finally { 
       setIsSubmitting(false); 
     }
@@ -261,7 +251,6 @@ export default function RequestPartShoppingPage() {
 
   const filteredMachines = machines.filter(m => m.LineName === selectedLine);
 
-  // 🌟 หน้าจอ Setup ถ้ายังไม่ได้เลือกแผนก
   if (!isSetupComplete && !isLoading) {
     return (
       <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-900 p-6 font-sans">
@@ -334,9 +323,18 @@ export default function RequestPartShoppingPage() {
           {activeCategory === 'parts' && filteredParts.map(part => {
             const alloc = stockAllocations[part.PartID] || { available: 0, physical: 0, reserved: 0, machines: [] };
             const otherPendingQty = pendingRequests.filter(r => r.PartID === part.PartID).reduce((s, r) => s + (r.Qty || 0), 0);
-            const showAvailableQty = alloc.available - otherPendingQty;
+            
+            // 🌟 คำนวณสต๊อกจริงในตู้ (เพื่อเช็คว่าหมดของจริงไหม)
+            const realPhysicalQty = alloc.physical - otherPendingQty;
+            
+            // 🌟 คำนวณสต๊อกที่ AI แนะนำ (เพื่อเช็คว่าติดจองไหม)
+            const aiAvailableQty = alloc.available - otherPendingQty;
+
             const inCartQty = cart[part.PartID]?.qty || 0;
-            const isOutOfStock = showAvailableQty <= 0 && inCartQty === 0;
+            
+            const isOutOfStock = realPhysicalQty <= 0 && inCartQty === 0;
+            // 🌟 เงื่อนไขของติดจอง: ของในตู้ยังมี แต่ AI บอกว่าไม่เหลือแล้ว
+            const isEatingReserved = realPhysicalQty > 0 && aiAvailableQty <= 0;
 
             return (
               <div key={part.PartID} className={`bg-white rounded-2xl shadow-sm border ${inCartQty > 0 ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-100'} p-3 flex flex-col relative overflow-hidden transition-all duration-200`}>
@@ -349,7 +347,9 @@ export default function RequestPartShoppingPage() {
                   <h3 className={`font-black text-xs leading-tight mb-1 ${isOutOfStock ? 'text-slate-400' : 'text-slate-800'} line-clamp-2`}>{part.PartName}</h3>
                   <p className={`text-[10px] font-medium text-slate-500 mb-2 truncate ${isOutOfStock && 'opacity-60'}`}>{part.PartModel || '-'}</p>
                   <div className="mt-auto pt-2 border-t border-slate-50 flex flex-col gap-1">
-                    <span className={`text-[10px] font-bold ${isOutOfStock ? 'text-red-400' : 'text-emerald-600'}`}>เหลือ {showAvailableQty} ชิ้น</span>
+                    <span className={`text-[10px] font-bold ${isOutOfStock ? 'text-red-400' : isEatingReserved ? 'text-amber-500' : 'text-emerald-600'}`}>
+                      เหลือ {realPhysicalQty} ชิ้น {isEatingReserved && '(มียอดจอง)'}
+                    </span>
                     {otherPendingQty > 0 && <span className="text-[9px] font-bold text-amber-500 leading-tight">(มีช่างรอเบิก {otherPendingQty} ชิ้น)</span>}
                   </div>
                 </div>
@@ -358,7 +358,7 @@ export default function RequestPartShoppingPage() {
                     <div className="flex items-center justify-between bg-blue-50 rounded-xl p-1 border border-blue-100">
                       <button onClick={() => handleUpdateCart(part.PartID, 'part', -1)} className="w-8 h-8 flex items-center justify-center text-blue-600 font-black rounded-lg active:bg-blue-100 transition-colors"><i className="bi bi-dash-lg"></i></button>
                       <span className="font-black text-blue-800 text-sm">{inCartQty}</span>
-                      <button onClick={() => handleUpdateCart(part.PartID, 'part', 1)} disabled={showAvailableQty <= 0} className="w-8 h-8 flex items-center justify-center text-blue-600 font-black rounded-lg active:bg-blue-100 disabled:opacity-30 transition-colors"><i className="bi bi-plus-lg"></i></button>
+                      <button onClick={() => handleUpdateCart(part.PartID, 'part', 1)} disabled={realPhysicalQty <= 0} className="w-8 h-8 flex items-center justify-center text-blue-600 font-black rounded-lg active:bg-blue-100 disabled:opacity-30 transition-colors"><i className="bi bi-plus-lg"></i></button>
                     </div>
                   ) : (
                     <button onClick={() => handleUpdateCart(part.PartID, 'part', 1)} disabled={isOutOfStock} className="w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:bg-slate-100 disabled:text-slate-400 bg-slate-900 text-white hover:bg-slate-800 active:scale-95"><i className="bi bi-cart-plus"></i> เพิ่มลงรายการ</button>
@@ -440,7 +440,19 @@ export default function RequestPartShoppingPage() {
               <button onClick={() => setIsCheckoutOpen(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors"><i className="bi bi-x-lg text-sm"></i></button>
             </div>
 
-            <form onSubmit={handleConfirmSubmit} className="p-6 overflow-y-auto flex-1 space-y-5">
+            <form onSubmit={handleConfirmSubmit} className="p-6 overflow-y-auto flex-1 flex flex-col gap-5">
+              
+              {/* 🌟 1. สลับข้อมูลเครื่องจักรมาไว้ด้านบน 🌟 */}
+              {hasSparePartsInCart && (
+                <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1"><i className="bi bi-info-circle-fill"></i> ข้อมูลสำหรับเบิกอะไหล่</p>
+                  <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">ไลน์ผลิต (Line)</label><div className="relative"><select required value={selectedLine} onChange={(e) => { setSelectedLine(e.target.value); setSelectedMachine(''); }} className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none font-bold text-slate-800 text-sm"><option value="">-- เลือกไลน์ผลิต --</option>{lines.map(line => <option key={line} value={line}>{line}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i></div></div>
+                  <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">เครื่องจักร (Machine)</label><div className="relative"><select required disabled={!selectedLine} value={selectedMachine} onChange={(e) => setSelectedMachine(e.target.value)} className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none disabled:opacity-50 font-bold text-slate-800 text-sm"><option value="">{selectedLine ? '-- เลือกเครื่องจักร --' : '-'}</option>{filteredMachines.map(m => <option key={m.MachineID} value={m.MachineID}>{m.MachineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i></div></div>
+                  <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">สาเหตุที่เปลี่ยน</label><div className="relative"><select required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none font-bold text-slate-800 text-sm"><option value="Normal Wear">ปกติ (Wear)</option><option value="Accident">อุบัติเหตุ (Accident)</option><option value="Improvement">ปรับปรุง</option></select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i></div></div>
+                </div>
+              )}
+
+              {/* 🌟 2. รายการตะกร้า เลื่อนมาไว้ด้านล่าง 🌟 */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">รายการในตะกร้า ({Object.keys(cart).length})</h4>
                 <div className="space-y-4 max-h-48 overflow-y-auto pr-2">
@@ -455,21 +467,24 @@ export default function RequestPartShoppingPage() {
                           </span>
                           <span className={`font-black px-2 py-0.5 rounded-md ${isPart ? 'text-blue-600 bg-blue-50' : 'text-pink-600 bg-pink-50'}`}>x{cart[itemId].qty}</span>
                         </div>
-                        {/* 🌟 จุดติดตั้ง (Position) + Datalist คำแนะนำ */}
+                        {/* 🌟 จุดติดตั้ง (Position) + Datalist คำแนะนำ (ดึงจาก Machine + Part) */}
                         {isPart && (
                           <div className="mt-1 relative">
                             <input 
                               type="text" 
                               list={`pos-${itemId}`}
                               required
-                              placeholder="ระบุจุดที่ติดตั้ง (เช่น ซ้าย, ขวา)" 
+                              disabled={!selectedMachine}
+                              placeholder={selectedMachine ? "ระบุจุดที่ติดตั้ง (เช่น ซ้าย, ขวา)" : "โปรดเลือกเครื่องจักรด้านบนก่อน"}
                               value={cart[itemId].position || ''}
                               onChange={(e) => setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: e.target.value } }))}
-                              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700" 
+                              className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 disabled:opacity-50 disabled:bg-slate-100" 
                             />
-                            <datalist id={`pos-${itemId}`}>
-                              {historicalPositions[itemId]?.map(pos => <option key={pos} value={pos} />)}
-                            </datalist>
+                            {selectedMachine && (
+                              <datalist id={`pos-${itemId}`}>
+                                {historicalPositions[`${selectedMachine}_${itemId}`]?.map(pos => <option key={pos} value={pos} />)}
+                              </datalist>
+                            )}
                             <i className="bi bi-geo-alt absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                           </div>
                         )}
@@ -477,17 +492,6 @@ export default function RequestPartShoppingPage() {
                     )
                   })}
                 </div>
-              </div>
-
-              <div className="space-y-4">
-                {hasSparePartsInCart && (
-                  <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4">
-                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1"><i className="bi bi-info-circle-fill"></i> ข้อมูลสำหรับเบิกอะไหล่</p>
-                    <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">ไลน์ผลิต (Line)</label><div className="relative"><select required value={selectedLine} onChange={(e) => { setSelectedLine(e.target.value); setSelectedMachine(''); }} className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none font-bold text-slate-800 text-sm"><option value="">-- เลือกไลน์ผลิต --</option>{lines.map(line => <option key={line} value={line}>{line}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i></div></div>
-                    <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">เครื่องจักร (Machine)</label><div className="relative"><select required disabled={!selectedLine} value={selectedMachine} onChange={(e) => setSelectedMachine(e.target.value)} className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none disabled:opacity-50 font-bold text-slate-800 text-sm"><option value="">{selectedLine ? '-- เลือกเครื่องจักร --' : '-'}</option>{filteredMachines.map(m => <option key={m.MachineID} value={m.MachineID}>{m.MachineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i></div></div>
-                    <div><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">สาเหตุที่เปลี่ยน</label><div className="relative"><select required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none font-bold text-slate-800 text-sm"><option value="Normal Wear">ปกติ (Wear)</option><option value="Accident">อุบัติเหตุ (Accident)</option><option value="Improvement">ปรับปรุง</option></select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i></div></div>
-                  </div>
-                )}
               </div>
 
               <div className="pt-2 mt-auto">
