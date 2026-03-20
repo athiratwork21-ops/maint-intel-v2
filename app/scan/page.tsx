@@ -246,7 +246,7 @@ export default function RequestPartShoppingPage() {
       }
       // =========================================================
 
-      showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success');
+      showToast('ส่งคำขอสำเร็จ!', 'success');
       setCart({}); 
       setIsCheckoutOpen(false);
       setSelectedLine(''); setSelectedMachine('');
