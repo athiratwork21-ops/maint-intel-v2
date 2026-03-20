@@ -234,7 +234,7 @@ export default function RequestPartShoppingPage() {
           return isPart ? parts.find(p => p.PartID === itemId)?.PartName : consumables.find(c => c.ItemID === itemId)?.ItemName;
         }).join(', ');
         
-        const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 แอดมินโปรดตรวจสอบในระบบครับ`;
+        const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
         
         await fetch('/api/send-line', {
           method: 'POST',
