@@ -377,15 +377,10 @@ export default function MaintenanceDashboard() {
             }
             const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); if (reqErr) throw reqErr;
           }
-          showToast('Items disbursed and stock deducted successfully!', 'success'); fetchAllData(); 
-        } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
-      }
-    });
-  };
 
-  // ... (โค้ดลูป for อัปเดตสต๊อกและเปลี่ยน Status เป็น Approved) ...
-          
-          // 🌟 แทรกโค้ดแจ้งเตือนช่างเข้า LINE ตรงนี้! 🌟
+          // =========================================================
+          // 🌟 โค้ดแจ้งเตือนช่างเข้า LINE (ต้องอยู่ข้างใน try นี้นะครับ)
+          // =========================================================
           try {
             const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧 ช่าง: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
             await fetch('/api/send-line', {
@@ -396,9 +391,13 @@ export default function MaintenanceDashboard() {
           } catch (err) {
             console.error('Line Notify Error:', err);
           }
-          // 🌟 สิ้นสุดโค้ดแทรก 🌟
+          // =========================================================
 
-          showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData();
+          showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData(); 
+        } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
+      }
+    });
+  };
   
   const handleLogRecord = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); const formData = new FormData(e.currentTarget); 
