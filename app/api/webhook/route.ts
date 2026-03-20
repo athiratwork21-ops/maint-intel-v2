@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
         // 3. ปลุกสมอง AI (Gemini)
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
         // 4. สั่งงาน AI (Prompt Engineering) **จุดนี้คือหัวใจสำคัญ**
         const prompt = `
