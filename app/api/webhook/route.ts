@@ -1,28 +1,23 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '../../../lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// ฟังก์ชันนี้จำเป็นเพื่อให้ Vercel รู้ว่านี่คือ API สำหรับรับ Webhook
+// ❌ ลบ import ของ Google ออกไปเลย เราไม่ใช้แล้ว!
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // 1. เช็คว่าเป็นข้อความที่ส่งมาจาก LINE หรือไม่
     if (body.events && body.events.length > 0) {
       const event = body.events[0];
       
-      // ถ้ามีคนส่งข้อความแบบ Text เข้ามา
       if (event.type === 'message' && event.message.type === 'text') {
         const userMessage = event.message.text;
         const replyToken = event.replyToken;
 
-        // 2. ไปค้นหาข้อมูลอะไหล่และสต๊อกใน Supabase มารอไว้ (ค้นหาคำที่ตรงกับที่ช่างพิมพ์มาบางส่วน)
-        // หมายเหตุ: เบื้องต้นเราดึงมาทั้งหมดก่อนเพื่อให้ AI ช่วยหาว่าชิ้นไหนเกี่ยวข้องกัน
         const { data: parts } = await supabase.from('Part').select('PartID, PartName, PartModel');
         const { data: stocks } = await supabase.from('Stock').select('PartID, Balance, Location');
         const { data: consumables } = await supabase.from('Consumable').select('ItemID, ItemName, Balance, Location');
 
-        // รวมข้อมูลให้อ่านง่ายๆ สำหรับ AI
         const dbContext = JSON.stringify({
           spareParts: parts?.map(p => ({
             ...p, 
@@ -32,11 +27,6 @@ export async function POST(request: Request) {
           consumables: consumables
         });
 
-        // 3. ปลุกสมอง AI (Gemini)
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        // 4. สั่งงาน AI (Prompt Engineering) **จุดนี้คือหัวใจสำคัญ**
         const prompt = `
           คุณคือผู้ช่วยแอดมินแผนกซ่อมบำรุง (Maintenance Assistant) ที่เชี่ยวชาญและเป็นกันเอง
           ช่างซ่อมบำรุงถามมาว่า: "${userMessage}"
@@ -51,10 +41,31 @@ export async function POST(request: Request) {
           4. ถ้าหาไม่เจอจริงๆ ให้ตอบว่า "ขออภัยครับ ไม่พบข้อมูลอะไหล่นี้ในระบบ แนะนำให้ติดต่อ Center โดยตรงครับ"
         `;
 
-        const result = await model.generateContent(prompt);
-        const aiReply = result.response.text();
+        // =================================================================
+        // 🌟 ท่าไม้ตาย: ยิง HTTP Request ไปหา Gemini API ตรงๆ โดยไม่ใช้ Package
+        // =================================================================
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+        
+        const geminiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        });
 
-        // 5. ส่งคำตอบของ AI กลับไปที่ LINE (ใช้ Reply API)
+        const geminiData = await geminiResponse.json();
+        
+        // แกะข้อความตอบกลับของ AI ออกมา
+        let aiReply = "ขออภัยครับ ระบบ AI ขัดข้องชั่วคราว";
+        if (geminiData.candidates && geminiData.candidates.length > 0) {
+            aiReply = geminiData.candidates[0].content.parts[0].text;
+        } else {
+            console.error("Gemini Error:", geminiData); // ถ้าพัง จะได้เห็นใน Logs ชัดๆ
+        }
+        // =================================================================
+
+        // ส่งคำตอบกลับไปหาช่างใน LINE
         await fetch('https://api.line.me/v2/bot/message/reply', {
           method: 'POST',
           headers: {
