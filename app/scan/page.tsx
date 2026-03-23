@@ -133,10 +133,51 @@ export default function RequestPartShoppingPage() {
     const currentQty = cart[itemId]?.qty || 0;
     const newQty = currentQty + delta;
 
+    // เช็คว่าของหมดตู้ไปแล้วหรือยัง
     if (delta > 0 && realPhysicalAvailable <= 0) {
-      return showToast('ของในตู้หมด หรือมีคนทำเรื่องเบิกไปแล้วครับ!', 'error');
+      return showToast('ของในตู้หมด หรือมีช่างคนอื่นทำเรื่องเบิกไปแล้วครับ!', 'error');
     }
 
+    // =========================================================
+    // 🌟 ดักจับของติดจอง: เด้งเตือนทันทีตอนกด "เพิ่มลงรายการ"
+    // =========================================================
+    if (delta > 0 && type === 'part') {
+      const alloc = stockAllocations[itemId] || { available: 0, physical: 0, reserved: 0, machines: [] };
+      const reqs = pendingRequests.filter(r => r.PartID === itemId);
+      const mechanicReqQty = reqs.reduce((sum, r) => sum + (r.Qty || 0), 0);
+
+      // ยอดปลอดภัย = ยอดที่ AI ให้เบิกได้ - ยอดที่ช่างคนอื่นรอเบิกอยู่
+      const safeAvailable = (alloc.available || 0) - mechanicReqQty;
+
+      // ถ้าจำนวนที่จะหยิบใส่ตะกร้า มันล้ำเส้นไปกินยอดของคนอื่น (มากกว่ายอดปลอดภัย)
+      if (newQty > safeAvailable) {
+        const partName = parts.find(p => p.PartID === itemId)?.PartName || itemId;
+        const totalReserved = (alloc.reserved || 0) + mechanicReqQty;
+
+        let reservedInfo: string[] = [];
+        alloc.machines.forEach((macId: string) => {
+          const m = machines.find(x => x.MachineID === macId);
+          if (m) reservedInfo.push(`${m.MachineName}`);
+        });
+        reqs.forEach(r => {
+          const m = machines.find(x => x.MachineID === r.MachineID);
+          if(m) reservedInfo.push(`${m.MachineName} [คิวอื่นรอเบิก]`);
+        });
+
+        const uniqueMachines = [...new Set(reservedInfo)].join(', ');
+        
+        // เด้ง Alert ถามความชัวร์
+        const isConfirmed = window.confirm(`⚠️ แจ้งเตือน: คุณกำลังหยิบอะไหล่ที่ "ติดจอง"\n\n🔸 ${partName}\nมีคิวจองอยู่: ${totalReserved} ชิ้น\nสำหรับเครื่อง: ${uniqueMachines || 'ไม่ระบุ'}\n\nแน่ใจหรือไม่ที่จะหยิบใส่ตะกร้า? (อาจทำให้ช่างคิวแรกไม่มีของใช้)`);
+        
+        // ถ้าช่างกดยกเลิก ให้เบรกการทำงาน ไม่ใส่ตะกร้า
+        if (!isConfirmed) {
+          return; 
+        }
+      }
+    }
+    // =========================================================
+
+    // ถ้ากดตกลง หรือของไม่ได้ติดจอง ก็ให้ใส่ตะกร้าตามปกติ
     if (newQty <= 0) {
       const newCart = { ...cart };
       delete newCart[itemId];
