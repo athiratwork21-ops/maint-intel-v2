@@ -47,7 +47,6 @@ export default function RequestPartShoppingPage() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'warning' | 'info' | 'error'} | null>(null);
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
 
-  // 🌟 เพิ่ม State สำหรับเปิด/ปิด Dropdown
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   useEffect(() => {
@@ -133,7 +132,6 @@ export default function RequestPartShoppingPage() {
     const currentQty = cart[itemId]?.qty || 0;
     const newQty = currentQty + delta;
 
-    // เช็คว่าของหมดตู้ไปแล้วหรือยัง
     if (delta > 0 && realPhysicalAvailable <= 0) {
       return showToast('ของในตู้หมด หรือมีช่างคนอื่นทำเรื่องเบิกไปแล้วครับ!', 'error');
     }
@@ -146,10 +144,8 @@ export default function RequestPartShoppingPage() {
       const reqs = pendingRequests.filter(r => r.PartID === itemId);
       const mechanicReqQty = reqs.reduce((sum, r) => sum + (r.Qty || 0), 0);
 
-      // ยอดปลอดภัย = ยอดที่ AI ให้เบิกได้ - ยอดที่ช่างคนอื่นรอเบิกอยู่
       const safeAvailable = (alloc.available || 0) - mechanicReqQty;
 
-      // ถ้าจำนวนที่จะหยิบใส่ตะกร้า มันล้ำเส้นไปกินยอดของคนอื่น (มากกว่ายอดปลอดภัย)
       if (newQty > safeAvailable) {
         const partName = parts.find(p => p.PartID === itemId)?.PartName || itemId;
         const totalReserved = (alloc.reserved || 0) + mechanicReqQty;
@@ -166,10 +162,8 @@ export default function RequestPartShoppingPage() {
 
         const uniqueMachines = [...new Set(reservedInfo)].join(', ');
         
-        // เด้ง Alert ถามความชัวร์
         const isConfirmed = window.confirm(`⚠️ แจ้งเตือน: คุณกำลังหยิบอะไหล่ที่ "ติดจอง"\n\n🔸 ${partName}\nมีคิวจองอยู่: ${totalReserved} ชิ้น\nสำหรับเครื่อง: ${uniqueMachines || 'ไม่ระบุ'}\n\nแน่ใจหรือไม่ที่จะหยิบใส่ตะกร้า? (อาจทำให้ช่างคิวแรกไม่มีของใช้)`);
         
-        // ถ้าช่างกดยกเลิก ให้เบรกการทำงาน ไม่ใส่ตะกร้า
         if (!isConfirmed) {
           return; 
         }
@@ -177,7 +171,6 @@ export default function RequestPartShoppingPage() {
     }
     // =========================================================
 
-    // ถ้ากดตกลง หรือของไม่ได้ติดจอง ก็ให้ใส่ตะกร้าตามปกติ
     if (newQty <= 0) {
       const newCart = { ...cart };
       delete newCart[itemId];
@@ -218,9 +211,6 @@ export default function RequestPartShoppingPage() {
     const missingPos = Object.keys(cart).find(id => cart[id].type === 'part' && !cart[id].position?.trim());
     if (missingPos) return showToast('กรุณาระบุ "จุดที่ติดตั้ง" ให้ครบทุกรายการ', 'warning');
 
-    // =========================================================
-    // 🌟 ระบบแจ้งเตือน: ดักจับของติดจองบนหน้ามือถือช่าง (มาแล้ว!) 🌟
-    // =========================================================
     let hasReservationWarning = false;
     let warningMessage = '⚠️ แจ้งเตือน: มีอะไหล่ที่คุณกำลังจะเบิก "ติดจอง" อยู่ในระบบ!\n\n';
 
@@ -237,13 +227,11 @@ export default function RequestPartShoppingPage() {
           
           let reservedInfo: string[] = [];
           
-          // ข้อมูลจองจาก AI
           alloc.machines.forEach((macId: string) => {
             const m = machines.find(x => x.MachineID === macId);
             if (m) reservedInfo.push(`${m.MachineName} (${m.LineName})`);
           });
           
-          // ข้อมูลจองจากช่างคนอื่นที่รออนุมัติ
           reqs.forEach(r => {
             const m = machines.find(x => x.MachineID === r.MachineID);
             if(m) reservedInfo.push(`${m.MachineName} (${m.LineName}) [มีคนกำลังเบิก]`);
@@ -259,10 +247,9 @@ export default function RequestPartShoppingPage() {
       warningMessage += 'คุณแน่ใจหรือไม่ที่จะยืนยันเบิกอะไหล่เหล่านี้? (อาจเป็นการดึงอะไหล่ตัดหน้าคิวอื่น)';
       const isConfirmed = window.confirm(warningMessage);
       if (!isConfirmed) {
-        return; // ถ้ายกเลิก ให้หยุดการส่งใบเบิกทันที
+        return;
       }
     }
-    // =========================================================
 
     setIsSubmitting(true);
 
@@ -289,52 +276,6 @@ export default function RequestPartShoppingPage() {
            throw new Error(`ของไม่พอ! มีคนเบิก "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
         }
       }
-
-      const baseId = Date.now(); 
-      const insertData = Object.keys(cart).map((itemId, idx) => ({
-        RequestID: `REQ-${baseId}-${idx + 1}`, 
-        MachineID: cart[itemId].type === 'part' ? selectedMachine : 'GENERAL',
-        PartID: itemId,
-        Qty: cart[itemId].qty,
-        Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
-        Reason: cart[itemId].type === 'part' ? reason : 'Consumable',
-        PickerName: pickerName,
-        Status: 'Pending',
-        DepartmentID: activeDept
-      }));
-
-      const { error } = await supabase.from('PartRequests').insert(insertData);
-      if (error) throw error;
-
-      try {
-        const itemNames = Object.keys(cart).map(itemId => {
-          const isPart = cart[itemId].type === 'part';
-          return isPart ? parts.find(p => p.PartID === itemId)?.PartName : consumables.find(c => c.ItemID === itemId)?.ItemName;
-        }).join(', ');
-        
-        const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
-        
-        await fetch('/api/send-line', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: lineMsg })
-        });
-      } catch (err) {
-        console.error('Line Notify Error:', err);
-      }
-
-      showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success');
-      setCart({}); 
-      setIsCheckoutOpen(false);
-      setSelectedLine(''); setSelectedMachine('');
-      fetchInitialData(activeDept); 
-    } catch (error: any) { 
-      showToast(error.message, 'error'); 
-      fetchInitialData(activeDept); 
-    } finally { 
-      setIsSubmitting(false); 
-    }
-  };
 
       const baseId = Date.now(); 
       const insertData = Object.keys(cart).map((itemId, idx) => ({
@@ -586,7 +527,6 @@ export default function RequestPartShoppingPage() {
                     const isPart = cart[itemId].type === 'part';
                     const name = isPart ? parts.find(p => p.PartID === itemId)?.PartName : consumables.find(c => c.ItemID === itemId)?.ItemName;
                     
-                    // 🌟 หาตัวเลือก Dropdown ของอะไหล่ชิ้นนี้ 🌟
                     const positions = selectedMachine ? (historicalPositions[`${selectedMachine}_${itemId}`] || []) : [];
                     const filteredPositions = positions.filter(p => p.toLowerCase().includes((cart[itemId].position || '').toLowerCase()));
 
@@ -599,7 +539,6 @@ export default function RequestPartShoppingPage() {
                           <span className={`font-black px-2 py-0.5 rounded-md ${isPart ? 'text-blue-600 bg-blue-50' : 'text-pink-600 bg-pink-50'}`}>x{cart[itemId].qty}</span>
                         </div>
                         
-                        {/* 🌟 จุดติดตั้ง (Position) แบบ Custom Dropdown สวยๆ 🌟 */}
                         {isPart && (
                           <div className="mt-1 relative">
                             <input 
@@ -610,12 +549,11 @@ export default function RequestPartShoppingPage() {
                               value={cart[itemId].position || ''}
                               onChange={(e) => setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: e.target.value } }))}
                               onFocus={() => setActiveDropdown(itemId)}
-                              onBlur={() => setTimeout(() => setActiveDropdown(null), 200)} // หน่วงเวลาให้กดเมนูทัน
+                              onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                               className="w-full p-3 pl-4 pr-10 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 disabled:opacity-50 disabled:bg-slate-100 transition-all" 
                             />
                             <i className="bi bi-geo-alt absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
                             
-                            {/* 🌟 เมนู Dropdown ลอยทับ 🌟 */}
                             {activeDropdown === itemId && filteredPositions.length > 0 && (
                               <ul className="absolute z-[100] w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-1.5 max-h-40 overflow-y-auto top-full left-0 origin-top animate-in fade-in zoom-in-95 duration-150">
                                 {filteredPositions.map(pos => (
