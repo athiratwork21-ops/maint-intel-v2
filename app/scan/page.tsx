@@ -160,7 +160,7 @@ export default function RequestPartShoppingPage() {
           if(m) reservedInfo.push(`${m.MachineName} [คิวอื่นรอเบิก]`);
         });
 
-        const uniqueMachines = [...new Set(reservedInfo)].join(', ');
+        const uniqueMachines = Array.from(new Set(reservedInfo)).join(', ');
         
         const isConfirmed = window.confirm(`⚠️ แจ้งเตือน: คุณกำลังหยิบอะไหล่ที่ "ติดจอง"\n\n🔸 ${partName}\nมีคิวจองอยู่: ${totalReserved} ชิ้น\nสำหรับเครื่อง: ${uniqueMachines || 'ไม่ระบุ'}\n\nแน่ใจหรือไม่ที่จะหยิบใส่ตะกร้า? (อาจทำให้ช่างคิวแรกไม่มีของใช้)`);
         
@@ -237,7 +237,7 @@ export default function RequestPartShoppingPage() {
             if(m) reservedInfo.push(`${m.MachineName} (${m.LineName}) [มีคนกำลังเบิก]`);
           });
 
-          const uniqueMachines = [...new Set(reservedInfo)].join('\n- ');
+          const uniqueMachines = Array.from(new Set(reservedInfo)).join('\n- ');
           warningMessage += `🔸 ${partName}\nมียอดติดจอง: ${totalReserved} ชิ้น\nสำหรับเครื่อง:\n- ${uniqueMachines || 'ไม่ระบุ'}\n\n`;
         }
       }
