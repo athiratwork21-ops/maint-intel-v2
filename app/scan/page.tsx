@@ -169,11 +169,14 @@ export default function RequestPartShoppingPage() {
         
         // ข้อมูลจาก AI Schedule
         alloc.machines.forEach((macId: string) => {
-          const m = machines.find(x => x.MachineID === macId);
+          // ค้นหาจาก ID ตรงๆ หรือ ค้นหาว่าในคำนั้นมีชื่อเครื่องซ่อนอยู่ไหม (เช่น Router(ขวา) มีคำว่า Router)
+          const m = machines.find(x => x.MachineID === macId || (x.MachineName && macId.includes(x.MachineName)));
+          
           if (m) {
-            reservedDetailsList.push(`${m.MachineName} (${m.LineName})`);
+            // ถ้าระบุมาเป็น ID ให้ใช้ชื่อเครื่อง แต่ถ้าระบุมาเป็น Router(ขวา) ก็ให้ใช้คำนั้นเลย แล้วต่อท้ายด้วยไลน์
+            const displayMac = macId === m.MachineID ? m.MachineName : macId;
+            reservedDetailsList.push(`${displayMac} (ไลน์: ${m.LineName})`);
           } else {
-            // 🌟 ถ้าหา ID ไม่เจอ แปลว่ามันเป็นชื่อ "Router(ขวา)" มาจาก AI ตรงๆ ให้ดึงมาโชว์เลย!
             reservedDetailsList.push(macId);
           }
         });
@@ -267,12 +270,12 @@ export default function RequestPartShoppingPage() {
           let reservedInfo: string[] = [];
           
           alloc.machines.forEach((macId: string) => {
-            const m = machines.find(x => x.MachineID === macId);
+            const m = machines.find(x => x.MachineID === macId || (x.MachineName && macId.includes(x.MachineName)));
             if (m) {
-              reservedInfo.push(`${m.MachineName} (${m.LineName})`);
+              const displayMac = macId === m.MachineID ? m.MachineName : macId;
+              reservedInfo.push(`${displayMac} (ไลน์: ${m.LineName})`);
             } else {
-              // 🌟 ทำเหมือนกันตรงนี้ด้วย ป้องกันไม่ให้ขึ้นไม่ระบุตอนกดยืนยันใบเบิก
-              reservedInfo.push(macId); 
+              reservedInfo.push(macId);
             }
           });
           
