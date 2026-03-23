@@ -49,6 +49,7 @@ export default function RequestPartShoppingPage() {
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
+  // 🌟 State สำหรับคุมโมดอลป๊อปอัพตัวใหม่
   const [reservationModal, setReservationModal] = useState<{
     isOpen: boolean;
     partName: string;
@@ -151,7 +152,7 @@ export default function RequestPartShoppingPage() {
     }
 
     // =========================================================
-    // 🌟 ดักจับของติดจอง: เด้งเตือนทันทีตอนกด "เพิ่มลงรายการ"
+    // 🌟 ดักจับของติดจอง (เปลี่ยนมาใช้ Modal ป๊อปอัพตัวใหม่)
     // =========================================================
     if (delta > 0 && type === 'part') {
       const alloc = stockAllocations[itemId] || { available: 0, physical: 0, reserved: 0, machines: [] };
@@ -164,23 +165,42 @@ export default function RequestPartShoppingPage() {
         const partName = parts.find(p => p.PartID === itemId)?.PartName || itemId;
         const totalReserved = (alloc.reserved || 0) + mechanicReqQty;
 
-        let reservedInfo: string[] = [];
+        let reservedDetailsList: string[] = [];
+        
+        // ข้อมูลจาก AI Schedule
         alloc.machines.forEach((macId: string) => {
           const m = machines.find(x => x.MachineID === macId);
-          if (m) reservedInfo.push(`${m.MachineName}`);
+          if (m) reservedDetailsList.push(`${m.MachineName} (${m.LineName})`);
         });
+        
+        // ข้อมูลจากใบเบิกช่างคนอื่นที่รออยู่
         reqs.forEach(r => {
           const m = machines.find(x => x.MachineID === r.MachineID);
-          if(m) reservedInfo.push(`${m.MachineName} [คิวอื่นรอเบิก]`);
+          if (m) {
+            const posInfo = r.Position && r.Position !== '-' ? ` [จุด: ${r.Position}]` : '';
+            reservedDetailsList.push(`${m.MachineName} (${m.LineName})${posInfo}`);
+          }
         });
 
-        const uniqueMachines = Array.from(new Set(reservedInfo)).join(', ');
-        
-        const isConfirmed = window.confirm(`⚠️ แจ้งเตือน: คุณกำลังหยิบอะไหล่ที่ "ติดจอง"\n\n🔸 ${partName}\nมีคิวจองอยู่: ${totalReserved} ชิ้น\nสำหรับเครื่อง: ${uniqueMachines || 'ไม่ระบุ'}\n\nแน่ใจหรือไม่ที่จะหยิบใส่ตะกร้า? (อาจทำให้ช่างคิวแรกไม่มีของใช้)`);
-        
-        if (!isConfirmed) {
-          return; 
-        }
+        // จัดรูปแบบให้แสดงผลสวยงามในโมดอล
+        const formattedReservedInfo = Array.from(new Set(reservedDetailsList)).join('\n🔸 ');
+
+        // ฟังก์ชันที่จะทำงานถ้าช่างกดยืนยันในโมดอล
+        const proceedWithAdding = () => {
+          setCart({ ...cart, [itemId]: { qty: newQty, type, position: cart[itemId]?.position || '' } });
+          setReservationModal(prev => ({ ...prev, isOpen: false }));
+        };
+
+        // เรียกเปิดโมดอล
+        setReservationModal({
+          isOpen: true,
+          partName: partName,
+          totalReserved: totalReserved,
+          machineInfo: formattedReservedInfo || 'ไม่ระบุ',
+          onConfirm: proceedWithAdding,
+        });
+
+        return; // หยุดการทำงานไว้แค่นี้ก่อน รอช่างกดยืนยัน
       }
     }
     // =========================================================
@@ -601,6 +621,58 @@ export default function RequestPartShoppingPage() {
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* 🌟 โมดอลป๊อปอัพตัวใหม่ (On-Theme) สำหรับแจ้งเตือนของติดจอง 🌟 */}
+      {/* ========================================================= */}
+      {reservationModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100 flex flex-col gap-6">
+            
+            {/* ส่วนหัว */}
+            <div className="flex flex-col gap-2 items-center text-center">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl shadow-inner border border-blue-100">
+                <i className="bi bi-info-circle-fill"></i>
+              </div>
+              <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2">แจ้งเตือน: อะไหล่ติดจอง!</h3>
+              <p className="text-xs text-slate-500 font-medium">คุณกำลังหยิบอะไหล่ที่อาจเป็นการดึงตัดหน้าคิวอื่น</p>
+            </div>
+
+            {/* ข้อมูลรายละเอียด */}
+            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-slate-700 space-y-3.5">
+              <div className="flex items-start gap-3">
+                <i className="bi bi-gear-wide-connected text-blue-500 text-base"></i>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่ออะไหล่</p>
+                  <p className="font-bold text-sm tracking-tight">{reservationModal.partName}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <i className="bi bi-bar-chart-fill text-amber-500 text-base"></i>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">มียอดจองรวม</p>
+                  <p className="font-bold text-sm tracking-tight">{reservationModal.totalReserved} <span className="text-slate-500 text-[11px]">ชิ้น</span></p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <i className="bi bi-geo-alt-fill text-emerald-500 text-base"></i>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">สำหรับเครื่อง (ไลน์) [จุด]</p>
+                  <p className="font-bold text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">🔸 {reservationModal.machineInfo}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ส่วนปุ่มกดยืนยัน/ยกเลิก */}
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={() => setReservationModal(prev => ({ ...prev, isOpen: false }))} className="w-full bg-slate-50 text-slate-500 py-3.5 rounded-2xl font-black text-sm transition-all hover:bg-slate-100 active:scale-95">ยกเลิก (ไม่หยิบ)</button>
+              <button type="button" onClick={() => { reservationModal.onConfirm && reservationModal.onConfirm(); }} className="w-full bg-[#0f172a] text-white py-4.5 rounded-2xl font-black text-base shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2">แน่ใจที่จะหยิบใส่ตะกร้า <i className="bi bi-arrow-right"></i></button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
