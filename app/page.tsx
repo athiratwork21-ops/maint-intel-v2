@@ -138,7 +138,7 @@ export default function MaintenanceDashboard() {
         }
         return row;
       });
-      updatedSchedule.sort((a, b) => a.alertLevel - b.alertLevel);
+      updatedSchedule.sort((a, b) => b.alertLevel - a.alertLevel);
 
       setStockData(data.rawStock); setMachines(data.rawMachines); setParts(data.rawParts);
       setStockAllocations(data.allocations); setScheduleData(updatedSchedule); setDashboardStats(data.stats);
