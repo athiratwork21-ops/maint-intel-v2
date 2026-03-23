@@ -170,7 +170,12 @@ export default function RequestPartShoppingPage() {
         // ข้อมูลจาก AI Schedule
         alloc.machines.forEach((macId: string) => {
           const m = machines.find(x => x.MachineID === macId);
-          if (m) reservedDetailsList.push(`${m.MachineName} (${m.LineName})`);
+          if (m) {
+            reservedDetailsList.push(`${m.MachineName} (${m.LineName})`);
+          } else {
+            // 🌟 ถ้าหา ID ไม่เจอ แปลว่ามันเป็นชื่อ "Router(ขวา)" มาจาก AI ตรงๆ ให้ดึงมาโชว์เลย!
+            reservedDetailsList.push(macId);
+          }
         });
         
         // ข้อมูลจากใบเบิกช่างคนอื่นที่รออยู่
@@ -263,7 +268,12 @@ export default function RequestPartShoppingPage() {
           
           alloc.machines.forEach((macId: string) => {
             const m = machines.find(x => x.MachineID === macId);
-            if (m) reservedInfo.push(`${m.MachineName} (${m.LineName})`);
+            if (m) {
+              reservedInfo.push(`${m.MachineName} (${m.LineName})`);
+            } else {
+              // 🌟 ทำเหมือนกันตรงนี้ด้วย ป้องกันไม่ให้ขึ้นไม่ระบุตอนกดยืนยันใบเบิก
+              reservedInfo.push(macId); 
+            }
           });
           
           reqs.forEach(r => {
