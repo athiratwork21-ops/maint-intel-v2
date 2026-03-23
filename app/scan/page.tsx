@@ -49,6 +49,20 @@ export default function RequestPartShoppingPage() {
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
+  const [reservationModal, setReservationModal] = useState<{
+    isOpen: boolean;
+    partName: string;
+    totalReserved: number;
+    machineInfo: string;
+    onConfirm: (() => void) | null;
+  }>({
+    isOpen: false,
+    partName: '',
+    totalReserved: 0,
+    machineInfo: '',
+    onConfirm: null,
+  });
+
   useEffect(() => {
     const d = localStorage.getItem('mechanicDept');
     const n = localStorage.getItem('mechanicName');
