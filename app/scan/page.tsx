@@ -177,6 +177,52 @@ export default function RequestPartShoppingPage() {
     const missingPos = Object.keys(cart).find(id => cart[id].type === 'part' && !cart[id].position?.trim());
     if (missingPos) return showToast('กรุณาระบุ "จุดที่ติดตั้ง" ให้ครบทุกรายการ', 'warning');
 
+    // =========================================================
+    // 🌟 ระบบแจ้งเตือน: ดักจับของติดจองบนหน้ามือถือช่าง (มาแล้ว!) 🌟
+    // =========================================================
+    let hasReservationWarning = false;
+    let warningMessage = '⚠️ แจ้งเตือน: มีอะไหล่ที่คุณกำลังจะเบิก "ติดจอง" อยู่ในระบบ!\n\n';
+
+    for (const itemId of Object.keys(cart)) {
+      if (cart[itemId].type === 'part') {
+        const alloc = stockAllocations[itemId] || { reserved: 0, machines: [] };
+        const reqs = pendingRequests.filter(r => r.PartID === itemId);
+        const mechanicReqQty = reqs.reduce((sum, r) => sum + (r.Qty || 0), 0);
+        const totalReserved = alloc.reserved + mechanicReqQty;
+
+        if (totalReserved > 0) {
+          hasReservationWarning = true;
+          const partName = parts.find(p => p.PartID === itemId)?.PartName || itemId;
+          
+          let reservedInfo: string[] = [];
+          
+          // ข้อมูลจองจาก AI
+          alloc.machines.forEach((macId: string) => {
+            const m = machines.find(x => x.MachineID === macId);
+            if (m) reservedInfo.push(`${m.MachineName} (${m.LineName})`);
+          });
+          
+          // ข้อมูลจองจากช่างคนอื่นที่รออนุมัติ
+          reqs.forEach(r => {
+            const m = machines.find(x => x.MachineID === r.MachineID);
+            if(m) reservedInfo.push(`${m.MachineName} (${m.LineName}) [มีคนกำลังเบิก]`);
+          });
+
+          const uniqueMachines = [...new Set(reservedInfo)].join('\n- ');
+          warningMessage += `🔸 ${partName}\nมียอดติดจอง: ${totalReserved} ชิ้น\nสำหรับเครื่อง:\n- ${uniqueMachines || 'ไม่ระบุ'}\n\n`;
+        }
+      }
+    }
+
+    if (hasReservationWarning) {
+      warningMessage += 'คุณแน่ใจหรือไม่ที่จะยืนยันเบิกอะไหล่เหล่านี้? (อาจเป็นการดึงอะไหล่ตัดหน้าคิวอื่น)';
+      const isConfirmed = window.confirm(warningMessage);
+      if (!isConfirmed) {
+        return; // ถ้ายกเลิก ให้หยุดการส่งใบเบิกทันที
+      }
+    }
+    // =========================================================
+
     setIsSubmitting(true);
 
     try {
@@ -202,6 +248,52 @@ export default function RequestPartShoppingPage() {
            throw new Error(`ของไม่พอ! มีคนเบิก "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
         }
       }
+
+      const baseId = Date.now(); 
+      const insertData = Object.keys(cart).map((itemId, idx) => ({
+        RequestID: `REQ-${baseId}-${idx + 1}`, 
+        MachineID: cart[itemId].type === 'part' ? selectedMachine : 'GENERAL',
+        PartID: itemId,
+        Qty: cart[itemId].qty,
+        Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
+        Reason: cart[itemId].type === 'part' ? reason : 'Consumable',
+        PickerName: pickerName,
+        Status: 'Pending',
+        DepartmentID: activeDept
+      }));
+
+      const { error } = await supabase.from('PartRequests').insert(insertData);
+      if (error) throw error;
+
+      try {
+        const itemNames = Object.keys(cart).map(itemId => {
+          const isPart = cart[itemId].type === 'part';
+          return isPart ? parts.find(p => p.PartID === itemId)?.PartName : consumables.find(c => c.ItemID === itemId)?.ItemName;
+        }).join(', ');
+        
+        const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
+        
+        await fetch('/api/send-line', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: lineMsg })
+        });
+      } catch (err) {
+        console.error('Line Notify Error:', err);
+      }
+
+      showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success');
+      setCart({}); 
+      setIsCheckoutOpen(false);
+      setSelectedLine(''); setSelectedMachine('');
+      fetchInitialData(activeDept); 
+    } catch (error: any) { 
+      showToast(error.message, 'error'); 
+      fetchInitialData(activeDept); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
+  };
 
       const baseId = Date.now(); 
       const insertData = Object.keys(cart).map((itemId, idx) => ({
