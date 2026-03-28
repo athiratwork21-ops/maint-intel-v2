@@ -13,6 +13,35 @@ export async function POST(request: Request) {
       if (event.type === 'message' && event.message.type === 'text') {
         const userMessage = event.message.text;
         const replyToken = event.replyToken;
+        const sourceType = event.source?.type; // เช็คว่ามาจากแชทส่วนตัว หรือ กลุ่ม
+
+        // =================================================================
+        // 🌟 ด่านตรวจ (Gatekeeper): ใส่ที่ครอบปากบอทเมื่ออยู่ในกลุ่ม
+        // =================================================================
+        const triggerWords = ['@บอท', 'บอท', '@bot', 'bot', 'น้องบอท']; // 👈 อยากให้เรียกชื่อไหนเพิ่มในวงเล็บนี้ได้เลยครับ
+        let shouldReply = false;
+        let cleanMessage = userMessage; // ข้อความที่จะส่งให้ AI หลังจากลบชื่อบอทออกแล้ว
+
+        if (sourceType === 'user') {
+          // ถ้าเป็นแชทส่วนตัว 1-on-1 -> ให้ตอบทุกข้อความ
+          shouldReply = true;
+        } else if (sourceType === 'group' || sourceType === 'room') {
+          // ถ้าอยู่ในกลุ่ม -> เช็คว่ามีคำเรียกชื่อบอทไหม
+          const lowerMessage = userMessage.toLowerCase();
+          const triggeredWord = triggerWords.find(word => lowerMessage.includes(word.toLowerCase()));
+
+          if (triggeredWord) {
+            shouldReply = true;
+            // ลบคำเรียกชื่อบอทออก เพื่อไม่ให้ AI งงเวลาเอาไปวิเคราะห์ (เช่น "@บอท มีน็อตไหม" -> "มีน็อตไหม")
+            cleanMessage = userMessage.replace(new RegExp(triggeredWord, 'ig'), '').trim();
+          }
+        }
+
+        // ถ้าไม่มีใครเรียกมันในกลุ่ม ให้จบการทำงานตรงนี้เลยทันที! (เซฟโควต้า API)
+        if (!shouldReply) {
+          return NextResponse.json({ success: true, message: 'Ignored: Not mentioned in group' }, { status: 200 });
+        }
+        // =================================================================
 
         const { data: parts } = await supabase.from('Part').select('PartID, PartName, PartModel');
         const { data: stocks } = await supabase.from('Stock').select('PartID, Balance, Location');
@@ -27,9 +56,10 @@ export async function POST(request: Request) {
           consumables: consumables
         });
 
+        // 💡 สังเกตว่าเราเปลี่ยนไปใช้ cleanMessage แทน userMessage แล้ว
         const prompt = `
           คุณคือผู้ช่วยแอดมินแผนกซ่อมบำรุง (Maintenance Assistant) ที่เชี่ยวชาญและเป็นกันเอง
-          ช่างซ่อมบำรุงถามมาว่า: "${userMessage}"
+          ช่างซ่อมบำรุงถามมาว่า: "${cleanMessage}"
 
           นี่คือฐานข้อมูลอะไหล่และสต๊อกปัจจุบันของเรา (JSON):
           ${dbContext}
