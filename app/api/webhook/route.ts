@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '../../../lib/supabase';
 
-// ❌ ลบ import ของ Google ออกไปเลย เราไม่ใช้แล้ว!
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -40,6 +38,27 @@ export async function POST(request: Request) {
         // ถ้าไม่มีใครเรียกมันในกลุ่ม ให้จบการทำงานตรงนี้เลยทันที! (เซฟโควต้า API)
         if (!shouldReply) {
           return NextResponse.json({ success: true, message: 'Ignored: Not mentioned in group' }, { status: 200 });
+        }
+        // =================================================================
+
+        // =================================================================
+        // 🌟 ทริคลับ: พิมพ์ขอ Group ID จากบอท (โค้ดที่เพิ่มเข้ามาใหม่)
+        // =================================================================
+        if (cleanMessage.includes('ขอไอดีกลุ่ม')) {
+          const groupId = event.source?.groupId || event.source?.roomId || 'ไม่พบไอดีกลุ่ม (คุณอาจจะทักแชทส่วนตัวอยู่)';
+          
+          await fetch('https://api.line.me/v2/bot/message/reply', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.LINE_ACCESS_TOKEN}`
+            },
+            body: JSON.stringify({
+              replyToken: replyToken,
+              messages: [{ type: 'text', text: `ไอดีของกลุ่ม/ห้องนี้คือ:\n${groupId}\n\n👉 ก๊อปปี้รหัสนี้ไปใส่ใน Vercel ช่อง LINE_TARGET_ID ได้เลยครับ!` }]
+            })
+          });
+          return NextResponse.json({ success: true }, { status: 200 });
         }
         // =================================================================
 
