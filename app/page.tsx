@@ -16,6 +16,10 @@ export default function MaintenanceDashboard() {
   const [selectedDept, setSelectedDept] = useState('');
   const [activeDeptName, setActiveDeptName] = useState('');
 
+  // 🌟 State for Dashboard Filtering
+  const [filterLine, setFilterLine] = useState('');
+  const [filterMachine, setFilterMachine] = useState('');
+
   useEffect(() => {
     const fetchDepartments = async () => {
       const { data } = await supabase.from('Departments').select('*');
@@ -140,8 +144,15 @@ export default function MaintenanceDashboard() {
       });
       updatedSchedule.sort((a, b) => b.alertLevel - a.alertLevel);
 
-      setStockData(data.rawStock); setMachines(data.rawMachines); setParts(data.rawParts);
-      setStockAllocations(data.allocations); setScheduleData(updatedSchedule); setDashboardStats(data.stats);
+      // 🌟 เรียงลำดับ Stock: ให้ตัวที่ Balance น้อยสุดอยู่บนสุด
+      const sortedStock = [...data.rawStock].sort((a, b) => (a.Balance || 0) - (b.Balance || 0));
+
+      setStockData(sortedStock); 
+      setMachines(data.rawMachines); 
+      setParts(data.rawParts);
+      setStockAllocations(data.allocations); 
+      setScheduleData(updatedSchedule); 
+      setDashboardStats(data.stats);
 
       const { data: reqData } = await supabase.from('PartRequests').select('*').eq('Status', 'Pending').eq('DepartmentID', activeDept).order('CreatedAt', { ascending: true });
       setPendingRequests(reqData || []);
@@ -187,6 +198,34 @@ export default function MaintenanceDashboard() {
       setPreviewImage(partInfo?.ImageURL || null); 
       setEditPartModalOpen(true);
     }
+  };
+
+  // 🌟 ฟังก์ชันลบอะไหล่
+  const handleDeletePart = (partId: string, partName: string) => {
+    setOpenDropdownId(null);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Part Permanently',
+      message: `Are you sure you want to delete "${partName}" (ID: ${partId})?\n\n⚠️ This action will remove the part from both Part details and Stock. This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        try {
+          // ลบจากตาราง Stock ก่อน (ถ้ามีผูก Foreign Key)
+          await supabase.from('Stock').delete().eq('PartID', partId);
+          // ลบจากตาราง Part
+          const { error } = await supabase.from('Part').delete().eq('PartID', partId);
+          
+          if (error) throw error;
+          showToast(`Part "${partName}" has been deleted.`, 'success');
+          fetchAllData();
+        } catch (error: any) {
+          showToast(`Error deleting part: ${error.message}`, 'error');
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+    });
   };
 
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
@@ -317,6 +356,28 @@ export default function MaintenanceDashboard() {
     } else { showToast(`Error: ${error.message}`, 'error'); }
   };
 
+  // 🌟 ฟังก์ชันลบ Consumable
+  const handleDeleteConsumable = (itemId: string, itemName: string) => {
+    setOpenDropdownId(null);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Consumable',
+      message: `Are you sure you want to delete "${itemName}"?\nThis cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        const { error } = await supabase.from('Consumable').delete().eq('ItemID', itemId);
+        if (!error) {
+          showToast(`Consumable "${itemName}" deleted successfully.`, 'success');
+          fetchAllData();
+        } else {
+          showToast(`Error deleting item: ${error.message}`, 'error');
+        }
+        setIsProcessing(false);
+      }
+    });
+  };
+
   const handleUpdateLeadTime = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('LeadTime').insert({ RecordID: Date.now().toString(), PartID: selectedActionPart?.id || '', LeadTimeDays: parseInt(formData.get('days') as string), RecordDate: new Date().toISOString(), DepartmentID: activeDept }); if (!error) { showToast('Lead time updated successfully!', 'success'); setLeadTimeModalOpen(false); fetchAllData(); } };
   
   const handleNewMachineSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('Machine').insert({ MachineID: formData.get('id'), MachineName: formData.get('name'), LineName: formData.get('line'), Active: true, DepartmentID: activeDept }); if (!error) { showToast('Machine registered successfully!', 'success'); setNewMachineModalOpen(false); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error'); setIsProcessing(false); };
@@ -378,9 +439,6 @@ export default function MaintenanceDashboard() {
             const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); if (reqErr) throw reqErr;
           }
 
-          // =========================================================
-          // 🌟 โค้ดแจ้งเตือนช่างเข้า LINE (ย้ายเข้ามาอยู่ในนี้แล้ว ปลอดภัย!)
-          // =========================================================
           try {
             const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧 ช่าง: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
             await fetch('/api/send-line', {
@@ -391,7 +449,6 @@ export default function MaintenanceDashboard() {
           } catch (err) {
             console.error('Line Notify Error:', err);
           }
-          // =========================================================
 
           showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData(); 
         } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
@@ -417,7 +474,17 @@ export default function MaintenanceDashboard() {
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
 
-  const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
+  // 🌟 Logic กรองข้อมูลสต๊อกและ Schedule
+  const filteredScheduleData = scheduleData.filter(row => {
+    return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine);
+  });
+
+  const filteredStockData = stockData.filter(row => { 
+    const q = searchQuery.toLowerCase(); 
+    const p = parts.find(p => p.PartID === row.PartID); 
+    return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); 
+  });
+  
   const filteredConsumables = consumables.filter(c => !searchQuery || c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const activeMachinesCount = machines.filter(m => m.Active !== false).length;
@@ -618,7 +685,7 @@ export default function MaintenanceDashboard() {
       {isNewMachineModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine</h3> <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label><input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label><input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label> <div className="relative"><select name="line" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all"><option value="">-- Select Line --</option>{linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div> </div> <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]"><i className="bi bi-plus-lg mr-2"></i>Create Machine</button> </form> </div> </div> )}
       {openDropdownId && ( <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenDropdownId(null)}></div> )}
 
-      {/* 🌟 Sidebar 🌟 (แก้ไอคอนกลางเป๊ะ ไม่แหว่งแล้ว) */}
+      {/* 🌟 Sidebar 🌟 */}
       <nav className="fixed md:relative top-0 left-0 h-full w-[76px] hover:w-[260px] bg-[#0f172a] text-[#cbd5e1] transition-all duration-300 ease-in-out z-50 overflow-hidden group shadow-2xl flex-shrink-0 border-r border-slate-800 flex flex-col"> 
         <div className="flex items-center h-[76px] border-b border-[#1e293b] shrink-0 px-6">
           <i className="bi bi-tools text-2xl text-blue-500 filter drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] min-w-[24px] text-center"></i>
@@ -680,7 +747,6 @@ export default function MaintenanceDashboard() {
         <header className="h-[76px] bg-white/80 backdrop-blur-md border-b border-slate-200/60 px-8 flex items-center justify-between shadow-sm flex-shrink-0 z-30 sticky top-0"> 
           <div><h1 className="text-xl font-extrabold text-slate-800 flex items-center gap-3 tracking-tight"><div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${activeTab === 'consumables' ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}><i className={`bi ${activeTab === 'dashboard' ? 'bi-grid-1x2-fill' : activeTab === 'stock' ? 'bi-box-seam-fill' : activeTab === 'consumables' ? 'bi-box2-heart-fill' : activeTab === 'machines' ? 'bi-robot' : activeTab === 'requests' ? 'bi-ticket-detailed-fill' : activeTab === 'basic-info' ? 'bi-list-columns-reverse' : 'bi-tools'}`}></i></div> {activeTab === 'dashboard' ? 'Maintenance Intelligence' : activeTab === 'stock' ? 'Current Stock' : activeTab === 'consumables' ? 'Consumables Inventory' : activeTab === 'machines' ? 'Machine Management' : activeTab === 'requests' ? 'Request Queue' : activeTab === 'basic-info' ? 'Basic Information' : 'Manual Log Record'}</h1></div> 
           <div className="flex items-center gap-5">
-            {/* 🌟 โชว์แผนกที่ล็อกอินอยู่บนหัวเว็บ */}
             <span className="text-xs font-black text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm"><i className="bi bi-building text-blue-500 mr-1.5"></i>{activeDeptName || localStorage.getItem('activeDepartment')}</span>
             <span className="text-sm font-bold text-slate-500 hidden sm:block bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">{session?.user?.email}</span>
             <button onClick={handleLogout} className="h-10 px-5 rounded-xl bg-red-50 text-red-600 flex items-center justify-center font-bold border border-red-100 hover:bg-red-500 hover:text-white transition-all active:scale-95 shadow-sm"><i className="bi bi-box-arrow-right mr-2"></i> Sign out</button>
@@ -696,14 +762,35 @@ export default function MaintenanceDashboard() {
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-robot"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Machines</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.machines}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-gear-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Active Parts</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.parts}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-exclamation-triangle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Out of Stock</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.outOfStock}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-x-circle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Overdue Jobs</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.overdue}</p></div></div> 
               </div> 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0"> 
-                <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white flex-shrink-0">
+                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center p-6 border-b border-slate-100 bg-white gap-4 flex-shrink-0">
                   <h2 className="font-bold text-slate-800 text-lg tracking-tight">Maintenance Schedule</h2>
-                  <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
+                  
+                  {/* 🌟 Filters สำหรับหน้า Dashboard */}
+                  <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
+                    <div className="relative flex-1 xl:flex-none min-w-[150px]">
+                      <select value={filterLine} onChange={(e) => { setFilterLine(e.target.value); setFilterMachine(''); }} className="w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm appearance-none hover:bg-white transition-all">
+                        <option value="">All Lines</option>
+                        {linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}
+                      </select>
+                      <i className="bi bi-funnel absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                    </div>
+                    <div className="relative flex-1 xl:flex-none min-w-[150px]">
+                      <select value={filterMachine} onChange={(e) => setFilterMachine(e.target.value)} disabled={!filterLine} className="w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm appearance-none disabled:opacity-50 hover:bg-white transition-all">
+                        <option value="">All Machines</option>
+                        {machines.filter(m => m.LineName === filterLine).map(m => <option key={m.MachineID} value={m.MachineID}>{m.MachineName}</option>)}
+                      </select>
+                      <i className="bi bi-robot absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                    </div>
+                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white shrink-0"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
+                  </div>
                 </div> 
                 <div className="overflow-auto flex-1 relative rounded-b-2xl"> 
                   <table className="w-full text-left border-collapse"> 
                     <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm"><tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider"><th className="py-5 px-6">Machine & Line</th><th className="py-5 px-6">Part Info (MTBF)</th><th className="py-5 px-6">Order Date</th><th className="py-5 px-6">Due Date</th><th className="py-5 px-6">Status & Action</th></tr></thead> 
-                    <tbody className="text-sm"> {scheduleData.map((row, idx) => ( <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 ${row.status === 'MONITORING' ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100' : ''}`}><td className="py-5 px-6 align-top"><div className="font-bold text-slate-800 text-[15px]">{row.machine}</div><div className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5"><i className="bi bi-geo-alt-fill text-blue-400"></i> {row.line}</div></td><td className="py-5 px-6 align-top"><div className="font-bold text-slate-700">{row.partName}</div><div className="text-xs text-slate-400 mt-1.5">Req: <span className="text-blue-600 font-black">{row.reqQty}</span> pcs <span className="mx-1 opacity-30">|</span> MTBF: <span className="text-emerald-600 font-black">{row.mtbfDays}</span> d</div></td><td className="py-5 px-6 align-top font-bold text-blue-600">{row.orderDate}</td><td className="py-5 px-6 align-top font-bold text-red-500">{row.dueDate}</td><td className="py-5 px-6 align-top">{renderStatusBadge(row)}</td></tr> ))} </tbody> 
+                    <tbody className="text-sm"> 
+                      {filteredScheduleData.map((row, idx) => ( <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 ${row.status === 'MONITORING' ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100' : ''}`}><td className="py-5 px-6 align-top"><div className="font-bold text-slate-800 text-[15px]">{row.machine}</div><div className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5"><i className="bi bi-geo-alt-fill text-blue-400"></i> {row.line}</div></td><td className="py-5 px-6 align-top"><div className="font-bold text-slate-700">{row.partName}</div><div className="text-xs text-slate-400 mt-1.5">Req: <span className="text-blue-600 font-black">{row.reqQty}</span> pcs <span className="mx-1 opacity-30">|</span> MTBF: <span className="text-emerald-600 font-black">{row.mtbfDays}</span> d</div></td><td className="py-5 px-6 align-top font-bold text-blue-600">{row.orderDate}</td><td className="py-5 px-6 align-top font-bold text-red-500">{row.dueDate}</td><td className="py-5 px-6 align-top">{renderStatusBadge(row)}</td></tr> ))} 
+                      {filteredScheduleData.length === 0 && (<tr><td colSpan={5} className="py-10 text-center text-slate-400 font-bold">No schedule data available</td></tr>)}
+                    </tbody> 
                   </table> 
                 </div> 
               </div> 
@@ -764,6 +851,10 @@ export default function MaintenanceDashboard() {
                                   <button onClick={() => openActionModal('leadTime', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-clock-history text-lg"></i> Update Lead Time</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openActionModal('edit', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Part Info</button>
+                                  
+                                  {/* 🌟 ปุ่มลบ Part (สีแดง) 🌟 */}
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => handleDeletePart(row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Part</button>
                                 </div>
                               )}
                             </td>
@@ -863,6 +954,10 @@ export default function MaintenanceDashboard() {
                                   <button onClick={() => { setSelectedConsumable(item); setReduceConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Adjust Stock</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
+                                  
+                                  {/* 🌟 ปุ่มลบ Consumable 🌟 */}
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
                                 </div>
                               )}
                             </td>
