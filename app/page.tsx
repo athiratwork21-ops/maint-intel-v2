@@ -103,12 +103,16 @@ export default function MaintenanceDashboard() {
   const [selectedActionPart, setSelectedActionPart] = useState<{ id: string, name: string } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void, isDanger?: boolean } | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'warning' | 'info' | 'error'} | null>(null);
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+
+  // 🌟 State for History Tab
+  const [changeHistoryData, setChangeHistoryData] = useState<any[]>([]);
+  const [historyMonthFilter, setHistoryMonthFilter] = useState(new Date().toISOString().slice(0, 7));
 
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
   const toggleGroup = (group: keyof typeof expandedGroups) => setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
@@ -144,7 +148,6 @@ export default function MaintenanceDashboard() {
       });
       updatedSchedule.sort((a, b) => b.alertLevel - a.alertLevel);
 
-      // 🌟 เรียงลำดับ Stock: ให้ตัวที่ Balance น้อยสุดอยู่บนสุด
       const sortedStock = [...data.rawStock].sort((a, b) => (a.Balance || 0) - (b.Balance || 0));
 
       setStockData(sortedStock); 
@@ -165,7 +168,75 @@ export default function MaintenanceDashboard() {
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', activeDept);
       setConsumables(consData || []);
 
+      fetchHistoryData(activeDept);
+
     } catch (error) { showToast('Error loading data', 'warning'); } finally { setIsLoading(false); }
+  };
+
+  const fetchHistoryData = async (dept: string) => {
+    const [year, month] = historyMonthFilter.split('-');
+    const startDate = `${year}-${month}-01`;
+    const endDate = new Date(parseInt(year), parseInt(month), 0).toISOString().split('T')[0];
+
+    const { data: history } = await supabase.from('ChangeHistory')
+      .select('*')
+      .eq('DepartmentID', dept)
+      .gte('ChangeDate', startDate)
+      .lte('ChangeDate', endDate)
+      .order('ChangeDate', { ascending: false });
+    
+    setChangeHistoryData(history || []);
+  };
+
+  useEffect(() => {
+    const activeDept = localStorage.getItem('activeDepartment');
+    if (activeDept) fetchHistoryData(activeDept);
+  }, [historyMonthFilter]);
+
+  // 🌟 ฟังก์ชัน Undo & เปลี่ยน Reason
+  const handleUndoTransaction = (record: any) => {
+    const partName = parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
+    const qty = record['Required Qty'] || 0;
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Undo Transaction & Return Stock',
+      isDanger: true,
+      message: `คุณกำลังจะยกเลิกการเบิกของ:\n- ${partName} (${qty} ชิ้น)\n\nระบบจะลบประวัตินี้ออกและคืนยอดกลับเข้าสต๊อก เสมือนว่าไม่เคยมีการเบิกชิ้นนี้ไป คุณแน่ใจหรือไม่?`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        try {
+          const { data: pl } = await supabase.from('PickLog').select('Location').eq('RecordID', record.RecordID).single();
+          const loc = pl?.Location || 'A01'; 
+
+          const { data: stk } = await supabase.from('Stock').select('Balance').eq('PartID', record.PartID).eq('Location', loc).single();
+          if (stk) {
+            await supabase.from('Stock').update({ Balance: stk.Balance + qty, LastUpdated: new Date().toISOString() }).eq('PartID', record.PartID).eq('Location', loc);
+          }
+
+          await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
+          await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
+
+          showToast('ทำรายการคืนของและลบประวัติสำเร็จ!', 'success');
+          fetchAllData();
+        } catch (error: any) {
+          showToast(`Error: ${error.message}`, 'error');
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+    });
+  };
+
+  const handleChangeReason = async (recordId: string, newReason: string) => {
+    const { error } = await supabase.from('ChangeHistory').update({ ReasonType: newReason }).eq('RecordID', recordId);
+    if (!error) {
+      showToast('เปลี่ยนสาเหตุสำเร็จ ระบบจะคำนวณ MTBF ใหม่', 'success');
+      fetchAllData();
+    } else {
+      showToast(`Error: ${error.message}`, 'error');
+    }
   };
 
   const handleMarkAsOrdered = async (partId: string) => {
@@ -200,20 +271,18 @@ export default function MaintenanceDashboard() {
     }
   };
 
-  // 🌟 ฟังก์ชันลบอะไหล่
   const handleDeletePart = (partId: string, partName: string) => {
     setOpenDropdownId(null);
     setConfirmDialog({
       isOpen: true,
       title: 'Delete Part Permanently',
+      isDanger: true,
       message: `Are you sure you want to delete "${partName}" (ID: ${partId})?\n\n⚠️ This action will remove the part from both Part details and Stock. This cannot be undone.`,
       onConfirm: async () => {
         setConfirmDialog(null);
         setIsProcessing(true);
         try {
-          // ลบจากตาราง Stock ก่อน (ถ้ามีผูก Foreign Key)
           await supabase.from('Stock').delete().eq('PartID', partId);
-          // ลบจากตาราง Part
           const { error } = await supabase.from('Part').delete().eq('PartID', partId);
           
           if (error) throw error;
@@ -356,12 +425,12 @@ export default function MaintenanceDashboard() {
     } else { showToast(`Error: ${error.message}`, 'error'); }
   };
 
-  // 🌟 ฟังก์ชันลบ Consumable
   const handleDeleteConsumable = (itemId: string, itemName: string) => {
     setOpenDropdownId(null);
     setConfirmDialog({
       isOpen: true,
       title: 'Delete Consumable',
+      isDanger: true,
       message: `Are you sure you want to delete "${itemName}"?\nThis cannot be undone.`,
       onConfirm: async () => {
         setConfirmDialog(null);
@@ -474,7 +543,6 @@ export default function MaintenanceDashboard() {
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
 
-  // 🌟 Logic กรองข้อมูลสต๊อกและ Schedule
   const filteredScheduleData = scheduleData.filter(row => {
     return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine);
   });
@@ -542,7 +610,7 @@ export default function MaintenanceDashboard() {
       {/* Lightbox / Toast / Confirm Dialog */}
       {zoomedImage && ( <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out" onClick={() => setZoomedImage(null)}> <div className="relative w-full max-w-4xl h-[80vh] flex flex-col items-center justify-center"> <button className="absolute -top-12 right-0 text-white hover:text-red-400 text-3xl transition-colors active:scale-90" onClick={() => setZoomedImage(null)}><i className="bi bi-x-lg"></i></button> <img src={zoomedImage} alt="Zoomed Part" className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()} /> </div> </div> )}
       {toast && ( <div className="fixed top-8 right-8 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300 ease-out"> <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur-md min-w-[280px] ${toast.type === 'success' ? 'border-emerald-500/50 shadow-emerald-500/10' : toast.type === 'error' ? 'border-red-500/50 shadow-red-500/10' : toast.type === 'warning' ? 'border-amber-500/50 shadow-amber-500/10' : 'border-blue-500/50 shadow-blue-500/10'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
-      {confirmDialog && confirmDialog.isOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out"> <div className="p-8 pb-6 text-center"> <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border border-blue-100/50"><i className="bi bi-info-circle-fill"></i></div> <h3 className="text-xl font-bold text-slate-800 mb-2">{confirmDialog.title}</h3> <p className="text-slate-500 text-sm whitespace-pre-line leading-relaxed">{confirmDialog.message}</p> </div> <div className="flex p-4 gap-3 border-t border-slate-100 bg-slate-50/50"> <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all shadow-sm">Cancel</button> <button onClick={confirmDialog.onConfirm} className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all shadow-sm shadow-blue-600/20">Confirm</button> </div> </div> </div> )}
+      {confirmDialog && confirmDialog.isOpen && ( <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out"> <div className="p-8 pb-6 text-center"> <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border ${confirmDialog.isDanger ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100/50'}`}><i className={`bi ${confirmDialog.isDanger ? 'bi-exclamation-triangle-fill' : 'bi-info-circle-fill'}`}></i></div> <h3 className="text-xl font-bold text-slate-800 mb-2">{confirmDialog.title}</h3> <p className="text-slate-500 text-sm whitespace-pre-line leading-relaxed">{confirmDialog.message}</p> </div> <div className="flex p-4 gap-3 border-t border-slate-100 bg-slate-50/50"> <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all shadow-sm">Cancel</button> <button onClick={confirmDialog.onConfirm} className={`flex-1 py-3 rounded-xl font-bold text-white active:scale-95 transition-all shadow-sm ${confirmDialog.isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>Confirm</button> </div> </div> </div> )}
       
       {/* Modal: Basic Info */}
       {basicInfoModal.isOpen && (
@@ -714,7 +782,7 @@ export default function MaintenanceDashboard() {
           <button onClick={() => toggleGroup('Operations')} className="flex items-center justify-between w-full px-6 py-3 text-[11px] font-bold tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-4 hover:text-white whitespace-nowrap">
              <span>Operations</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Operations ? 'rotate-180' : ''}`}></i>
           </button> 
-          <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Operations ? 'max-h-[150px] opacity-100' : 'max-h-0 opacity-0'}`}> 
+          <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Operations ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0'}`}> 
             <a onClick={() => setActiveTab('requests')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'requests' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
                <i className="bi bi-ticket-detailed text-xl min-w-[24px] text-center"></i>
                <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Request Queue</span>
@@ -722,6 +790,11 @@ export default function MaintenanceDashboard() {
             <a onClick={() => setActiveTab('log-record')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'log-record' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
                <i className="bi bi-tools text-xl min-w-[24px] text-center"></i>
                <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Log Record</span>
+            </a>
+            {/* 🌟 Tab ใหม่ History */}
+            <a onClick={() => setActiveTab('history')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'history' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+               <i className="bi bi-clock-history text-xl min-w-[24px] text-center"></i>
+               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">History & Correction</span>
             </a> 
           </div> 
           
@@ -745,7 +818,7 @@ export default function MaintenanceDashboard() {
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50">
         
         <header className="h-[76px] bg-white/80 backdrop-blur-md border-b border-slate-200/60 px-8 flex items-center justify-between shadow-sm flex-shrink-0 z-30 sticky top-0"> 
-          <div><h1 className="text-xl font-extrabold text-slate-800 flex items-center gap-3 tracking-tight"><div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${activeTab === 'consumables' ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}><i className={`bi ${activeTab === 'dashboard' ? 'bi-grid-1x2-fill' : activeTab === 'stock' ? 'bi-box-seam-fill' : activeTab === 'consumables' ? 'bi-box2-heart-fill' : activeTab === 'machines' ? 'bi-robot' : activeTab === 'requests' ? 'bi-ticket-detailed-fill' : activeTab === 'basic-info' ? 'bi-list-columns-reverse' : 'bi-tools'}`}></i></div> {activeTab === 'dashboard' ? 'Maintenance Intelligence' : activeTab === 'stock' ? 'Current Stock' : activeTab === 'consumables' ? 'Consumables Inventory' : activeTab === 'machines' ? 'Machine Management' : activeTab === 'requests' ? 'Request Queue' : activeTab === 'basic-info' ? 'Basic Information' : 'Manual Log Record'}</h1></div> 
+          <div><h1 className="text-xl font-extrabold text-slate-800 flex items-center gap-3 tracking-tight"><div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${activeTab === 'consumables' ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}><i className={`bi ${activeTab === 'dashboard' ? 'bi-grid-1x2-fill' : activeTab === 'stock' ? 'bi-box-seam-fill' : activeTab === 'consumables' ? 'bi-box2-heart-fill' : activeTab === 'machines' ? 'bi-robot' : activeTab === 'requests' ? 'bi-ticket-detailed-fill' : activeTab === 'basic-info' ? 'bi-list-columns-reverse' : activeTab === 'history' ? 'bi-clock-history' : 'bi-tools'}`}></i></div> {activeTab === 'dashboard' ? 'Maintenance Intelligence' : activeTab === 'stock' ? 'Current Stock' : activeTab === 'consumables' ? 'Consumables Inventory' : activeTab === 'machines' ? 'Machine Management' : activeTab === 'requests' ? 'Request Queue' : activeTab === 'basic-info' ? 'Basic Information' : activeTab === 'history' ? 'History & Correction' : 'Manual Log Record'}</h1></div> 
           <div className="flex items-center gap-5">
             <span className="text-xs font-black text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm"><i className="bi bi-building text-blue-500 mr-1.5"></i>{activeDeptName || localStorage.getItem('activeDepartment')}</span>
             <span className="text-sm font-bold text-slate-500 hidden sm:block bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">{session?.user?.email}</span>
@@ -765,7 +838,6 @@ export default function MaintenanceDashboard() {
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center p-6 border-b border-slate-100 bg-white gap-4 flex-shrink-0">
                   <h2 className="font-bold text-slate-800 text-lg tracking-tight">Maintenance Schedule</h2>
                   
-                  {/* 🌟 Filters สำหรับหน้า Dashboard */}
                   <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
                     <div className="relative flex-1 xl:flex-none min-w-[150px]">
                       <select value={filterLine} onChange={(e) => { setFilterLine(e.target.value); setFilterMachine(''); }} className="w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm appearance-none hover:bg-white transition-all">
@@ -852,7 +924,6 @@ export default function MaintenanceDashboard() {
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openActionModal('edit', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Part Info</button>
                                   
-                                  {/* 🌟 ปุ่มลบ Part (สีแดง) 🌟 */}
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeletePart(row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Part</button>
                                 </div>
@@ -955,7 +1026,6 @@ export default function MaintenanceDashboard() {
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
                                   
-                                  {/* 🌟 ปุ่มลบ Consumable 🌟 */}
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
                                 </div>
@@ -1149,6 +1219,85 @@ export default function MaintenanceDashboard() {
             </div> 
           )}
           
+          {/* 🌟 TAB ใหม่: HISTORY & CORRECTION 🌟 */}
+          {activeTab === 'history' && (
+            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0"> 
+                  <div>
+                    <h2 className="font-bold text-slate-800 text-lg tracking-tight">History & Reversal</h2> 
+                    <p className="text-xs text-slate-500 mt-1">ตรวจสอบประวัติ และแก้ไขสาเหตุเพื่อไม่ให้กระทบ MTBF</p>
+                  </div>
+                  <div className="flex flex-wrap gap-3 items-center w-full sm:w-auto">
+                    <div className="relative">
+                      <input type="month" value={historyMonthFilter} onChange={(e) => setHistoryMonthFilter(e.target.value)} className="pl-4 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm" />
+                    </div>
+                    <button onClick={() => fetchHistoryData(localStorage.getItem('activeDepartment') || '')} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white shrink-0"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
+                  </div>
+                </div>
+                
+                <div className="overflow-auto flex-1 relative rounded-b-2xl bg-slate-50/30">
+                  <table className="w-full text-left border-collapse"> 
+                    <thead className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
+                        <th className="py-4 px-6 w-32">Date</th>
+                        <th className="py-4 px-6">Machine Details</th>
+                        <th className="py-4 px-6">Part Details</th>
+                        <th className="py-4 px-4 text-center">Qty</th>
+                        <th className="py-4 px-6 w-48">Change Reason</th>
+                        <th className="py-4 px-6 text-center w-32">Actions</th>
+                      </tr>
+                    </thead> 
+                    <tbody className="text-sm bg-white"> 
+                      {changeHistoryData.map((row, idx) => {
+                        const pName = parts.find(p => p.PartID === row.PartID)?.PartName || row.PartID;
+                        const mName = machines.find(m => m.MachineID === row.MachineID)?.MachineName || row.MachineID;
+                        
+                        return (
+                          <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors duration-200">
+                            <td className="py-4 px-6 font-bold text-slate-600">{row.ChangeDate}</td>
+                            <td className="py-4 px-6">
+                              <div className="font-bold text-slate-800">{mName}</div>
+                              <div className="text-[11px] text-slate-500 font-medium">ID: {row.MachineID}</div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="font-bold text-blue-700">{pName}</div>
+                              <div className="text-[11px] text-slate-500 mt-0.5">Pos: {row.Position || '-'}</div>
+                            </td>
+                            <td className="py-4 px-4 text-center font-black text-slate-800">{row['Required Qty'] || 0}</td>
+                            <td className="py-4 px-6">
+                              <div className="relative">
+                                <select 
+                                  value={row.ReasonType} 
+                                  onChange={(e) => handleChangeReason(row.RecordID, e.target.value)}
+                                  className={`w-full p-2 rounded-lg text-xs font-bold border outline-none appearance-none cursor-pointer transition-colors ${row.ReasonType === 'Normal Wear' ? 'bg-red-50 text-red-700 border-red-200' : row.ReasonType === 'Accident' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
+                                >
+                                  <option value="Normal Wear">Normal Wear</option>
+                                  <option value="Accident">Accident</option>
+                                  <option value="Improvement">Improvement</option>
+                                  <option value="Inspection-OK">Inspection-OK</option>
+                                </select>
+                                <i className="bi bi-pencil-fill absolute right-3 top-1/2 -translate-y-1/2 text-opacity-50 text-[10px] pointer-events-none"></i>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-center">
+                              <button onClick={() => handleUndoTransaction(row)} className="text-xs font-bold px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5 mx-auto">
+                                <i className="bi bi-arrow-counterclockwise"></i> Undo
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {changeHistoryData.length === 0 && (
+                        <tr><td colSpan={6} className="py-12 text-center text-slate-400 font-bold bg-slate-50/30">No history found for this month</td></tr>
+                      )}
+                    </tbody> 
+                  </table> 
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TAB: BASIC INFO */}
           {activeTab === 'basic-info' && ( 
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
