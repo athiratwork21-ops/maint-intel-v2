@@ -3,19 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { getSmartMaintenanceData } from '../../lib/maintenanceLogic';
 
-const searchDictionary: Record<string, string[]> = {
-  'สายพาน': ['belt', 'band'],
-  'มอเตอร์': ['motor', 'drive'],
-  'ลูกปืน': ['bearing'],
-  'เซนเซอร์': ['sensor', 'prox', 'photo'],
-  'น็อต': ['bolt', 'nut', 'screw'],
-  'วาล์ว': ['valve'],
-  'ปั๊ม': ['pump'],
-  'ใบมีด': ['blade', 'cutter'],
-  'สวิตช์': ['switch'],
-  'ถุงมือ': ['glove'],
-  'หน้ากาก': ['mask'],
-};
+// ❌ ลบ searchDictionary แบบ Hardcode ออกไปแล้ว ใช้จากฐานข้อมูลแทน
 
 export default function RequestPartShoppingPage() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
@@ -29,6 +17,9 @@ export default function RequestPartShoppingPage() {
   const [lines, setLines] = useState<string[]>([]);
   const [stockAllocations, setStockAllocations] = useState<any>({}); 
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  
+  // 🌟 State สำหรับเก็บคำศัพท์จาก Supabase
+  const [dictionary, setDictionary] = useState<any[]>([]);
   
   const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); 
   
@@ -49,7 +40,6 @@ export default function RequestPartShoppingPage() {
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
-  // 🌟 State สำหรับคุมโมดอลป๊อปอัพตัวใหม่
   const [reservationModal, setReservationModal] = useState<{
     isOpen: boolean;
     partName: string;
@@ -113,6 +103,10 @@ export default function RequestPartShoppingPage() {
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept);
       setConsumables(consData || []);
 
+      // 🌟 ดึงข้อมูลดิกชันนารีจาก Supabase
+      const { data: dictData } = await supabase.from('Dictionary').select('*');
+      setDictionary(dictData || []);
+
       const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
       const posMap: Record<string, Set<string>> = {};
       historyData?.forEach(h => {
@@ -151,9 +145,6 @@ export default function RequestPartShoppingPage() {
       return showToast('ของในตู้หมด หรือมีช่างคนอื่นทำเรื่องเบิกไปแล้วครับ!', 'error');
     }
 
-    // =========================================================
-    // 🌟 ดักจับของติดจอง (เปลี่ยนมาใช้ Modal ป๊อปอัพตัวใหม่)
-    // =========================================================
     if (delta > 0 && type === 'part') {
       const alloc = stockAllocations[itemId] || { available: 0, physical: 0, reserved: 0, machines: [] };
       const reqs = pendingRequests.filter(r => r.PartID === itemId);
@@ -167,13 +158,9 @@ export default function RequestPartShoppingPage() {
 
         let reservedDetailsList: string[] = [];
         
-        // ข้อมูลจาก AI Schedule
         alloc.machines.forEach((macId: string) => {
-          // ค้นหาจาก ID ตรงๆ หรือ ค้นหาว่าในคำนั้นมีชื่อเครื่องซ่อนอยู่ไหม (เช่น Router(ขวา) มีคำว่า Router)
           const m = machines.find(x => x.MachineID === macId || (x.MachineName && macId.includes(x.MachineName)));
-          
           if (m) {
-            // ถ้าระบุมาเป็น ID ให้ใช้ชื่อเครื่อง แต่ถ้าระบุมาเป็น Router(ขวา) ก็ให้ใช้คำนั้นเลย แล้วต่อท้ายด้วยไลน์
             const displayMac = macId === m.MachineID ? m.MachineName : macId;
             reservedDetailsList.push(`${displayMac} (ไลน์: ${m.LineName})`);
           } else {
@@ -181,7 +168,6 @@ export default function RequestPartShoppingPage() {
           }
         });
         
-        // ข้อมูลจากใบเบิกช่างคนอื่นที่รออยู่
         reqs.forEach(r => {
           const m = machines.find(x => x.MachineID === r.MachineID);
           if (m) {
@@ -190,16 +176,13 @@ export default function RequestPartShoppingPage() {
           }
         });
 
-        // จัดรูปแบบให้แสดงผลสวยงามในโมดอล
         const formattedReservedInfo = Array.from(new Set(reservedDetailsList)).join('\n🔸 ');
 
-        // ฟังก์ชันที่จะทำงานถ้าช่างกดยืนยันในโมดอล
         const proceedWithAdding = () => {
           setCart({ ...cart, [itemId]: { qty: newQty, type, position: cart[itemId]?.position || '' } });
           setReservationModal(prev => ({ ...prev, isOpen: false }));
         };
 
-        // เรียกเปิดโมดอล
         setReservationModal({
           isOpen: true,
           partName: partName,
@@ -208,10 +191,9 @@ export default function RequestPartShoppingPage() {
           onConfirm: proceedWithAdding,
         });
 
-        return; // หยุดการทำงานไว้แค่นี้ก่อน รอช่างกดยืนยัน
+        return; 
       }
     }
-    // =========================================================
 
     if (newQty <= 0) {
       const newCart = { ...cart };
@@ -222,12 +204,24 @@ export default function RequestPartShoppingPage() {
     }
   };
 
+  // 🌟 ฟังก์ชันแปลงคำค้นหาอัจฉริยะ (ใช้ตาราง Dictionary)
   const getSearchTerms = (query: string) => {
-    const lowerQuery = query.toLowerCase();
-    let terms = [lowerQuery];
-    Object.keys(searchDictionary).forEach(thaiWord => {
-      if (thaiWord.includes(lowerQuery) || lowerQuery.includes(thaiWord)) { terms = [...terms, ...searchDictionary[thaiWord]]; }
+    if (!query) return [];
+    const lowerQuery = query.toLowerCase().trim();
+    let terms = lowerQuery.split(' '); // แตกคำค้นหาเผื่อพิมพ์หลายคำ
+
+    dictionary.forEach(word => {
+      const thaiWord = (word.ThaiWord || '').toLowerCase();
+      const engWord = (word.EngWord || '').toLowerCase();
+      
+      // ถ้าคำค้นหามีคำไทยในดิก หรือ คำไทยในดิกมีคำค้นหา
+      if (thaiWord && engWord && (lowerQuery.includes(thaiWord) || thaiWord.includes(lowerQuery))) {
+        // หั่น EngWord ด้วยเครื่องหมายลูกน้ำ หรือ ช่องว่าง (เช่น "belt, band" -> ['belt', 'band'])
+        const engTerms = engWord.split(/[, ]+/).filter(Boolean);
+        terms = [...terms, ...engTerms];
+      }
     });
+
     return terms;
   };
 
