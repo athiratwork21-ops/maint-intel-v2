@@ -194,9 +194,9 @@ export default function MaintenanceDashboard() {
   }, [historyMonthFilter]);
 
   // 🌟 ฟังก์ชัน Undo & เปลี่ยน Reason
-  const handleUndoTransaction = (record: any) => {
+const handleUndoTransaction = (record: any) => {
     const partName = parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
-    const qty = record['Required Qty'] || 0;
+    const qty = parseInt(record['Required Qty']) || 0; // แปลงเป็นตัวเลขให้ชัวร์
 
     setConfirmDialog({
       isOpen: true,
@@ -207,20 +207,87 @@ export default function MaintenanceDashboard() {
         setConfirmDialog(null);
         setIsProcessing(true);
         try {
-          const { data: pl } = await supabase.from('PickLog').select('Location').eq('RecordID', record.RecordID).single();
-          const loc = pl?.Location || 'A01'; 
+          console.log("=== 🚀 เริ่มต้นกระบวนการ Undo ===");
+          console.log("📦 ข้อมูล Record ที่กำลังจะ Undo:", record);
 
-          const { data: stk } = await supabase.from('Stock').select('Balance').eq('PartID', record.PartID).eq('Location', loc).single();
-          if (stk) {
-            await supabase.from('Stock').update({ Balance: stk.Balance + qty, LastUpdated: new Date().toISOString() }).eq('PartID', record.PartID).eq('Location', loc);
+          const activeDept = localStorage.getItem('activeDepartment');
+
+          // 1. หา Location เดิมตอนที่เบิกไป (จากตาราง PickLog)
+          const { data: pl, error: plErr } = await supabase
+            .from('PickLog')
+            .select('Location')
+            .eq('RecordID', record.RecordID)
+            .single();
+            
+          if (plErr) console.warn("⚠️ ไม่เจอ Location ใน PickLog (อาจจะถูกลบไปแล้ว):", plErr);
+          const targetLocation = pl?.Location || '-';
+          console.log("🎯 เป้าหมายตู้ที่จะเอาของไปคืนคือ:", targetLocation);
+
+          // 2. ดึงข้อมูลตู้ทั้งหมดที่มีอะไหล่ชิ้นนี้อยู่
+          const { data: stockRecords, error: stkErr } = await supabase
+            .from('Stock')
+            .select('*')
+            .eq('PartID', record.PartID)
+            .eq('DepartmentID', activeDept); // กรองตามแผนกด้วยเพื่อความชัวร์
+
+          if (stkErr) console.error("❌ ดึงข้อมูลตาราง Stock ไม่สำเร็จ:", stkErr);
+          console.log("📋 ข้อมูล Stock ที่มีอยู่ปัจจุบัน:", stockRecords);
+
+          // 3. เริ่มกระบวนการคืนสต๊อก (บวก Balance)
+          if (stockRecords && stockRecords.length > 0) {
+            // พยายามหาตู้ที่ Location ตรงกับตอนเบิก (ถ้าไม่เจอให้เอาตู้แรกที่เจอ)
+            const targetStock = stockRecords.find(s => s.Location === targetLocation) || stockRecords[0];
+            const currentBalance = parseInt(targetStock.Balance) || 0;
+            const newBalance = currentBalance + qty;
+            
+            console.log(`🔄 เตรียมอัปเดตสต๊อกตู้ [${targetStock.Location}] จาก ${currentBalance} -> ${newBalance} ชิ้น`);
+
+            // อัปเดต Balance คืนเข้าตู้
+            const { error: updErr } = await supabase
+              .from('Stock')
+              .update({ 
+                Balance: newBalance, 
+                LastUpdated: new Date().toISOString() 
+              })
+              .eq('PartID', targetStock.PartID)
+              .eq('Location', targetStock.Location)
+              .eq('DepartmentID', activeDept);
+
+            if (updErr) throw new Error(`Supabase ปฏิเสธการ Update: ${updErr.message}`);
+            console.log("✅ อัปเดตสต๊อกสำเร็จ!");
+            
+          } else {
+            // กรณีดักบั๊ก: ถ้าตู้โดนลบไปแล้ว หรือหาใน Stock ไม่เจอเลย ให้สร้างตู้ใหม่ขึ้นมารับของ
+            console.log("💡 ไม่พบอะไหล่นี้ในตู้ไหนเลย กำลังสร้างรายการ Stock ขึ้นมาใหม่...");
+            
+            const { error: insErr } = await supabase.from('Stock').insert({
+              PartID: record.PartID,
+              PartName: partName,
+              Location: targetLocation,
+              Balance: qty, // ใส่ยอดที่คืนกลับไปเลย
+              LastUpdated: new Date().toISOString(),
+              DepartmentID: activeDept
+            });
+            
+            if (insErr) throw new Error(`Supabase ปฏิเสธการ Insert: ${insErr.message}`);
+            console.log("✅ สร้างสต๊อกใหม่สำเร็จ!");
           }
 
-          await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
-          await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
+          // 4. ลบประวัติการเบิกออกไปซะ (ทำลายหลักฐาน 🤫)
+          console.log("🗑️ กำลังลบประวัติใน ChangeHistory และ PickLog...");
+          const { error: del1 } = await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
+          const { error: del2 } = await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
+          
+          if (del1 || del2) console.warn("⚠️ ลบประวัติมี Error:", del1, del2);
 
+          console.log("=== 🎉 จบกระบวนการ Undo สำเร็จ ===");
           showToast('ทำรายการคืนของและลบประวัติสำเร็จ!', 'success');
+          
+          // รีเฟรชข้อมูลบนหน้าจอใหม่ทั้งหมด
           fetchAllData();
+          
         } catch (error: any) {
+          console.error("💥 เกิดข้อผิดพลาดร้ายแรงทำให้ทำงานไม่จบ:", error);
           showToast(`Error: ${error.message}`, 'error');
         } finally {
           setIsProcessing(false);
