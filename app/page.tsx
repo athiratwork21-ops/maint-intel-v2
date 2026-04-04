@@ -49,6 +49,7 @@ export default function MaintenanceDashboard() {
     }
 
     setIsLoggingIn(true);
+    
     const { data: roleData, error: roleError } = await supabase.from('UserRoles').select('*').eq('Email', email).single();
     
     if (roleError || !roleData || roleData.Role !== 'Admin') {
@@ -109,6 +110,7 @@ export default function MaintenanceDashboard() {
   const [changeHistoryData, setChangeHistoryData] = useState<any[]>([]);
   const [historyMonthFilter, setHistoryMonthFilter] = useState(new Date().toISOString().slice(0, 7));
 
+  // 🌟 State ใหม่สำหรับ Modal โยกหมวดหมู่
   const [moveCategoryModal, setMoveCategoryModal] = useState<{
     isOpen: boolean;
     source: 'part' | 'consumable';
@@ -172,6 +174,7 @@ export default function MaintenanceDashboard() {
       setConsumables(consData || []);
 
       fetchHistoryData(activeDept);
+
     } catch (error) { showToast('Error loading data', 'warning'); } finally { setIsLoading(false); }
   };
 
@@ -195,10 +198,14 @@ export default function MaintenanceDashboard() {
     if (activeDept) fetchHistoryData(activeDept);
   }, [historyMonthFilter]);
 
-  // 🌟 ฟังก์ชัน Undo & เปลี่ยน Reason ที่ถูกแก้ไขให้คำนวณ Balance ถูกต้อง
+  // 🌟 อัปเกรดฟังก์ชัน Undo คืนของให้สมบูรณ์
   const handleUndoTransaction = (record: any) => {
-    const partName = parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
-    const qty = parseInt(record['Required Qty']) || 0; // แปลงเป็นตัวเลขให้ชัวร์
+    const isConsumable = record.PartID.startsWith('CSM-');
+    const partName = isConsumable 
+      ? consumables.find(c => c.ItemID === record.PartID)?.ItemName || record.PartID
+      : parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
+    
+    const qty = parseInt(record['Required Qty']) || 0; 
 
     setConfirmDialog({
       isOpen: true,
@@ -211,69 +218,42 @@ export default function MaintenanceDashboard() {
         try {
           const activeDept = localStorage.getItem('activeDepartment');
 
-          // 1. หา Location เดิมตอนที่เบิกไป (จากตาราง PickLog)
-          const { data: pl } = await supabase
-            .from('PickLog')
-            .select('Location')
-            .eq('RecordID', record.RecordID)
-            .single();
-            
-          const targetLocation = pl?.Location || '-';
-
-          // 2. ดึงข้อมูลตู้ทั้งหมดที่มีอะไหล่ชิ้นนี้อยู่
-          const { data: stockRecords } = await supabase
-            .from('Stock')
-            .select('*')
-            .eq('PartID', record.PartID)
-            .eq('DepartmentID', activeDept);
-
-          // 3. เริ่มกระบวนการคืนสต๊อก (บวก Balance)
-          if (stockRecords && stockRecords.length > 0) {
-            // พยายามหาตู้ที่ Location ตรงกับตอนเบิก (ถ้าไม่เจอให้เอาตู้แรกที่เจอ)
-            const targetStock = stockRecords.find(s => s.Location === targetLocation) || stockRecords[0];
-            const currentBalance = parseInt(targetStock.Balance) || 0;
-            const newBalance = currentBalance + qty;
-            
-            // อัปเดต Balance คืนเข้าตู้
-            const { error: updErr } = await supabase
-              .from('Stock')
-              .update({ 
-                Balance: newBalance, 
-                LastUpdated: new Date().toISOString() 
-              })
-              .eq('PartID', targetStock.PartID)
-              .eq('Location', targetStock.Location)
-              .eq('DepartmentID', activeDept);
-
-            if (updErr) throw new Error(`ไม่สามารถอัปเดตสต๊อกได้: ${updErr.message}`);
-            
-          } else {
-            // ถ้ายกเลิกของในหมวด Consumable มันจะมาตกเงื่อนไขนี้ (เพราะมันไม่ได้อยู่ในตาราง Stock)
+          if (isConsumable) {
+            // คืนของเข้าหมวด Consumable
             const { data: consData } = await supabase.from('Consumable').select('Balance').eq('ItemID', record.PartID).single();
             if (consData) {
-              const currentConsBalance = parseInt(consData.Balance) || 0;
-              await supabase.from('Consumable').update({ Balance: currentConsBalance + qty }).eq('ItemID', record.PartID);
+              await supabase.from('Consumable').update({ Balance: (parseInt(consData.Balance)||0) + qty }).eq('ItemID', record.PartID);
             } else {
-              // กรณีดักบั๊ก: ถ้าตู้โดนลบไปแล้ว หรือหาใน Stock ไม่เจอเลย ให้สร้างตู้ใหม่ขึ้นมารับของ
-              const { error: insErr } = await supabase.from('Stock').insert({
-                PartID: record.PartID,
-                PartName: partName,
-                Location: targetLocation,
-                Balance: qty, // ใส่ยอดที่คืนกลับไปเลย
-                LastUpdated: new Date().toISOString(),
-                DepartmentID: activeDept
+              await supabase.from('Consumable').insert({ ItemID: record.PartID, ItemName: partName, Balance: qty, DepartmentID: activeDept });
+            }
+          } else {
+            // คืนของเข้าหมวด อะไหล่ (Stock)
+            const { data: pl } = await supabase.from('PickLog').select('Location').eq('RecordID', record.RecordID).single();
+            const targetLocation = pl?.Location || '-';
+
+            const { data: stockRecords } = await supabase.from('Stock').select('*').eq('PartID', record.PartID).eq('DepartmentID', activeDept);
+
+            if (stockRecords && stockRecords.length > 0) {
+              const targetStock = stockRecords.find(s => s.Location === targetLocation) || stockRecords[0];
+              const newBalance = (parseInt(targetStock.Balance) || 0) + qty;
+              
+              await supabase.from('Stock')
+                .update({ Balance: newBalance, LastUpdated: new Date().toISOString() })
+                .eq('PartID', targetStock.PartID).eq('Location', targetStock.Location).eq('DepartmentID', activeDept);
+            } else {
+              await supabase.from('Stock').insert({
+                PartID: record.PartID, PartName: partName, Location: targetLocation,
+                Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept
               });
-              if (insErr) throw new Error(`ไม่สามารถสร้างรายการสต๊อกใหม่ได้: ${insErr.message}`);
             }
           }
 
-          // 4. ลบประวัติการเบิกออกไปซะ (ทำลายหลักฐาน 🤫)
+          // ลบประวัติ
           await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
           await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
 
           showToast('ทำรายการคืนของและลบประวัติสำเร็จ!', 'success');
           fetchAllData();
-          
         } catch (error: any) {
           showToast(`Error: ${error.message}`, 'error');
         } finally {
@@ -285,7 +265,7 @@ export default function MaintenanceDashboard() {
 
   const handleChangeReason = async (recordId: string, newReason: string) => {
     const { error } = await supabase.from('ChangeHistory').update({ ReasonType: newReason }).eq('RecordID', recordId);
-    if (!error) { showToast('เปลี่ยนสาเหตุสำเร็จ', 'success'); fetchAllData(); } 
+    if (!error) { showToast('เปลี่ยนสาเหตุสำเร็จ ระบบจะคำนวณ MTBF ใหม่', 'success'); fetchAllData(); } 
     else { showToast(`Error: ${error.message}`, 'error'); }
   };
 
@@ -354,6 +334,9 @@ export default function MaintenanceDashboard() {
     });
   };
 
+  // =========================================================================
+  // 🌟 ฟังก์ชันใหม่: โยกหมวดหมู่ (Move Category)
+  // =========================================================================
   const openMoveCategory = (source: 'part' | 'consumable', itemId: string) => {
     setOpenDropdownId(null);
     const reqs = pendingRequests.filter(r => r.PartID === itemId);
@@ -390,20 +373,14 @@ export default function MaintenanceDashboard() {
         const max = parseInt(formData.get('max') as string);
 
         const { error: insErr } = await supabase.from('Consumable').insert({
-          ItemID: newId,
-          ItemName: moveCategoryModal.itemData.PartName,
-          ItemModel: moveCategoryModal.itemData.PartModel || '',
-          Location: moveCategoryModal.location,
-          ImageURL: moveCategoryModal.itemData.ImageURL || '',
-          Balance: moveCategoryModal.stockBalance,
-          MinQty: min, MaxQty: max, SafetyStock: safety,
-          DepartmentID: activeDept
+          ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '',
+          Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '',
+          Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept
         });
         if (insErr) throw insErr;
 
         await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
         await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
-
         await supabase.from('Stock').delete().eq('PartID', oldId);
         await supabase.from('Part').delete().eq('PartID', oldId);
 
@@ -412,28 +389,19 @@ export default function MaintenanceDashboard() {
         const buffer = parseInt(formData.get('buffer') as string);
 
         const { error: partErr } = await supabase.from('Part').insert({
-          PartID: newId,
-          PartName: moveCategoryModal.itemData.ItemName,
-          PartModel: moveCategoryModal.itemData.ItemModel || '',
-          ImageURL: moveCategoryModal.itemData.ImageURL || '',
-          SafetyBufferDays: buffer,
-          DepartmentID: activeDept
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '',
+          ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept
         });
         if (partErr) throw partErr;
 
         const { error: stkErr } = await supabase.from('Stock').insert({
-          PartID: newId,
-          PartName: moveCategoryModal.itemData.ItemName,
-          Location: moveCategoryModal.location,
-          Balance: moveCategoryModal.stockBalance,
-          LastUpdated: new Date().toISOString(),
-          DepartmentID: activeDept
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location,
+          Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept
         });
         if (stkErr) throw stkErr;
 
         await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
         await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
-
         await supabase.from('Consumable').delete().eq('ItemID', oldId);
       }
 
@@ -446,6 +414,7 @@ export default function MaintenanceDashboard() {
       setIsProcessing(false);
     }
   };
+  // =========================================================================
 
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { setPreviewImage(URL.createObjectURL(file)); } };
