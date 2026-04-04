@@ -11,10 +11,12 @@ export default function MaintenanceDashboard() {
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  // 🌟 State for Department Dropdown in Login
   const [departments, setDepartments] = useState<any[]>([]);
   const [selectedDept, setSelectedDept] = useState('');
   const [activeDeptName, setActiveDeptName] = useState('');
 
+  // 🌟 State for Dashboard Filtering
   const [filterLine, setFilterLine] = useState('');
   const [filterMachine, setFilterMachine] = useState('');
 
@@ -50,6 +52,7 @@ export default function MaintenanceDashboard() {
 
     setIsLoggingIn(true);
     
+    // Check Role
     const { data: roleData, error: roleError } = await supabase.from('UserRoles').select('*').eq('Email', email).single();
     
     if (roleError || !roleData || roleData.Role !== 'Admin') {
@@ -107,6 +110,7 @@ export default function MaintenanceDashboard() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
+  // 🌟 State for History Tab
   const [changeHistoryData, setChangeHistoryData] = useState<any[]>([]);
   const [historyMonthFilter, setHistoryMonthFilter] = useState(new Date().toISOString().slice(0, 7));
 
@@ -198,14 +202,14 @@ export default function MaintenanceDashboard() {
     if (activeDept) fetchHistoryData(activeDept);
   }, [historyMonthFilter]);
 
-  // 🌟 อัปเกรดฟังก์ชัน Undo คืนของให้สมบูรณ์
+  // 🌟 ฟังก์ชัน Undo & เปลี่ยน Reason ที่อัปเกรดให้แม่นยำขึ้น 🌟
   const handleUndoTransaction = (record: any) => {
     const isConsumable = record.PartID.startsWith('CSM-');
     const partName = isConsumable 
       ? consumables.find(c => c.ItemID === record.PartID)?.ItemName || record.PartID
       : parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
-    
-    const qty = parseInt(record['Required Qty']) || 0; 
+
+    const qty = parseInt(record['Required Qty']) || 0;
 
     setConfirmDialog({
       isOpen: true,
@@ -219,7 +223,6 @@ export default function MaintenanceDashboard() {
           const activeDept = localStorage.getItem('activeDepartment');
 
           if (isConsumable) {
-            // คืนของเข้าหมวด Consumable
             const { data: consData } = await supabase.from('Consumable').select('Balance').eq('ItemID', record.PartID).single();
             if (consData) {
               await supabase.from('Consumable').update({ Balance: (parseInt(consData.Balance)||0) + qty }).eq('ItemID', record.PartID);
@@ -227,7 +230,6 @@ export default function MaintenanceDashboard() {
               await supabase.from('Consumable').insert({ ItemID: record.PartID, ItemName: partName, Balance: qty, DepartmentID: activeDept });
             }
           } else {
-            // คืนของเข้าหมวด อะไหล่ (Stock)
             const { data: pl } = await supabase.from('PickLog').select('Location').eq('RecordID', record.RecordID).single();
             const targetLocation = pl?.Location || '-';
 
@@ -248,7 +250,6 @@ export default function MaintenanceDashboard() {
             }
           }
 
-          // ลบประวัติ
           await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
           await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
 
@@ -265,8 +266,12 @@ export default function MaintenanceDashboard() {
 
   const handleChangeReason = async (recordId: string, newReason: string) => {
     const { error } = await supabase.from('ChangeHistory').update({ ReasonType: newReason }).eq('RecordID', recordId);
-    if (!error) { showToast('เปลี่ยนสาเหตุสำเร็จ ระบบจะคำนวณ MTBF ใหม่', 'success'); fetchAllData(); } 
-    else { showToast(`Error: ${error.message}`, 'error'); }
+    if (!error) {
+      showToast('เปลี่ยนสาเหตุสำเร็จ ระบบจะคำนวณ MTBF ใหม่', 'success');
+      fetchAllData();
+    } else {
+      showToast(`Error: ${error.message}`, 'error');
+    }
   };
 
   const handleMarkAsOrdered = async (partId: string) => {
@@ -301,42 +306,7 @@ export default function MaintenanceDashboard() {
     }
   };
 
-  const handleDeletePart = (partId: string, partName: string) => {
-    setOpenDropdownId(null);
-    setConfirmDialog({
-      isOpen: true, title: 'Delete Part Permanently', isDanger: true,
-      message: `Are you sure you want to delete "${partName}" (ID: ${partId})?\n\n⚠️ This action will remove the part from both Part details and Stock. This cannot be undone.`,
-      onConfirm: async () => {
-        setConfirmDialog(null); setIsProcessing(true);
-        try {
-          await supabase.from('Stock').delete().eq('PartID', partId);
-          const { error } = await supabase.from('Part').delete().eq('PartID', partId);
-          if (error) throw error;
-          showToast(`Part "${partName}" has been deleted.`, 'success'); fetchAllData();
-        } catch (error: any) { showToast(`Error deleting part: ${error.message}`, 'error'); } 
-        finally { setIsProcessing(false); }
-      }
-    });
-  };
-
-  const handleDeleteConsumable = (itemId: string, itemName: string) => {
-    setOpenDropdownId(null);
-    setConfirmDialog({
-      isOpen: true, title: 'Delete Consumable', isDanger: true,
-      message: `Are you sure you want to delete "${itemName}"?\nThis cannot be undone.`,
-      onConfirm: async () => {
-        setConfirmDialog(null); setIsProcessing(true);
-        const { error } = await supabase.from('Consumable').delete().eq('ItemID', itemId);
-        if (!error) { showToast(`Consumable "${itemName}" deleted successfully.`, 'success'); fetchAllData(); } 
-        else { showToast(`Error deleting item: ${error.message}`, 'error'); }
-        setIsProcessing(false);
-      }
-    });
-  };
-
-  // =========================================================================
-  // 🌟 ฟังก์ชันใหม่: โยกหมวดหมู่ (Move Category)
-  // =========================================================================
+  // 🌟 ฟังก์ชันเปิดหน้าต่างและยืนยันการย้ายหมวดหมู่ (Move Category) 🌟
   const openMoveCategory = (source: 'part' | 'consumable', itemId: string) => {
     setOpenDropdownId(null);
     const reqs = pendingRequests.filter(r => r.PartID === itemId);
@@ -414,26 +384,209 @@ export default function MaintenanceDashboard() {
       setIsProcessing(false);
     }
   };
-  // =========================================================================
+  // 🌟 สิ้นสุดฟังก์ชัน Move Category 🌟
+
+  const handleDeletePart = (partId: string, partName: string) => {
+    setOpenDropdownId(null);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Part Permanently',
+      isDanger: true,
+      message: `Are you sure you want to delete "${partName}" (ID: ${partId})?\n\n⚠️ This action will remove the part from both Part details and Stock. This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        try {
+          await supabase.from('Stock').delete().eq('PartID', partId);
+          const { error } = await supabase.from('Part').delete().eq('PartID', partId);
+          
+          if (error) throw error;
+          showToast(`Part "${partName}" has been deleted.`, 'success');
+          fetchAllData();
+        } catch (error: any) {
+          showToast(`Error deleting part: ${error.message}`, 'error');
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+    });
+  };
 
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { setPreviewImage(URL.createObjectURL(file)); } };
 
-  const handleNewPartSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); let finalImageUrl = ''; const imageFile = formData.get('imageFile') as File; const locationVal = formData.get('location') as string; if (imageFile && imageFile.size > 0) { const fileExt = imageFile.name.split('.').pop(); const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile); if (uploadError) { showToast(`Image upload failed: ${uploadError.message}`, 'error'); setIsProcessing(false); return; } const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl; } const generatedPartID = `P-${Date.now()}`; const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept }); if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; } if (locationVal) { await supabase.from('Stock').insert({ Location: locationVal, PartID: generatedPartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } showToast('Part registered successfully!', 'success'); setNewPartModalOpen(false); fetchAllData(); setIsProcessing(false); };
-  const handleEditPartSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); let finalImageUrl = editingPartData?.ImageURL || ''; const imageFile = formData.get('imageFile') as File; const locationVal = formData.get('location') as string; const activeDept = localStorage.getItem('activeDepartment'); if (imageFile && imageFile.size > 0) { const fileExt = imageFile.name.split('.').pop(); const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile); if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; } const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl; } const { error: partErr } = await supabase.from('Part').update({ PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string) }).eq('PartID', editingPartData.PartID); if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; } if (locationVal) { const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single(); if (exStock) { await supabase.from('Stock').update({ Location: locationVal, PartName: formData.get('name') }).eq('PartID', editingPartData.PartID); } else { await supabase.from('Stock').insert({ Location: locationVal, PartID: editingPartData.PartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } } showToast('Part updated successfully!', 'success'); setEditPartModalOpen(false); fetchAllData(); setIsProcessing(false); };
-  const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; const activeDept = localStorage.getItem('activeDepartment'); if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, PartName: selectedActionPart?.name || '', Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId); showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData(); };
-  const handleReduceStock = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; const activeDept = localStorage.getItem('activeDepartment'); if (existingStock) { const currentBal = parseInt(existingStock.Balance) || 0; const newBalance = Math.max(0, qty); await supabase.from('Stock').update({ Balance: newBalance, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); await supabase.from('PickLog').insert({ RecordID: Date.now().toString(), Timestamp: new Date().toISOString(), Location: loc, PartID: pId, MachineID: 'MANUAL', Qty: Math.abs(currentBal - newBalance), PickerName: 'Admin Adjustment', LineUserID: session?.user?.email, DepartmentID: activeDept }); showToast('Stock adjusted successfully!', 'success'); setReduceStockModalOpen(false); fetchAllData(); } else { showToast('Stock data not found for this item', 'error'); } };
-  const handleNewConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); let finalImageUrl = ''; const imageFile = formData.get('imageFile') as File; if (imageFile && imageFile.size > 0) { const fileExt = imageFile.name.split('.').pop(); const fileName = `CSM_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile); if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; } const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl; } const itemId = `CSM-${Date.now()}`; const { error } = await supabase.from('Consumable').insert({ ItemID: itemId, ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl, Balance: parseInt(formData.get('balance') as string) || 0, MinQty: parseInt(formData.get('min') as string) || 10, MaxQty: parseInt(formData.get('max') as string) || 100, SafetyStock: parseInt(formData.get('safety') as string) || 5, DepartmentID: activeDept }); if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Consumable added successfully!', 'success'); setNewConsumableModalOpen(false); fetchAllData(); } setIsProcessing(false); };
-  const handleEditConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); let finalImageUrl = editingConsumableData?.ImageURL || ''; const imageFile = formData.get('imageFile') as File; if (imageFile && imageFile.size > 0) { const fileExt = imageFile.name.split('.').pop(); const fileName = `CSM_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile); if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; } const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl; } const { error } = await supabase.from('Consumable').update({ ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl, MinQty: parseInt(formData.get('min') as string) || 10, MaxQty: parseInt(formData.get('max') as string) || 100, SafetyStock: parseInt(formData.get('safety') as string) || 5 }).eq('ItemID', editingConsumableData.ItemID); if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Item info updated successfully!', 'success'); setEditConsumableOpen(false); fetchAllData(); } setIsProcessing(false); };
-  const handleConsumableAction = async (e: React.FormEvent<HTMLFormElement>, actionType: 'receive' | 'adjust') => { e.preventDefault(); const formData = new FormData(e.currentTarget); const qty = parseInt(formData.get('qty') as string); const currentBalance = parseInt(selectedConsumable.Balance) || 0; const newBalance = actionType === 'receive' ? currentBalance + qty : qty; const { error } = await supabase.from('Consumable').update({ Balance: newBalance }).eq('ItemID', selectedConsumable.ItemID); if (!error) { showToast(`${actionType === 'receive' ? 'Stock received' : 'Stock adjusted'} successfully!`, 'success'); setReceiveConsumableOpen(false); setReduceConsumableOpen(false); fetchAllData(); } else { showToast(`Error: ${error.message}`, 'error'); } };
-  const handleUpdateLeadTime = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('LeadTime').insert({ RecordID: Date.now().toString(), PartID: selectedActionPart?.id || '', LeadTimeDays: parseInt(formData.get('days') as string), RecordDate: new Date().toISOString(), DepartmentID: activeDept }); if (!error) { showToast('Lead time updated successfully!', 'success'); setLeadTimeModalOpen(false); fetchAllData(); } };
-  const handleNewMachineSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('Machine').insert({ MachineID: formData.get('id'), MachineName: formData.get('name'), LineName: formData.get('line'), Active: true, DepartmentID: activeDept }); if (!error) { showToast('Machine registered successfully!', 'success'); setNewMachineModalOpen(false); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error'); setIsProcessing(false); };
-  const handleToggleMachineStatus = async (machineId: string, currentStatus: boolean) => { const newStatus = currentStatus === false ? true : false; const { error } = await supabase.from('Machine').update({ Active: newStatus }).eq('MachineID', machineId); if (!error) { showToast(`Machine status changed successfully`, 'success'); fetchAllData(); } };
-  const handleBasicInfoSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const value = formData.get('value') as string; let error; const activeDept = localStorage.getItem('activeDepartment'); if (basicInfoModal.type === 'line') { const res = await supabase.from('LineMaster').insert({ LineName: value, DepartmentID: activeDept }); error = res.error; } else { const res = await supabase.from('LocationMaster').insert({ LocationName: value, DepartmentID: activeDept }); error = res.error; } if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast(`Information added successfully!`, 'success'); setBasicInfoModal({ isOpen: false, type: 'line' }); fetchAllData(); } setIsProcessing(false); };
-  const handleDeleteBasicInfo = async (type: 'line'|'location', id: any) => { if(!confirm('Are you sure you want to delete this data?')) return; const table = type === 'line' ? 'LineMaster' : 'LocationMaster'; const { error } = await supabase.from(table).delete().eq(type === 'line' ? 'LineName' : 'LocationName', id); if (!error) { showToast('Deleted successfully!', 'success'); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error'); };
-  const handleLogRecord = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const mIdStr = formData.get('machineId') as string; const mId = mIdStr.split(' - ')[0]; const pIdStr = formData.get('partId') as string; const pId = pIdStr.split(' - ')[0]; const qty = parseInt(formData.get('qty') as string); const numericRecordId = Date.now().toString(); const activeDept = localStorage.getItem('activeDepartment'); if (!machines.find(m => m.MachineID === mId)) return showToast('Machine ID not found', 'warning'); if (!parts.find(p => p.PartID === pId)) return showToast('Part ID not found', 'warning'); const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: formData.get('date'), ReasonType: formData.get('reason'), "Required Qty": qty, DepartmentID: activeDept, Position: '-' }); if (chErr) { showToast(`Error: ${chErr.message}`, 'error'); return; } const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: formData.get('picker'), LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) { showToast(`Error: ${plErr.message}`, 'error'); return; } const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: parseInt(tStk.Balance) >= qty ? parseInt(tStk.Balance) - qty : 0, LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); } showToast('Manual record saved successfully!', 'success'); fetchAllData(); (e.target as HTMLFormElement).reset(); };
-  const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
+  const handleNewPartSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    const activeDept = localStorage.getItem('activeDepartment'); 
+    let finalImageUrl = ''; const imageFile = formData.get('imageFile') as File;
+    const locationVal = formData.get('location') as string; 
+    
+    if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop(); const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
+      if (uploadError) { showToast(`Image upload failed: ${uploadError.message}`, 'error'); setIsProcessing(false); return; }
+      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
+    }
+    const generatedPartID = `P-${Date.now()}`;
+    
+    const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept });
+    if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
+    
+    if (locationVal) { 
+      await supabase.from('Stock').insert({ Location: locationVal, PartID: generatedPartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); 
+    }
+    showToast('Part registered successfully!', 'success'); setNewPartModalOpen(false); fetchAllData(); setIsProcessing(false);
+  };
 
+  const handleEditPartSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    let finalImageUrl = editingPartData?.ImageURL || ''; const imageFile = formData.get('imageFile') as File;
+    const locationVal = formData.get('location') as string; 
+    const activeDept = localStorage.getItem('activeDepartment');
+
+    if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop(); const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
+      if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
+      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl; 
+    }
+    const { error: partErr } = await supabase.from('Part').update({ PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string) }).eq('PartID', editingPartData.PartID);
+    if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
+    
+    if (locationVal) {
+      const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
+      if (exStock) { await supabase.from('Stock').update({ Location: locationVal, PartName: formData.get('name') }).eq('PartID', editingPartData.PartID); } 
+      else { await supabase.from('Stock').insert({ Location: locationVal, PartID: editingPartData.PartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
+    }
+    showToast('Part updated successfully!', 'success'); setEditPartModalOpen(false); fetchAllData(); setIsProcessing(false);
+  };
+
+  const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => { 
+    e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; 
+    const activeDept = localStorage.getItem('activeDepartment');
+    if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
+    else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, PartName: selectedActionPart?.name || '', Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } 
+    await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId);
+    showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData(); 
+  };
+
+  const handleReduceStock = async (e: React.FormEvent<HTMLFormElement>) => { 
+    e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); 
+    const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; 
+    const activeDept = localStorage.getItem('activeDepartment');
+    if (existingStock) { 
+      const currentBal = parseInt(existingStock.Balance) || 0; 
+      const newBalance = Math.max(0, currentBal - qty); 
+      await supabase.from('Stock').update({ Balance: newBalance, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); 
+      await supabase.from('PickLog').insert({ RecordID: Date.now().toString(), Timestamp: new Date().toISOString(), Location: loc, PartID: pId, MachineID: 'MANUAL', Qty: qty, PickerName: 'Admin Adjustment', LineUserID: session?.user?.email, DepartmentID: activeDept });
+      showToast('Stock adjusted successfully!', 'success'); setReduceStockModalOpen(false); fetchAllData(); 
+    } else { showToast('Stock data not found for this item', 'error'); }
+  };
+
+  const handleNewConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    const activeDept = localStorage.getItem('activeDepartment'); 
+    let finalImageUrl = ''; const imageFile = formData.get('imageFile') as File;
+    
+    if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop(); const fileName = `CSM_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
+      if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
+      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
+    }
+    
+    const itemId = `CSM-${Date.now()}`;
+    const { error } = await supabase.from('Consumable').insert({
+      ItemID: itemId, ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
+      Balance: parseInt(formData.get('balance') as string) || 0, MinQty: parseInt(formData.get('min') as string) || 10, MaxQty: parseInt(formData.get('max') as string) || 100, SafetyStock: parseInt(formData.get('safety') as string) || 5,
+      DepartmentID: activeDept 
+    });
+    
+    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Consumable added successfully!', 'success'); setNewConsumableModalOpen(false); fetchAllData(); }
+    setIsProcessing(false);
+  };
+
+  const handleEditConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    let finalImageUrl = editingConsumableData?.ImageURL || ''; const imageFile = formData.get('imageFile') as File;
+    
+    if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop(); const fileName = `CSM_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
+      if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
+      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
+    }
+    
+    const { error } = await supabase.from('Consumable').update({
+      ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
+      MinQty: parseInt(formData.get('min') as string) || 10, MaxQty: parseInt(formData.get('max') as string) || 100, SafetyStock: parseInt(formData.get('safety') as string) || 5
+    }).eq('ItemID', editingConsumableData.ItemID);
+    
+    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Item info updated successfully!', 'success'); setEditConsumableOpen(false); fetchAllData(); }
+    setIsProcessing(false);
+  };
+
+  const handleConsumableAction = async (e: React.FormEvent<HTMLFormElement>, actionType: 'receive' | 'adjust') => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const qty = parseInt(formData.get('qty') as string);
+    const currentBalance = parseInt(selectedConsumable.Balance) || 0;
+    
+    const newBalance = actionType === 'receive' ? currentBalance + qty : qty; // For adjust, we just overwrite (or let them input the new exact number depending on your logic, here I'll assume they input exact number for adjust)
+    const finalBalance = actionType === 'receive' ? newBalance : qty;
+    
+    const { error } = await supabase.from('Consumable').update({ Balance: finalBalance }).eq('ItemID', selectedConsumable.ItemID);
+    if (!error) {
+      showToast(`${actionType === 'receive' ? 'Stock received' : 'Stock adjusted'} successfully!`, 'success');
+      setReceiveConsumableOpen(false); setReduceConsumableOpen(false); fetchAllData();
+    } else { showToast(`Error: ${error.message}`, 'error'); }
+  };
+
+  const handleDeleteConsumable = (itemId: string, itemName: string) => {
+    setOpenDropdownId(null);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Consumable',
+      isDanger: true,
+      message: `Are you sure you want to delete "${itemName}"?\nThis cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        const { error } = await supabase.from('Consumable').delete().eq('ItemID', itemId);
+        if (!error) {
+          showToast(`Consumable "${itemName}" deleted successfully.`, 'success');
+          fetchAllData();
+        } else {
+          showToast(`Error deleting item: ${error.message}`, 'error');
+        }
+        setIsProcessing(false);
+      }
+    });
+  };
+
+  const handleUpdateLeadTime = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('LeadTime').insert({ RecordID: Date.now().toString(), PartID: selectedActionPart?.id || '', LeadTimeDays: parseInt(formData.get('days') as string), RecordDate: new Date().toISOString(), DepartmentID: activeDept }); if (!error) { showToast('Lead time updated successfully!', 'success'); setLeadTimeModalOpen(false); fetchAllData(); } };
+  
+  const handleNewMachineSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('Machine').insert({ MachineID: formData.get('id'), MachineName: formData.get('name'), LineName: formData.get('line'), Active: true, DepartmentID: activeDept }); if (!error) { showToast('Machine registered successfully!', 'success'); setNewMachineModalOpen(false); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error'); setIsProcessing(false); };
+  
+  const handleToggleMachineStatus = async (machineId: string, currentStatus: boolean) => { const newStatus = currentStatus === false ? true : false; const { error } = await supabase.from('Machine').update({ Active: newStatus }).eq('MachineID', machineId); if (!error) { showToast(`Machine status changed successfully`, 'success'); fetchAllData(); } };
+  
+  const handleBasicInfoSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const value = formData.get('value') as string; let error;
+    const activeDept = localStorage.getItem('activeDepartment');
+
+    if (basicInfoModal.type === 'line') { const res = await supabase.from('LineMaster').insert({ LineName: value, DepartmentID: activeDept }); error = res.error; } 
+    else { const res = await supabase.from('LocationMaster').insert({ LocationName: value, DepartmentID: activeDept }); error = res.error; }
+    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast(`Information added successfully!`, 'success'); setBasicInfoModal({ isOpen: false, type: 'line' }); fetchAllData(); }
+    setIsProcessing(false);
+  };
+
+  const handleDeleteBasicInfo = async (type: 'line'|'location', id: any) => {
+    if(!confirm('Are you sure you want to delete this data?')) return;
+    const table = type === 'line' ? 'LineMaster' : 'LocationMaster';
+    const { error } = await supabase.from(table).delete().eq(type === 'line' ? 'LineName' : 'LocationName', id);
+    if (!error) { showToast('Deleted successfully!', 'success'); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error');
+  };
+  
   const requestGroups = Object.values(
     pendingRequests.reduce((acc: any, req: any) => {
       const parts = req.RequestID.split('-');
@@ -474,17 +627,49 @@ export default function MaintenanceDashboard() {
 
           try {
             const lineMsg = `✅ อนุมัติใบเบิกแล้ว!\n👨‍🔧 ช่าง: ${group.pickerName}\n📦 กำลังจัดเตรียมของ ${group.items.length} รายการเรียบร้อยแล้ว\n🏃‍♂️ มารับของได้เลยครับ`;
-            await fetch('/api/send-line', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: lineMsg, department: activeDept }) });
-          } catch (err) {}
+            await fetch('/api/send-line', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: lineMsg, department: activeDept })
+            });
+          } catch (err) {
+            console.error('Line Notify Error:', err);
+          }
 
           showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData(); 
         } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
       }
     });
   };
+  
+  const handleLogRecord = async (e: React.FormEvent<HTMLFormElement>) => { 
+    e.preventDefault(); const formData = new FormData(e.currentTarget); 
+    const mIdStr = formData.get('machineId') as string; const mId = mIdStr.split(' - ')[0]; 
+    const pIdStr = formData.get('partId') as string; const pId = pIdStr.split(' - ')[0]; 
+    const qty = parseInt(formData.get('qty') as string); const numericRecordId = Date.now().toString(); 
+    const activeDept = localStorage.getItem('activeDepartment');
 
-  const filteredScheduleData = scheduleData.filter(row => (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine));
-  const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
+    if (!machines.find(m => m.MachineID === mId)) return showToast('Machine ID not found', 'warning');
+    if (!parts.find(p => p.PartID === pId)) return showToast('Part ID not found', 'warning');
+
+    const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: formData.get('date'), ReasonType: formData.get('reason'), "Required Qty": qty, DepartmentID: activeDept, Position: '-' }); if (chErr) { showToast(`Error: ${chErr.message}`, 'error'); return; } 
+    const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: formData.get('picker'), LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) { showToast(`Error: ${plErr.message}`, 'error'); return; } 
+    const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: parseInt(tStk.Balance) >= qty ? parseInt(tStk.Balance) - qty : 0, LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); } 
+    showToast('Manual record saved successfully!', 'success'); fetchAllData(); (e.target as HTMLFormElement).reset(); 
+  };
+
+  const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
+
+  const filteredScheduleData = scheduleData.filter(row => {
+    return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine);
+  });
+
+  const filteredStockData = stockData.filter(row => { 
+    const q = searchQuery.toLowerCase(); 
+    const p = parts.find(p => p.PartID === row.PartID); 
+    return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); 
+  });
+  
   const filteredConsumables = consumables.filter(c => !searchQuery || c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const activeMachinesCount = machines.filter(m => m.Active !== false).length;
