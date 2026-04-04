@@ -127,6 +127,14 @@ export default function MaintenanceDashboard() {
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [linesMaster, setLinesMaster] = useState<any[]>([]);
   const [locationsMaster, setLocationsMaster] = useState<any[]>([]);
+  // 🌟 State สำหรับเปิด/ปิดหน้าต่างย้ายหมวดหมู่
+  const [moveCategoryModal, setMoveCategoryModal] = useState<{
+    isOpen: boolean;
+    source: 'part' | 'consumable';
+    itemData: any;
+    stockBalance: number;
+    location: string;
+  } | null>(null);
 
   useEffect(() => { if (session) fetchAllData(); }, [session]);
 
@@ -364,6 +372,88 @@ const handleUndoTransaction = (record: any) => {
     });
   };
 
+  // =========================================================================
+  // 🌟 ฟังก์ชัน: โยกหมวดหมู่ (Move Category)
+  // =========================================================================
+  const openMoveCategory = (source: 'part' | 'consumable', itemId: string) => {
+    setOpenDropdownId(null);
+    const reqs = pendingRequests.filter(r => r.PartID === itemId);
+    if (reqs.length > 0) {
+      return showToast('ไม่สามารถย้ายหมวดหมู่ได้ เนื่องจากมีใบเบิกค้างอยู่ในระบบ กรุณาจ่ายของให้เสร็จสิ้นก่อน', 'error');
+    }
+
+    if (source === 'part') {
+      const p = parts.find(x => x.PartID === itemId);
+      const stocks = stockData.filter(s => s.PartID === itemId);
+      const totalBal = stocks.reduce((sum, s) => sum + (parseInt(s.Balance) || 0), 0);
+      const loc = stocks.length > 0 ? stocks[0].Location : '-';
+      setMoveCategoryModal({ isOpen: true, source, itemData: p, stockBalance: totalBal, location: loc });
+    } else {
+      const c = consumables.find(x => x.ItemID === itemId);
+      setMoveCategoryModal({ isOpen: true, source, itemData: c, stockBalance: parseInt(c.Balance) || 0, location: c.Location || '-' });
+    }
+  };
+
+  const handleMoveCategorySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!moveCategoryModal) return;
+    setIsProcessing(true);
+    const formData = new FormData(e.currentTarget);
+    const activeDept = localStorage.getItem('activeDepartment');
+
+    try {
+      const oldId = moveCategoryModal.source === 'part' ? moveCategoryModal.itemData.PartID : moveCategoryModal.itemData.ItemID;
+
+      if (moveCategoryModal.source === 'part') {
+        const newId = `CSM-${Date.now()}`;
+        const min = parseInt(formData.get('min') as string);
+        const safety = parseInt(formData.get('safety') as string);
+        const max = parseInt(formData.get('max') as string);
+
+        const { error: insErr } = await supabase.from('Consumable').insert({
+          ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '',
+          Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '',
+          Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept
+        });
+        if (insErr) throw insErr;
+
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('Stock').delete().eq('PartID', oldId);
+        await supabase.from('Part').delete().eq('PartID', oldId);
+
+      } else {
+        const newId = `P-${Date.now()}`;
+        const buffer = parseInt(formData.get('buffer') as string);
+
+        const { error: partErr } = await supabase.from('Part').insert({
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '',
+          ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept
+        });
+        if (partErr) throw partErr;
+
+        const { error: stkErr } = await supabase.from('Stock').insert({
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location,
+          Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept
+        });
+        if (stkErr) throw stkErr;
+
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('Consumable').delete().eq('ItemID', oldId);
+      }
+
+      showToast('ย้ายหมวดหมู่สำเร็จ! ประวัติและการเบิกยังอยู่ครบ', 'success');
+      setMoveCategoryModal(null);
+      fetchAllData();
+    } catch (error: any) {
+      showToast(`Error: ${error.message}`, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  // =========================================================================
+  
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { setPreviewImage(URL.createObjectURL(file)); } };
 
@@ -820,6 +910,63 @@ const handleUndoTransaction = (record: any) => {
       {isNewMachineModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine</h3> <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label><input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label><input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label> <div className="relative"><select name="line" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all"><option value="">-- Select Line --</option>{linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div> </div> <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]"><i className="bi bi-plus-lg mr-2"></i>Create Machine</button> </form> </div> </div> )}
       {openDropdownId && ( <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenDropdownId(null)}></div> )}
 
+      {/* ========================================================= */}
+      {/* 🌟 Modal: โยกย้ายหมวดหมู่ (Move Category) 🌟 */}
+      {/* ========================================================= */}
+      {moveCategoryModal?.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 ${moveCategoryModal.source === 'part' ? 'border-t-pink-500' : 'border-t-blue-500'} flex flex-col max-h-[90vh]`}>
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${moveCategoryModal.source === 'part' ? 'bg-pink-50 text-pink-600' : 'bg-blue-50 text-blue-600'}`}>
+                  <i className="bi bi-arrow-left-right"></i>
+                </div>
+                {moveCategoryModal.source === 'part' ? 'ย้ายไปหมวดสิ้นเปลือง' : 'ย้ายไปหมวดอะไหล่'}
+              </h3>
+              <button onClick={() => setMoveCategoryModal(null)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            
+            <form className="p-8 space-y-6 bg-slate-50/30 overflow-y-auto" onSubmit={handleMoveCategorySubmit}>
+              <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                  {moveCategoryModal.itemData.ImageURL ? <img src={moveCategoryModal.itemData.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>}
+                </div>
+                <div>
+                  <div className="font-bold text-slate-800 text-[14px] leading-tight line-clamp-2">{moveCategoryModal.itemData.PartName || moveCategoryModal.itemData.ItemName}</div>
+                  <div className="text-[10px] text-slate-500 mt-1 font-bold">พิกัดเดิม: <span className="text-emerald-600">{moveCategoryModal.location}</span> | ยอดเดิม: <span className="text-blue-600">{moveCategoryModal.stockBalance}</span> Pcs</div>
+                </div>
+              </div>
+
+              <div className="text-sm text-slate-500 bg-slate-100 p-3 rounded-lg border border-slate-200">
+                <i className="bi bi-info-circle-fill mr-1"></i> ประวัติการเบิกและยอดสต๊อกเดิมจะถูกโอนย้ายไปให้อัตโนมัติ กรุณาระบุข้อมูลเพิ่มเติมสำหรับหมวดหมู่ใหม่:
+              </div>
+
+              {moveCategoryModal.source === 'part' ? (
+                <div className="grid grid-cols-3 gap-4">
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-red-500">Min (ROP)</label><input type="number" name="min" required defaultValue={10} className="w-full p-4 bg-white border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all font-bold text-sm text-red-700 text-center px-2" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-orange-500">Safety</label><input type="number" name="safety" required defaultValue={5} className="w-full p-4 bg-white border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition-all font-bold text-sm text-orange-700 text-center px-2" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-emerald-500">Max</label><input type="number" name="max" required defaultValue={100} className="w-full p-4 bg-white border border-emerald-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold text-sm text-emerald-700 text-center px-2" /></div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label>
+                  <div className="flex items-center shadow-sm rounded-xl">
+                    <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" />
+                    <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">ระยะเวลาเผื่อสั่งซื้อล่วงหน้า สำหรับให้ AI คำนวณความเสี่ยง</p>
+                </div>
+              )}
+
+              <button type="submit" disabled={isProcessing} className={`w-full text-white font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-all text-[15px] flex items-center justify-center gap-2 ${moveCategoryModal.source === 'part' ? 'bg-pink-600 hover:bg-pink-700 shadow-pink-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>
+                {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังโอนย้ายข้อมูล...</> : <><i className="bi bi-check2-circle"></i> ยืนยันการย้ายหมวดหมู่</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ========================================================= */}
+
       {/* 🌟 Sidebar 🌟 */}
       <nav className="fixed md:relative top-0 left-0 h-full w-[76px] hover:w-[260px] bg-[#0f172a] text-[#cbd5e1] transition-all duration-300 ease-in-out z-50 overflow-hidden group shadow-2xl flex-shrink-0 border-r border-slate-800 flex flex-col"> 
         <div className="flex items-center h-[76px] border-b border-[#1e293b] shrink-0 px-6">
@@ -990,6 +1137,8 @@ const handleUndoTransaction = (record: any) => {
                                   <button onClick={() => openActionModal('leadTime', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-clock-history text-lg"></i> Update Lead Time</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openActionModal('edit', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Part Info</button>
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => openMoveCategory('part', row.PartID)} className="w-full px-5 py-3 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Consumables</button>
                                   
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeletePart(row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Part</button>
@@ -1092,6 +1241,8 @@ const handleUndoTransaction = (record: any) => {
                                   <button onClick={() => { setSelectedConsumable(item); setReduceConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Adjust Stock</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
                                   
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
