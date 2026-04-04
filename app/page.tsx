@@ -506,7 +506,7 @@ const handleUndoTransaction = (record: any) => {
   const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; 
     const activeDept = localStorage.getItem('activeDepartment');
-    if (existingStock) { await supabase.from('Stock').update({ Balance: (existingStock.Balance || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
+    if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
     else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, PartName: selectedActionPart?.name || '', Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } 
     await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId);
     showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData(); 
@@ -545,7 +545,12 @@ const handleUndoTransaction = (record: any) => {
     const balVal = parseInt(formData.get('balance') as string);
 
     const { error } = await supabase.from('Consumable').insert({
-      ItemID: itemId, ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
+      ItemID: itemId, 
+      PartNumber: formData.get('partNumber') as string, // 🌟 บันทึก P/N
+      ItemName: formData.get('name'), 
+      ItemModel: formData.get('model') as string, 
+      Location: formData.get('location') || '-', 
+      ImageURL: finalImageUrl,
       Balance: isNaN(balVal) ? 0 : balVal, 
       MinQty: isNaN(minVal) ? 10 : minVal, 
       MaxQty: isNaN(maxVal) ? 100 : maxVal, 
@@ -574,7 +579,11 @@ const handleUndoTransaction = (record: any) => {
     const safetyVal = parseInt(formData.get('safety') as string);
 
     const { error } = await supabase.from('Consumable').update({
-      ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
+      PartNumber: formData.get('partNumber') as string, // 🌟 อัปเดต P/N
+      ItemName: formData.get('name'), 
+      ItemModel: formData.get('model') as string, 
+      Location: formData.get('location') || '-', 
+      ImageURL: finalImageUrl,
       MinQty: isNaN(minVal) ? 10 : minVal, 
       MaxQty: isNaN(maxVal) ? 100 : maxVal, 
       SafetyStock: isNaN(safetyVal) ? 5 : safetyVal
@@ -588,7 +597,7 @@ const handleUndoTransaction = (record: any) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const qty = parseInt(formData.get('qty') as string);
-    const currentBalance = selectedConsumable.Balance || 0;
+    const currentBalance = parseInt(selectedConsumable.Balance) || 0;
     
     const newBalance = actionType === 'receive' ? currentBalance + qty : qty;
     
@@ -669,7 +678,7 @@ const handleUndoTransaction = (record: any) => {
             if (isConsumable) {
               const cons = consumables.find(c => c.ItemID === pId);
               if (cons) {
-                const newBal = Math.max(0, cons.Balance - qty);
+                const newBal = Math.max(0, (parseInt(cons.Balance)||0) - qty);
                 await supabase.from('Consumable').update({ Balance: newBal }).eq('ItemID', pId);
               }
             } else {
@@ -677,7 +686,7 @@ const handleUndoTransaction = (record: any) => {
               const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: new Date().toISOString().split('T')[0], ReasonType: req.Reason, "Required Qty": qty, DepartmentID: activeDept, Position: pos }); if (chErr) throw chErr;
               const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: req.PickerName, LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) throw plErr;
               const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); 
-              if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: Math.max(0, tStk.Balance - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); }
+              if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: Math.max(0, (parseInt(tStk.Balance)||0) - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); }
             }
             const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); if (reqErr) throw reqErr;
           }
@@ -711,7 +720,7 @@ const handleUndoTransaction = (record: any) => {
 
     const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: formData.get('date'), ReasonType: formData.get('reason'), "Required Qty": qty, DepartmentID: activeDept, Position: '-' }); if (chErr) { showToast(`Error: ${chErr.message}`, 'error'); return; } 
     const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: formData.get('picker'), LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) { showToast(`Error: ${plErr.message}`, 'error'); return; } 
-    const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: tStk.Balance >= qty ? tStk.Balance - qty : 0, LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); } 
+    const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: parseInt(tStk.Balance) >= qty ? parseInt(tStk.Balance) - qty : 0, LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); } 
     showToast('Manual record saved successfully!', 'success'); fetchAllData(); (e.target as HTMLFormElement).reset(); 
   };
 
@@ -727,7 +736,25 @@ const handleUndoTransaction = (record: any) => {
     return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); 
   });
   
-  const filteredConsumables = consumables.filter(c => !searchQuery || c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase()));
+  // 🌟 กรองข้อมูล ค้นหาด้วย P/N ได้ และเรียงลำดับ (วิกฤต -> ROP -> ปกติ)
+  const filteredConsumables = consumables
+    .filter(c => !searchQuery || 
+      c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      c.PartNumber?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      const getPriority = (item: any) => {
+        const safety = item.SafetyStock || 0;
+        const min = item.MinQty || 0;
+        const rop = min + safety;
+        if (item.Balance <= safety) return 3; // วิกฤต
+        if (item.Balance <= rop) return 2;    // ถึงจุดต้องสั่ง
+        return 1;                            // ปกติ
+      };
+      return getPriority(b) - getPriority(a);
+    });
 
   const activeMachinesCount = machines.filter(m => m.Active !== false).length;
   const inactiveMachinesCount = machines.filter(m => m.Active === false).length;
@@ -824,6 +851,7 @@ const handleUndoTransaction = (record: any) => {
                 </div>
               </div>
               <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label><input type="text" name="partNumber" defaultValue={editingConsumableData?.PartNumber} placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Item Name *</label><input type="text" name="name" required placeholder="e.g. Rubber Gloves, N95 Mask" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. 3M" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -861,6 +889,7 @@ const handleUndoTransaction = (record: any) => {
                 </div>
               </div>
               <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label><input type="text" name="partNumber" defaultValue={editingConsumableData?.PartNumber} placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Item Name *</label><input type="text" name="name" required defaultValue={editingConsumableData?.ItemName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" defaultValue={editingConsumableData?.ItemModel} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" defaultValue={editingConsumableData?.Location} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700 appearance-none uppercase"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div>
@@ -1022,7 +1051,6 @@ const handleUndoTransaction = (record: any) => {
                <i className="bi bi-tools text-xl min-w-[24px] text-center"></i>
                <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Log Record</span>
             </a>
-            {/* 🌟 Tab ใหม่ History */}
             <a onClick={() => setActiveTab('history')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'history' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
                <i className="bi bi-clock-history text-xl min-w-[24px] text-center"></i>
                <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">History & Correction</span>
@@ -1148,15 +1176,16 @@ const handleUndoTransaction = (record: any) => {
                             <td className="py-4 px-4 text-center relative border-r border-slate-50">
                               <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === row.PartID ? null : row.PartID); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
                               {openDropdownId === row.PartID && (
-                                <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
+                                <div className="absolute left-14 top-2 w-56 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
                                   <button onClick={() => openActionModal('receive', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-in-down-right text-lg"></i> Receive Stock</button>
                                   <button onClick={() => openActionModal('reduce', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-up-right text-lg"></i> Adjust Stock</button>
                                   <button onClick={() => openActionModal('leadTime', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-clock-history text-lg"></i> Update Lead Time</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openActionModal('edit', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Part Info</button>
+                                  
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openMoveCategory('part', row.PartID)} className="w-full px-5 py-3 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Consumables</button>
-                                  
+
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeletePart(row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Part</button>
                                 </div>
@@ -1230,6 +1259,7 @@ const handleUndoTransaction = (record: any) => {
                         <th className="py-4 px-4 text-center w-16">Action</th>
                         <th className="py-4 px-6">Location</th>
                         <th className="py-4 px-6 text-center w-20">Image</th>
+                        <th className="py-4 px-6 text-blue-600">P/N</th>
                         <th className="py-4 px-6">Item Name</th>
                         <th className="py-4 px-6">Model</th>
                         <th className="py-4 px-4 text-center">Min (ROP)</th>
@@ -1258,9 +1288,10 @@ const handleUndoTransaction = (record: any) => {
                                   <button onClick={() => { setSelectedConsumable(item); setReduceConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Adjust Stock</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
+                                  
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
-                                  
+
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
                                 </div>
@@ -1279,6 +1310,7 @@ const handleUndoTransaction = (record: any) => {
                               )}
                             </td>
                             
+                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle tracking-wider">{item.PartNumber || '-'}</td>
                             <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ItemName}</td> 
                             <td className="py-3 px-6 text-[13px] font-bold text-slate-500 align-middle">{item.ItemModel || '-'}</td>
                             
@@ -1454,7 +1486,7 @@ const handleUndoTransaction = (record: any) => {
             </div> 
           )}
           
-          {/* 🌟 TAB ใหม่: HISTORY & CORRECTION 🌟 */}
+          {/* TAB: HISTORY & CORRECTION */}
           {activeTab === 'history' && (
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
@@ -1485,7 +1517,8 @@ const handleUndoTransaction = (record: any) => {
                     </thead> 
                     <tbody className="text-sm bg-white"> 
                       {changeHistoryData.map((row, idx) => {
-                        const pName = parts.find(p => p.PartID === row.PartID)?.PartName || row.PartID;
+                        const isConsumable = row.PartID.startsWith('CSM-');
+                        const pName = isConsumable ? consumables.find(c => c.ItemID === row.PartID)?.ItemName || row.PartID : parts.find(p => p.PartID === row.PartID)?.PartName || row.PartID;
                         const mName = machines.find(m => m.MachineID === row.MachineID)?.MachineName || row.MachineID;
                         
                         return (
@@ -1511,6 +1544,7 @@ const handleUndoTransaction = (record: any) => {
                                   <option value="Accident">Accident</option>
                                   <option value="Improvement">Improvement</option>
                                   <option value="Inspection-OK">Inspection-OK</option>
+                                  <option value="Consumable">Consumable (สิ้นเปลือง)</option>
                                 </select>
                                 <i className="bi bi-pencil-fill absolute right-3 top-1/2 -translate-y-1/2 text-opacity-50 text-[10px] pointer-events-none"></i>
                               </div>
