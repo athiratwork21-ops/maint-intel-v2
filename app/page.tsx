@@ -114,15 +114,6 @@ export default function MaintenanceDashboard() {
   const [changeHistoryData, setChangeHistoryData] = useState<any[]>([]);
   const [historyMonthFilter, setHistoryMonthFilter] = useState(new Date().toISOString().slice(0, 7));
 
-  // 🌟 State ใหม่สำหรับ Modal โยกหมวดหมู่
-  const [moveCategoryModal, setMoveCategoryModal] = useState<{
-    isOpen: boolean;
-    source: 'part' | 'consumable';
-    itemData: any;
-    stockBalance: number;
-    location: string;
-  } | null>(null);
-
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
   const toggleGroup = (group: keyof typeof expandedGroups) => setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
 
@@ -202,14 +193,10 @@ export default function MaintenanceDashboard() {
     if (activeDept) fetchHistoryData(activeDept);
   }, [historyMonthFilter]);
 
-  // 🌟 ฟังก์ชัน Undo & เปลี่ยน Reason ที่อัปเกรดให้แม่นยำขึ้น 🌟
-  const handleUndoTransaction = (record: any) => {
-    const isConsumable = record.PartID.startsWith('CSM-');
-    const partName = isConsumable 
-      ? consumables.find(c => c.ItemID === record.PartID)?.ItemName || record.PartID
-      : parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
-
-    const qty = parseInt(record['Required Qty']) || 0;
+  // 🌟 ฟังก์ชัน Undo & เปลี่ยน Reason
+const handleUndoTransaction = (record: any) => {
+    const partName = parts.find(p => p.PartID === record.PartID)?.PartName || record.PartID;
+    const qty = parseInt(record['Required Qty']) || 0; // แปลงเป็นตัวเลขให้ชัวร์
 
     setConfirmDialog({
       isOpen: true,
@@ -220,42 +207,87 @@ export default function MaintenanceDashboard() {
         setConfirmDialog(null);
         setIsProcessing(true);
         try {
+          console.log("=== 🚀 เริ่มต้นกระบวนการ Undo ===");
+          console.log("📦 ข้อมูล Record ที่กำลังจะ Undo:", record);
+
           const activeDept = localStorage.getItem('activeDepartment');
 
-          if (isConsumable) {
-            const { data: consData } = await supabase.from('Consumable').select('Balance').eq('ItemID', record.PartID).single();
-            if (consData) {
-              await supabase.from('Consumable').update({ Balance: (parseInt(consData.Balance)||0) + qty }).eq('ItemID', record.PartID);
-            } else {
-              await supabase.from('Consumable').insert({ ItemID: record.PartID, ItemName: partName, Balance: qty, DepartmentID: activeDept });
-            }
+          // 1. หา Location เดิมตอนที่เบิกไป (จากตาราง PickLog)
+          const { data: pl, error: plErr } = await supabase
+            .from('PickLog')
+            .select('Location')
+            .eq('RecordID', record.RecordID)
+            .single();
+            
+          if (plErr) console.warn("⚠️ ไม่เจอ Location ใน PickLog (อาจจะถูกลบไปแล้ว):", plErr);
+          const targetLocation = pl?.Location || '-';
+          console.log("🎯 เป้าหมายตู้ที่จะเอาของไปคืนคือ:", targetLocation);
+
+          // 2. ดึงข้อมูลตู้ทั้งหมดที่มีอะไหล่ชิ้นนี้อยู่
+          const { data: stockRecords, error: stkErr } = await supabase
+            .from('Stock')
+            .select('*')
+            .eq('PartID', record.PartID)
+            .eq('DepartmentID', activeDept); // กรองตามแผนกด้วยเพื่อความชัวร์
+
+          if (stkErr) console.error("❌ ดึงข้อมูลตาราง Stock ไม่สำเร็จ:", stkErr);
+          console.log("📋 ข้อมูล Stock ที่มีอยู่ปัจจุบัน:", stockRecords);
+
+          // 3. เริ่มกระบวนการคืนสต๊อก (บวก Balance)
+          if (stockRecords && stockRecords.length > 0) {
+            // พยายามหาตู้ที่ Location ตรงกับตอนเบิก (ถ้าไม่เจอให้เอาตู้แรกที่เจอ)
+            const targetStock = stockRecords.find(s => s.Location === targetLocation) || stockRecords[0];
+            const currentBalance = parseInt(targetStock.Balance) || 0;
+            const newBalance = currentBalance + qty;
+            
+            console.log(`🔄 เตรียมอัปเดตสต๊อกตู้ [${targetStock.Location}] จาก ${currentBalance} -> ${newBalance} ชิ้น`);
+
+            // อัปเดต Balance คืนเข้าตู้
+            const { error: updErr } = await supabase
+              .from('Stock')
+              .update({ 
+                Balance: newBalance, 
+                LastUpdated: new Date().toISOString() 
+              })
+              .eq('PartID', targetStock.PartID)
+              .eq('Location', targetStock.Location)
+              .eq('DepartmentID', activeDept);
+
+            if (updErr) throw new Error(`Supabase ปฏิเสธการ Update: ${updErr.message}`);
+            console.log("✅ อัปเดตสต๊อกสำเร็จ!");
+            
           } else {
-            const { data: pl } = await supabase.from('PickLog').select('Location').eq('RecordID', record.RecordID).single();
-            const targetLocation = pl?.Location || '-';
-
-            const { data: stockRecords } = await supabase.from('Stock').select('*').eq('PartID', record.PartID).eq('DepartmentID', activeDept);
-
-            if (stockRecords && stockRecords.length > 0) {
-              const targetStock = stockRecords.find(s => s.Location === targetLocation) || stockRecords[0];
-              const newBalance = (parseInt(targetStock.Balance) || 0) + qty;
-              
-              await supabase.from('Stock')
-                .update({ Balance: newBalance, LastUpdated: new Date().toISOString() })
-                .eq('PartID', targetStock.PartID).eq('Location', targetStock.Location).eq('DepartmentID', activeDept);
-            } else {
-              await supabase.from('Stock').insert({
-                PartID: record.PartID, PartName: partName, Location: targetLocation,
-                Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept
-              });
-            }
+            // กรณีดักบั๊ก: ถ้าตู้โดนลบไปแล้ว หรือหาใน Stock ไม่เจอเลย ให้สร้างตู้ใหม่ขึ้นมารับของ
+            console.log("💡 ไม่พบอะไหล่นี้ในตู้ไหนเลย กำลังสร้างรายการ Stock ขึ้นมาใหม่...");
+            
+            const { error: insErr } = await supabase.from('Stock').insert({
+              PartID: record.PartID,
+              PartName: partName,
+              Location: targetLocation,
+              Balance: qty, // ใส่ยอดที่คืนกลับไปเลย
+              LastUpdated: new Date().toISOString(),
+              DepartmentID: activeDept
+            });
+            
+            if (insErr) throw new Error(`Supabase ปฏิเสธการ Insert: ${insErr.message}`);
+            console.log("✅ สร้างสต๊อกใหม่สำเร็จ!");
           }
 
-          await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
-          await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
+          // 4. ลบประวัติการเบิกออกไปซะ (ทำลายหลักฐาน 🤫)
+          console.log("🗑️ กำลังลบประวัติใน ChangeHistory และ PickLog...");
+          const { error: del1 } = await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
+          const { error: del2 } = await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
+          
+          if (del1 || del2) console.warn("⚠️ ลบประวัติมี Error:", del1, del2);
 
+          console.log("=== 🎉 จบกระบวนการ Undo สำเร็จ ===");
           showToast('ทำรายการคืนของและลบประวัติสำเร็จ!', 'success');
+          
+          // รีเฟรชข้อมูลบนหน้าจอใหม่ทั้งหมด
           fetchAllData();
+          
         } catch (error: any) {
+          console.error("💥 เกิดข้อผิดพลาดร้ายแรงทำให้ทำงานไม่จบ:", error);
           showToast(`Error: ${error.message}`, 'error');
         } finally {
           setIsProcessing(false);
@@ -305,86 +337,6 @@ export default function MaintenanceDashboard() {
       setEditPartModalOpen(true);
     }
   };
-
-  // 🌟 ฟังก์ชันเปิดหน้าต่างและยืนยันการย้ายหมวดหมู่ (Move Category) 🌟
-  const openMoveCategory = (source: 'part' | 'consumable', itemId: string) => {
-    setOpenDropdownId(null);
-    const reqs = pendingRequests.filter(r => r.PartID === itemId);
-    if (reqs.length > 0) {
-      return showToast('ไม่สามารถย้ายหมวดหมู่ได้ เนื่องจากมีใบเบิกค้างอยู่ในระบบ กรุณาจ่ายของให้เสร็จสิ้นก่อน', 'error');
-    }
-
-    if (source === 'part') {
-      const p = parts.find(x => x.PartID === itemId);
-      const stocks = stockData.filter(s => s.PartID === itemId);
-      const totalBal = stocks.reduce((sum, s) => sum + (parseInt(s.Balance) || 0), 0);
-      const loc = stocks.length > 0 ? stocks[0].Location : '-';
-      setMoveCategoryModal({ isOpen: true, source, itemData: p, stockBalance: totalBal, location: loc });
-    } else {
-      const c = consumables.find(x => x.ItemID === itemId);
-      setMoveCategoryModal({ isOpen: true, source, itemData: c, stockBalance: parseInt(c.Balance) || 0, location: c.Location || '-' });
-    }
-  };
-
-  const handleMoveCategorySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!moveCategoryModal) return;
-    setIsProcessing(true);
-    const formData = new FormData(e.currentTarget);
-    const activeDept = localStorage.getItem('activeDepartment');
-
-    try {
-      const oldId = moveCategoryModal.source === 'part' ? moveCategoryModal.itemData.PartID : moveCategoryModal.itemData.ItemID;
-
-      if (moveCategoryModal.source === 'part') {
-        const newId = `CSM-${Date.now()}`;
-        const min = parseInt(formData.get('min') as string);
-        const safety = parseInt(formData.get('safety') as string);
-        const max = parseInt(formData.get('max') as string);
-
-        const { error: insErr } = await supabase.from('Consumable').insert({
-          ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '',
-          Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '',
-          Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept
-        });
-        if (insErr) throw insErr;
-
-        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
-        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
-        await supabase.from('Stock').delete().eq('PartID', oldId);
-        await supabase.from('Part').delete().eq('PartID', oldId);
-
-      } else {
-        const newId = `P-${Date.now()}`;
-        const buffer = parseInt(formData.get('buffer') as string);
-
-        const { error: partErr } = await supabase.from('Part').insert({
-          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '',
-          ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept
-        });
-        if (partErr) throw partErr;
-
-        const { error: stkErr } = await supabase.from('Stock').insert({
-          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location,
-          Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept
-        });
-        if (stkErr) throw stkErr;
-
-        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
-        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
-        await supabase.from('Consumable').delete().eq('ItemID', oldId);
-      }
-
-      showToast('ย้ายหมวดหมู่สำเร็จ! ประวัติและการเบิกยังอยู่ครบ', 'success');
-      setMoveCategoryModal(null);
-      fetchAllData();
-    } catch (error: any) {
-      showToast(`Error: ${error.message}`, 'error');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-  // 🌟 สิ้นสุดฟังก์ชัน Move Category 🌟
 
   const handleDeletePart = (partId: string, partName: string) => {
     setOpenDropdownId(null);
@@ -464,7 +416,7 @@ export default function MaintenanceDashboard() {
   const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; 
     const activeDept = localStorage.getItem('activeDepartment');
-    if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
+    if (existingStock) { await supabase.from('Stock').update({ Balance: (existingStock.Balance || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
     else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, PartName: selectedActionPart?.name || '', Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } 
     await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId);
     showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData(); 
@@ -475,10 +427,9 @@ export default function MaintenanceDashboard() {
     const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; 
     const activeDept = localStorage.getItem('activeDepartment');
     if (existingStock) { 
-      const currentBal = parseInt(existingStock.Balance) || 0; 
-      const newBalance = Math.max(0, currentBal - qty); 
+      const newBalance = Math.max(0, qty); 
       await supabase.from('Stock').update({ Balance: newBalance, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); 
-      await supabase.from('PickLog').insert({ RecordID: Date.now().toString(), Timestamp: new Date().toISOString(), Location: loc, PartID: pId, MachineID: 'MANUAL', Qty: qty, PickerName: 'Admin Adjustment', LineUserID: session?.user?.email, DepartmentID: activeDept });
+      await supabase.from('PickLog').insert({ RecordID: Date.now().toString(), Timestamp: new Date().toISOString(), Location: loc, PartID: pId, MachineID: 'MANUAL', Qty: Math.abs(existingStock.Balance - newBalance), PickerName: 'Admin Adjustment', LineUserID: session?.user?.email, DepartmentID: activeDept });
       showToast('Stock adjusted successfully!', 'success'); setReduceStockModalOpen(false); fetchAllData(); 
     } else { showToast('Stock data not found for this item', 'error'); }
   };
@@ -530,12 +481,11 @@ export default function MaintenanceDashboard() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const qty = parseInt(formData.get('qty') as string);
-    const currentBalance = parseInt(selectedConsumable.Balance) || 0;
+    const currentBalance = selectedConsumable.Balance || 0;
     
-    const newBalance = actionType === 'receive' ? currentBalance + qty : qty; // For adjust, we just overwrite (or let them input the new exact number depending on your logic, here I'll assume they input exact number for adjust)
-    const finalBalance = actionType === 'receive' ? newBalance : qty;
+    const newBalance = actionType === 'receive' ? currentBalance + qty : qty;
     
-    const { error } = await supabase.from('Consumable').update({ Balance: finalBalance }).eq('ItemID', selectedConsumable.ItemID);
+    const { error } = await supabase.from('Consumable').update({ Balance: newBalance }).eq('ItemID', selectedConsumable.ItemID);
     if (!error) {
       showToast(`${actionType === 'receive' ? 'Stock received' : 'Stock adjusted'} successfully!`, 'success');
       setReceiveConsumableOpen(false); setReduceConsumableOpen(false); fetchAllData();
@@ -612,7 +562,7 @@ export default function MaintenanceDashboard() {
             if (isConsumable) {
               const cons = consumables.find(c => c.ItemID === pId);
               if (cons) {
-                const newBal = Math.max(0, (parseInt(cons.Balance)||0) - qty);
+                const newBal = Math.max(0, cons.Balance - qty);
                 await supabase.from('Consumable').update({ Balance: newBal }).eq('ItemID', pId);
               }
             } else {
@@ -620,7 +570,7 @@ export default function MaintenanceDashboard() {
               const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: new Date().toISOString().split('T')[0], ReasonType: req.Reason, "Required Qty": qty, DepartmentID: activeDept, Position: pos }); if (chErr) throw chErr;
               const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: req.PickerName, LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) throw plErr;
               const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); 
-              if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: Math.max(0, (parseInt(tStk.Balance)||0) - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); }
+              if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: Math.max(0, tStk.Balance - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); }
             }
             const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); if (reqErr) throw reqErr;
           }
@@ -654,7 +604,7 @@ export default function MaintenanceDashboard() {
 
     const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: formData.get('date'), ReasonType: formData.get('reason'), "Required Qty": qty, DepartmentID: activeDept, Position: '-' }); if (chErr) { showToast(`Error: ${chErr.message}`, 'error'); return; } 
     const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: formData.get('picker'), LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) { showToast(`Error: ${plErr.message}`, 'error'); return; } 
-    const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: parseInt(tStk.Balance) >= qty ? parseInt(tStk.Balance) - qty : 0, LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); } 
+    const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: tStk.Balance >= qty ? tStk.Balance - qty : 0, LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); } 
     showToast('Manual record saved successfully!', 'success'); fetchAllData(); (e.target as HTMLFormElement).reset(); 
   };
 
@@ -729,64 +679,6 @@ export default function MaintenanceDashboard() {
       {toast && ( <div className="fixed top-8 right-8 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300 ease-out"> <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur-md min-w-[280px] ${toast.type === 'success' ? 'border-emerald-500/50 shadow-emerald-500/10' : toast.type === 'error' ? 'border-red-500/50 shadow-red-500/10' : toast.type === 'warning' ? 'border-amber-500/50 shadow-amber-500/10' : 'border-blue-500/50 shadow-blue-500/10'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
       {confirmDialog && confirmDialog.isOpen && ( <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out"> <div className="p-8 pb-6 text-center"> <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border ${confirmDialog.isDanger ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100/50'}`}><i className={`bi ${confirmDialog.isDanger ? 'bi-exclamation-triangle-fill' : 'bi-info-circle-fill'}`}></i></div> <h3 className="text-xl font-bold text-slate-800 mb-2">{confirmDialog.title}</h3> <p className="text-slate-500 text-sm whitespace-pre-line leading-relaxed">{confirmDialog.message}</p> </div> <div className="flex p-4 gap-3 border-t border-slate-100 bg-slate-50/50"> <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all shadow-sm">Cancel</button> <button onClick={confirmDialog.onConfirm} className={`flex-1 py-3 rounded-xl font-bold text-white active:scale-95 transition-all shadow-sm ${confirmDialog.isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>Confirm</button> </div> </div> </div> )}
       
-      {/* ========================================================= */}
-      {/* 🌟 Modal: โยกย้ายหมวดหมู่ (Move Category) 🌟 */}
-      {/* ========================================================= */}
-      {moveCategoryModal?.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className={`bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 ${moveCategoryModal.source === 'part' ? 'border-t-pink-500' : 'border-t-blue-500'} flex flex-col max-h-[90vh]`}>
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${moveCategoryModal.source === 'part' ? 'bg-pink-50 text-pink-600' : 'bg-blue-50 text-blue-600'}`}>
-                  <i className="bi bi-arrow-left-right"></i>
-                </div>
-                {moveCategoryModal.source === 'part' ? 'ย้ายไปหมวดสิ้นเปลือง' : 'ย้ายไปหมวดอะไหล่'}
-              </h3>
-              <button onClick={() => setMoveCategoryModal(null)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
-            </div>
-            
-            <form className="p-8 space-y-6 bg-slate-50/30 overflow-y-auto" onSubmit={handleMoveCategorySubmit}>
-              <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-                  {moveCategoryModal.itemData.ImageURL ? <img src={moveCategoryModal.itemData.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>}
-                </div>
-                <div>
-                  <div className="font-bold text-slate-800 text-[14px] leading-tight line-clamp-2">{moveCategoryModal.itemData.PartName || moveCategoryModal.itemData.ItemName}</div>
-                  <div className="text-[10px] text-slate-500 mt-1 font-bold">พิกัดเดิม: <span className="text-emerald-600">{moveCategoryModal.location}</span> | ยอดเดิม: <span className="text-blue-600">{moveCategoryModal.stockBalance}</span> Pcs</div>
-                </div>
-              </div>
-
-              <div className="text-sm text-slate-500 bg-slate-100 p-3 rounded-lg border border-slate-200">
-                <i className="bi bi-info-circle-fill mr-1"></i> ประวัติการเบิกและยอดสต๊อกเดิมจะถูกโอนย้ายไปให้อัตโนมัติ กรุณาระบุข้อมูลเพิ่มเติมสำหรับหมวดหมู่ใหม่:
-              </div>
-
-              {moveCategoryModal.source === 'part' ? (
-                <div className="grid grid-cols-3 gap-4">
-                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-red-500">Min (ROP)</label><input type="number" name="min" required defaultValue={10} className="w-full p-4 bg-white border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all font-bold text-sm text-red-700 text-center px-2" /></div>
-                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-orange-500">Safety</label><input type="number" name="safety" required defaultValue={5} className="w-full p-4 bg-white border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition-all font-bold text-sm text-orange-700 text-center px-2" /></div>
-                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-emerald-500">Max</label><input type="number" name="max" required defaultValue={100} className="w-full p-4 bg-white border border-emerald-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold text-sm text-emerald-700 text-center px-2" /></div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label>
-                  <div className="flex items-center shadow-sm rounded-xl">
-                    <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" />
-                    <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2">ระยะเวลาเผื่อสั่งซื้อล่วงหน้า สำหรับให้ AI คำนวณความเสี่ยง</p>
-                </div>
-              )}
-
-              <button type="submit" disabled={isProcessing} className={`w-full text-white font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-all text-[15px] flex items-center justify-center gap-2 ${moveCategoryModal.source === 'part' ? 'bg-pink-600 hover:bg-pink-700 shadow-pink-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>
-                {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังโอนย้ายข้อมูล...</> : <><i className="bi bi-check2-circle"></i> ยืนยันการย้ายหมวดหมู่</>}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-      {/* ========================================================= */}
-
-
       {/* Modal: Basic Info */}
       {basicInfoModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -807,6 +699,126 @@ export default function MaintenanceDashboard() {
           </div>
         </div>
       )}
+
+      {/* Modal: Consumables (New) */}
+      {isNewConsumableModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-pink-500 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-plus-circle-fill text-pink-500 bg-pink-50 p-2 rounded-lg"></i> Add Consumable Item</h3>
+              <button onClick={() => setNewConsumableModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewConsumableSubmit}>
+              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
+                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Upload Image</label>
+                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-pink-400 shadow-inner">
+                  {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )}
+                  <label className="absolute bottom-4 left-4 bg-pink-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-pink-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Item Name *</label><input type="text" name="name" required placeholder="e.g. Rubber Gloves, N95 Mask" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. 3M" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700 appearance-none uppercase"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div>
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Balance</label><input type="number" name="balance" min="0" defaultValue={0} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-red-500">Min (ROP)</label><input type="number" name="min" min="0" defaultValue={10} required className="w-full p-4 bg-slate-50 border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all focus:bg-white font-bold text-sm text-red-700 text-center px-2" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-orange-500">Safety</label><input type="number" name="safety" min="0" defaultValue={5} required className="w-full p-4 bg-slate-50 border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition-all focus:bg-white font-bold text-sm text-orange-700 text-center px-2" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-emerald-500">Max</label><input type="number" name="max" min="1" defaultValue={100} required className="w-full p-4 bg-slate-50 border border-emerald-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all focus:bg-white font-bold text-sm text-emerald-700 text-center px-2" /></div>
+                </div>
+                <button type="submit" disabled={isProcessing} className="w-full bg-pink-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-pink-700 active:scale-95 transition-all shadow-lg shadow-pink-600/20 disabled:opacity-50 text-[15px]">
+                  {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-check-lg mr-2"></i>Create Item</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Consumables */}
+      {isEditConsumableOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Item Info</h3>
+              <button onClick={() => setEditConsumableOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditConsumableSubmit}>
+              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
+                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label>
+                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner">
+                  {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )}
+                  <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Item Name *</label><input type="text" name="name" required defaultValue={editingConsumableData?.ItemName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" defaultValue={editingConsumableData?.ItemModel} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" defaultValue={editingConsumableData?.Location} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700 appearance-none uppercase"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-red-500">Min (ROP)</label><input type="number" name="min" required defaultValue={editingConsumableData?.MinQty} className="w-full p-4 bg-slate-50 border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all focus:bg-white font-bold text-sm text-red-700 text-center px-2" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-orange-500">Safety</label><input type="number" name="safety" required defaultValue={editingConsumableData?.SafetyStock} className="w-full p-4 bg-slate-50 border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition-all focus:bg-white font-bold text-sm text-orange-700 text-center px-2" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-emerald-500">Max</label><input type="number" name="max" required defaultValue={editingConsumableData?.MaxQty} className="w-full p-4 bg-slate-50 border border-emerald-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all focus:bg-white font-bold text-sm text-emerald-700 text-center px-2" /></div>
+                </div>
+                <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]">
+                  {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Receive/Adjust Consumables */}
+      {(isReceiveConsumableOpen || isReduceConsumableOpen) && selectedConsumable && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 ${isReceiveConsumableOpen ? 'border-t-emerald-500' : 'border-t-indigo-500'}`}>
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className={`bi ${isReceiveConsumableOpen ? 'bi-box-arrow-in-down-right text-emerald-500 bg-emerald-50' : 'bi-pencil-square text-indigo-500 bg-indigo-50'} p-2 rounded-lg`}></i> 
+                {isReceiveConsumableOpen ? 'Receive Stock' : 'Adjust Stock'}
+              </h3>
+              <button onClick={() => { setReceiveConsumableOpen(false); setReduceConsumableOpen(false); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={(e) => handleConsumableAction(e, isReceiveConsumableOpen ? 'receive' : 'adjust')}>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Item</label>
+                <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                  <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                    {selectedConsumable.ImageURL ? <img src={selectedConsumable.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>}
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800 text-[14px] leading-tight">{selectedConsumable.ItemName}</div>
+                    <div className="text-[10px] text-slate-500 mt-1 uppercase font-bold"><span className="mr-1">Current in location:</span><span className="text-blue-600">{selectedConsumable.Balance} Pcs</span></div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{isReceiveConsumableOpen ? 'Receive Quantity' : 'Correct Balance'}</label>
+                <div className="flex items-center shadow-sm rounded-xl">
+                  <input type="number" name="qty" min="0" required className={`flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 transition-shadow z-10 text-lg font-bold ${isReceiveConsumableOpen ? 'focus:ring-emerald-500 hover:border-emerald-300 text-emerald-700' : 'focus:ring-indigo-500 hover:border-indigo-300 text-indigo-700'}`} />
+                  <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span>
+                </div>
+                {!isReceiveConsumableOpen && <p className="text-xs text-slate-500 mt-2">Enter the exact new balance to overwrite existing data</p>}
+              </div>
+              <button type="submit" className={`w-full text-white font-bold py-4 rounded-xl mt-4 active:scale-95 transition-all shadow-lg ${isReceiveConsumableOpen ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'}`}>
+                <i className={`bi ${isReceiveConsumableOpen ? 'bi-plus-circle' : 'bi-check-circle'} mr-2`}></i>{isReceiveConsumableOpen ? 'Add Stock' : 'Update Stock'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modals New Part / Edit / Receive / Reduce / LeadTime / Machine / BasicInfo */}
+      {isNewPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Part</h3> <button onClick={() => setNewPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-blue-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-blue-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label><input type="text" name="name" required placeholder="Part Name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div className="grid grid-cols-2 gap-4"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Uploading...</> : <><i className="bi bi-check-lg mr-2"></i>Create Part</>} </button> </div> </form> </div> </div> )}
+      {isEditPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Part Details</h3> <button onClick={() => setEditPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label><input type="text" name="name" required defaultValue={editingPartData?.PartName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div className="grid grid-cols-2 gap-4"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" defaultValue={editingPartData?.PartModel} placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" defaultValue={editingPartData?.Location} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="buffer" required defaultValue={editingPartData?.SafetyBufferDays || 7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 z-10" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-3.5 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>} </button> </div> </form> </div> </div> )}
+      {isReceiveStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-emerald-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-box-arrow-in-down-right text-emerald-500 bg-emerald-50 p-2 rounded-lg"></i> Receive Stock</h3> <button onClick={() => setReceiveStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReceiveStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Receive Qty</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="1" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow hover:border-emerald-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> </div> <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-600/20"><i className="bi bi-plus-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
+      {isReduceStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Adjust Stock</h3> <button onClick={() => setReduceStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReduceStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Correct Balance</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="0" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow hover:border-indigo-300 z-10 text-lg font-bold text-indigo-600" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> <p className="text-xs text-slate-500 mt-2">Enter the exact new balance to overwrite existing data</p> </div> <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
+      {isLeadTimeModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-amber-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-clock-history text-amber-500 bg-amber-50 p-2 rounded-lg"></i> Update Lead Time</h3> <button onClick={() => setLeadTimeModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleUpdateLeadTime}> <p className="text-sm text-slate-500 mb-2 leading-relaxed">Update supplier lead time to improve AI prediction accuracy.</p> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">New Lead Time</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="days" placeholder="e.g. 30" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-amber-500 transition-shadow hover:border-amber-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" className="w-full bg-amber-500 text-white font-bold py-4 rounded-xl mt-4 hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-500/20"><i className="bi bi-check-circle mr-2"></i>Save Lead Time</button> </form> </div> </div> )}
+      {isNewMachineModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine</h3> <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label><input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label><input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label> <div className="relative"><select name="line" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all"><option value="">-- Select Line --</option>{linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div> </div> <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]"><i className="bi bi-plus-lg mr-2"></i>Create Machine</button> </form> </div> </div> )}
+      {openDropdownId && ( <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenDropdownId(null)}></div> )}
 
       {/* 🌟 Sidebar 🌟 */}
       <nav className="fixed md:relative top-0 left-0 h-full w-[76px] hover:w-[260px] bg-[#0f172a] text-[#cbd5e1] transition-all duration-300 ease-in-out z-50 overflow-hidden group shadow-2xl flex-shrink-0 border-r border-slate-800 flex flex-col"> 
@@ -846,6 +858,7 @@ export default function MaintenanceDashboard() {
                <i className="bi bi-tools text-xl min-w-[24px] text-center"></i>
                <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Log Record</span>
             </a>
+            {/* 🌟 Tab ใหม่ History */}
             <a onClick={() => setActiveTab('history')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'history' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
                <i className="bi bi-clock-history text-xl min-w-[24px] text-center"></i>
                <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">History & Correction</span>
@@ -971,16 +984,13 @@ export default function MaintenanceDashboard() {
                             <td className="py-4 px-4 text-center relative border-r border-slate-50">
                               <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === row.PartID ? null : row.PartID); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
                               {openDropdownId === row.PartID && (
-                                <div className="absolute left-14 top-2 w-56 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
+                                <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
                                   <button onClick={() => openActionModal('receive', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-in-down-right text-lg"></i> Receive Stock</button>
                                   <button onClick={() => openActionModal('reduce', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-up-right text-lg"></i> Adjust Stock</button>
                                   <button onClick={() => openActionModal('leadTime', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-clock-history text-lg"></i> Update Lead Time</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openActionModal('edit', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Part Info</button>
                                   
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => openMoveCategory('part', row.PartID)} className="w-full px-5 py-3 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Consumables</button>
-
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeletePart(row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Part</button>
                                 </div>
@@ -1083,9 +1093,6 @@ export default function MaintenanceDashboard() {
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
                                   
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
-
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
                                 </div>
@@ -1279,7 +1286,7 @@ export default function MaintenanceDashboard() {
             </div> 
           )}
           
-          {/* TAB: HISTORY & CORRECTION */}
+          {/* 🌟 TAB ใหม่: HISTORY & CORRECTION 🌟 */}
           {activeTab === 'history' && (
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
@@ -1310,8 +1317,7 @@ export default function MaintenanceDashboard() {
                     </thead> 
                     <tbody className="text-sm bg-white"> 
                       {changeHistoryData.map((row, idx) => {
-                        const isConsumable = row.PartID.startsWith('CSM-');
-                        const pName = isConsumable ? consumables.find(c => c.ItemID === row.PartID)?.ItemName || row.PartID : parts.find(p => p.PartID === row.PartID)?.PartName || row.PartID;
+                        const pName = parts.find(p => p.PartID === row.PartID)?.PartName || row.PartID;
                         const mName = machines.find(m => m.MachineID === row.MachineID)?.MachineName || row.MachineID;
                         
                         return (
@@ -1331,13 +1337,12 @@ export default function MaintenanceDashboard() {
                                 <select 
                                   value={row.ReasonType} 
                                   onChange={(e) => handleChangeReason(row.RecordID, e.target.value)}
-                                  className={`w-full p-2 rounded-lg text-xs font-bold border outline-none appearance-none cursor-pointer transition-colors ${row.ReasonType === 'Normal Wear' ? 'bg-red-50 text-red-700 border-red-200' : row.ReasonType === 'Accident' ? 'bg-amber-50 text-amber-700 border-amber-200' : row.ReasonType === 'Consumable' ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
+                                  className={`w-full p-2 rounded-lg text-xs font-bold border outline-none appearance-none cursor-pointer transition-colors ${row.ReasonType === 'Normal Wear' ? 'bg-red-50 text-red-700 border-red-200' : row.ReasonType === 'Accident' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
                                 >
                                   <option value="Normal Wear">Normal Wear</option>
                                   <option value="Accident">Accident</option>
                                   <option value="Improvement">Improvement</option>
                                   <option value="Inspection-OK">Inspection-OK</option>
-                                  <option value="Consumable">Consumable (สิ้นเปลือง)</option>
                                 </select>
                                 <i className="bi bi-pencil-fill absolute right-3 top-1/2 -translate-y-1/2 text-opacity-50 text-[10px] pointer-events-none"></i>
                               </div>
