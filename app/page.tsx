@@ -1259,14 +1259,14 @@ const handleUndoTransaction = (record: any) => {
                         <th className="py-4 px-4 text-center w-16">Action</th>
                         <th className="py-4 px-6">Location</th>
                         <th className="py-4 px-6 text-center w-20">Image</th>
-                        <th className="py-4 px-6 text-blue-600">P/N</th>
-                        <th className="py-4 px-6">Item Name</th>
-                        <th className="py-4 px-6">Model</th>
+                        <th className="py-4 pl-6 pr-2">Item Name</th>
+                        <th className="py-4 px-2">Model</th>
                         <th className="py-4 px-4 text-center">Min (ROP)</th>
                         <th className="py-4 px-4 text-center">Safety</th>
                         <th className="py-4 px-4 text-center">Max</th>
                         <th className="py-4 px-6 border-l border-slate-200/50 bg-slate-100/50 text-center">Current Balance</th>
                         <th className="py-4 px-6 text-center">Status</th>
+                        <th className="py-4 px-6 text-center text-blue-600">P/N</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
@@ -1310,9 +1310,8 @@ const handleUndoTransaction = (record: any) => {
                               )}
                             </td>
                             
-                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle tracking-wider">{item.PartNumber || '-'}</td>
-                            <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ItemName}</td> 
-                            <td className="py-3 px-6 text-[13px] font-bold text-slate-500 align-middle">{item.ItemModel || '-'}</td>
+                            <td className="py-3 pl-6 pr-2 font-bold text-slate-800 text-[14px] align-middle">{item.ItemName}</td> 
+                            <td className="py-3 px-2 text-[13px] font-bold text-slate-500 align-middle">{item.ItemModel || '-'}</td>
                             
                             <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-md border border-slate-200">{min}</span></td>
                             <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1.5 rounded-md border border-orange-200">{safety}</span></td>
@@ -1329,6 +1328,7 @@ const handleUndoTransaction = (record: any) => {
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
                               ) : (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>
+                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle text-center tracking-wider border-l border-slate-100 bg-blue-50/30">{item.PartNumber || '-'}</td>
                               )}
                             </td> 
                           </tr> 
