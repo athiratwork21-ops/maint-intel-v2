@@ -1327,10 +1327,12 @@ const handleUndoTransaction = (record: any) => {
                               ) : isReorder ? (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
                               ) : (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>
-                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle text-center tracking-wider border-l border-slate-100 bg-blue-50/30">{item.PartNumber || '-'}</td>
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>                          
                               )}
                             </td> 
+
+                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle text-center tracking-wider border-l border-slate-100 bg-blue-50/30">{item.PartNumber || '-'}
+                            </td>
                           </tr> 
                         ); 
                       })} 
