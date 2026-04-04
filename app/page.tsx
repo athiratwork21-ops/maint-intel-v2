@@ -524,7 +524,7 @@ const handleUndoTransaction = (record: any) => {
     } else { showToast('Stock data not found for this item', 'error'); }
   };
 
-const handleNewConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleNewConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
     const activeDept = localStorage.getItem('activeDepartment'); 
     let finalImageUrl = ''; const imageFile = formData.get('imageFile') as File;
