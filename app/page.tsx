@@ -584,26 +584,6 @@ const handleUndoTransaction = (record: any) => {
     setIsProcessing(false);
   };
 
-  const handleEditConsumableSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
-    let finalImageUrl = editingConsumableData?.ImageURL || ''; const imageFile = formData.get('imageFile') as File;
-    
-    if (imageFile && imageFile.size > 0) {
-      const fileExt = imageFile.name.split('.').pop(); const fileName = `CSM_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
-      if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
-      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
-    }
-    
-    const { error } = await supabase.from('Consumable').update({
-      ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
-      MinQty: parseInt(formData.get('min') as string) || 10, MaxQty: parseInt(formData.get('max') as string) || 100, SafetyStock: parseInt(formData.get('safety') as string) || 5
-    }).eq('ItemID', editingConsumableData.ItemID);
-    
-    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Item info updated successfully!', 'success'); setEditConsumableOpen(false); fetchAllData(); }
-    setIsProcessing(false);
-  };
-
   const handleConsumableAction = async (e: React.FormEvent<HTMLFormElement>, actionType: 'receive' | 'adjust') => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
