@@ -110,7 +110,7 @@ export default function MaintenanceDashboard() {
   const [changeHistoryData, setChangeHistoryData] = useState<any[]>([]);
   const [historyMonthFilter, setHistoryMonthFilter] = useState(new Date().toISOString().slice(0, 7));
 
-  // 🌟 State ใหม่สำหรับ Modal โยกหมวดหมู่
+  // 🌟 State สำหรับเปิด/ปิดหน้าต่างย้ายหมวดหมู่
   const [moveCategoryModal, setMoveCategoryModal] = useState<{
     isOpen: boolean;
     source: 'part' | 'consumable';
@@ -415,6 +415,87 @@ export default function MaintenanceDashboard() {
     }
   };
   // =========================================================================
+  // 🌟 ฟังก์ชัน: โยกหมวดหมู่ (Move Category)
+  // =========================================================================
+  const openMoveCategory = (source: 'part' | 'consumable', itemId: string) => {
+    setOpenDropdownId(null);
+    const reqs = pendingRequests.filter(r => r.PartID === itemId);
+    if (reqs.length > 0) {
+      return showToast('ไม่สามารถย้ายหมวดหมู่ได้ เนื่องจากมีใบเบิกค้างอยู่ในระบบ กรุณาจ่ายของให้เสร็จสิ้นก่อน', 'error');
+    }
+
+    if (source === 'part') {
+      const p = parts.find(x => x.PartID === itemId);
+      const stocks = stockData.filter(s => s.PartID === itemId);
+      const totalBal = stocks.reduce((sum, s) => sum + (parseInt(s.Balance) || 0), 0);
+      const loc = stocks.length > 0 ? stocks[0].Location : '-';
+      setMoveCategoryModal({ isOpen: true, source, itemData: p, stockBalance: totalBal, location: loc });
+    } else {
+      const c = consumables.find(x => x.ItemID === itemId);
+      setMoveCategoryModal({ isOpen: true, source, itemData: c, stockBalance: parseInt(c.Balance) || 0, location: c.Location || '-' });
+    }
+  };
+
+  const handleMoveCategorySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!moveCategoryModal) return;
+    setIsProcessing(true);
+    const formData = new FormData(e.currentTarget);
+    const activeDept = localStorage.getItem('activeDepartment');
+
+    try {
+      const oldId = moveCategoryModal.source === 'part' ? moveCategoryModal.itemData.PartID : moveCategoryModal.itemData.ItemID;
+
+      if (moveCategoryModal.source === 'part') {
+        const newId = `CSM-${Date.now()}`;
+        const min = parseInt(formData.get('min') as string);
+        const safety = parseInt(formData.get('safety') as string);
+        const max = parseInt(formData.get('max') as string);
+
+        const { error: insErr } = await supabase.from('Consumable').insert({
+          ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '',
+          Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '',
+          Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept
+        });
+        if (insErr) throw insErr;
+
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('Stock').delete().eq('PartID', oldId);
+        await supabase.from('Part').delete().eq('PartID', oldId);
+
+      } else {
+        const newId = `P-${Date.now()}`;
+        const buffer = parseInt(formData.get('buffer') as string);
+
+        const { error: partErr } = await supabase.from('Part').insert({
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '',
+          ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept
+        });
+        if (partErr) throw partErr;
+
+        const { error: stkErr } = await supabase.from('Stock').insert({
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location,
+          Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept
+        });
+        if (stkErr) throw stkErr;
+
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId);
+        await supabase.from('Consumable').delete().eq('ItemID', oldId);
+      }
+
+      showToast('ย้ายหมวดหมู่สำเร็จ! ประวัติและการเบิกยังอยู่ครบ', 'success');
+      setMoveCategoryModal(null);
+      fetchAllData();
+    } catch (error: any) {
+      showToast(`Error: ${error.message}`, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  // =========================================================================
+  // =========================================================================
 
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { setPreviewImage(URL.createObjectURL(file)); } };
@@ -500,6 +581,8 @@ export default function MaintenanceDashboard() {
       case 'ORDER NOW': badgeClass = 'bg-amber-50 text-amber-700 border border-amber-300'; icon = 'bi-exclamation-circle-fill'; actionBtn = ( <div className="flex gap-2 mt-2"> <button onClick={() => handleMarkAsOrdered(report.partId)} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-cart-check"></i> Mark as Ordered</button> <button onClick={() => handleDismissAlert(report.machineId, report.partId, report.partName)} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-eye-slash"></i> Monitor Only</button> </div> ); break;
       case 'ORDERED': badgeClass = 'bg-purple-50 text-purple-700 border border-purple-300 shadow-sm'; icon = 'bi-truck'; actionBtn = ( <div className="flex gap-2 mt-2"> <span className="text-[10px] font-bold text-purple-600 bg-white px-2 py-1 rounded border border-purple-100">Awaiting Delivery...</span></div> ); break;
       case 'OVERDUE': badgeClass = 'bg-red-50 text-red-700 border border-red-300'; icon = 'bi-x-circle-fill'; actionBtn = ( <div className="flex gap-2 mt-2"> <button onClick={() => handleMarkAsOrdered(report.partId)} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-red-300 text-red-700 rounded-lg hover:bg-red-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-cart-check"></i> Mark as Ordered (Urgent)</button> <button onClick={() => handleDismissAlert(report.machineId, report.partId, report.partName)} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-eye-slash"></i> Monitor Only</button> </div> ); break;
+      <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => openMoveCategory('part', row.PartID)} className="w-full px-5 py-3 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Consumables</button>
       default: badgeClass = 'bg-slate-100 text-slate-800'; icon = 'bi-info-circle-fill';
     }
     return (<div className="flex flex-col"><span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm ${badgeClass}`}><i className={`bi ${icon} text-sm`}></i> {report.status}</span>{actionBtn}</div>);
@@ -897,7 +980,8 @@ export default function MaintenanceDashboard() {
                                   <button onClick={() => { setSelectedConsumable(item); setReduceConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Adjust Stock</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
-                                  
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
 
