@@ -422,6 +422,7 @@ export default function MaintenanceDashboard() {
     });
   };
 
+  // 🌟 Fixtures Functions (Upgraded with Borrow/Return logic)
   const handleNewFixtureSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const fNo = formData.get('fixtureNo') as string;
     const ex = fixtures.find(f => f.FixtureNo === fNo); if (ex) { showToast('This Fixture No. already exists!', 'error'); setIsProcessing(false); return; }
@@ -432,7 +433,7 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const { error } = await supabase.from('Fixtures').insert({ FixtureNo: fNo, ModelName: formData.get('modelName'), ImageURL: finalImageUrl, TotalQty: parseInt(formData.get('totalQty') as string) || 0, BrokenQty: 0, DepartmentID: activeDept });
+    const { error } = await supabase.from('Fixtures').insert({ FixtureNo: fNo, ModelName: formData.get('modelName'), ImageURL: finalImageUrl, TotalQty: parseInt(formData.get('totalQty') as string) || 0, BrokenQty: 0, BorrowedQty: 0, DepartmentID: activeDept });
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Added new fixture successfully!', 'success'); setNewFixtureModalOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
@@ -453,11 +454,16 @@ export default function MaintenanceDashboard() {
 
   const handleEditFixtureStock = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const reason = fixtureActionReason; const qty = parseInt(formData.get('qty') as string) || 0;
-    let newTotal = selectedFixture.TotalQty; let newBroken = selectedFixture.BrokenQty;
+    let newTotal = selectedFixture.TotalQty || 0; let newBroken = selectedFixture.BrokenQty || 0; let newBorrowed = selectedFixture.BorrowedQty || 0;
+    const currentAvailable = newTotal - newBroken - newBorrowed;
+
     if (reason === 'New Receive') { newTotal += qty; } 
     else if (reason === 'Repair') { if (qty > newBroken) { showToast('Cannot repair more than broken qty!', 'error'); setIsProcessing(false); return; } newBroken -= qty; } 
     else if (reason === 'Scrap') { if (qty > newBroken) { showToast('Cannot scrap more than broken qty!', 'error'); setIsProcessing(false); return; } newTotal -= qty; newBroken -= qty; }
-    const { error } = await supabase.from('Fixtures').update({ TotalQty: newTotal, BrokenQty: newBroken }).eq('FixtureNo', selectedFixture.FixtureNo);
+    else if (reason === 'Borrow') { if (qty > currentAvailable) { showToast('Not enough usable stock to borrow!', 'error'); setIsProcessing(false); return; } newBorrowed += qty; }
+    else if (reason === 'Return') { if (qty > newBorrowed) { showToast('Cannot return more than borrowed qty!', 'error'); setIsProcessing(false); return; } newBorrowed -= qty; }
+
+    const { error } = await supabase.from('Fixtures').update({ TotalQty: newTotal, BrokenQty: newBroken, BorrowedQty: newBorrowed }).eq('FixtureNo', selectedFixture.FixtureNo);
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Stock updated successfully!', 'success'); setEditFixtureStockOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
@@ -857,6 +863,8 @@ export default function MaintenanceDashboard() {
                   <div onClick={() => setIsFixtureReasonDropdownOpen(!isFixtureReasonDropdownOpen)} className={`w-full p-4 bg-white border rounded-xl flex justify-between items-center cursor-pointer transition-all shadow-sm ${isFixtureReasonDropdownOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-indigo-400'}`}>
                     <span className="font-extrabold text-sm text-slate-700">
                       {fixtureActionReason === 'New Receive' ? <><span className="text-emerald-500 mr-2 text-lg">📦</span> New Receive <span className="text-slate-400 ml-1 font-normal">(รับเข้าใหม่)</span></> : 
+                       fixtureActionReason === 'Borrow' ? <><span className="text-purple-500 mr-2 text-lg">📤</span> Borrow <span className="text-slate-400 ml-1 font-normal">(เบิกยืมใช้งาน)</span></> : 
+                       fixtureActionReason === 'Return' ? <><span className="text-indigo-500 mr-2 text-lg">📥</span> Return <span className="text-slate-400 ml-1 font-normal">(คืนของเข้าตู้)</span></> : 
                        fixtureActionReason === 'Repair' ? <><span className="text-blue-500 mr-2 text-lg">🔧</span> Repair <span className="text-slate-400 ml-1 font-normal">(ซ่อมสำเร็จ)</span></> : 
                        <><span className="text-red-500 mr-2 text-lg">🗑️</span> Scrap <span className="text-slate-400 ml-1 font-normal">(ทิ้ง/แทงจำหน่าย)</span></>}
                     </span>
@@ -866,9 +874,11 @@ export default function MaintenanceDashboard() {
                   {/* Menu Options (มี Animation) */}
                   {isFixtureReasonDropdownOpen && (
                     <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 py-2 ring-1 ring-slate-900/5">
-                      {['New Receive', 'Repair', 'Scrap'].map(reason => (
+                      {['New Receive', 'Borrow', 'Return', 'Repair', 'Scrap'].map(reason => (
                         <div key={reason} onClick={() => { setFixtureActionReason(reason); setIsFixtureReasonDropdownOpen(false); }} className={`px-5 py-3.5 cursor-pointer font-bold text-sm transition-all flex items-center gap-3 ${fixtureActionReason === reason ? 'bg-indigo-50 text-indigo-700 border-l-4 border-indigo-500' : 'text-slate-600 hover:bg-slate-50 border-l-4 border-transparent'}`}>
                           {reason === 'New Receive' ? <><span className="text-emerald-500 text-lg">📦</span> New Receive <span className="text-slate-400 font-normal ml-auto text-xs">รับเข้าใหม่</span></> : 
+                           reason === 'Borrow' ? <><span className="text-purple-500 text-lg">📤</span> Borrow <span className="text-slate-400 font-normal ml-auto text-xs">เบิกยืมใช้งาน</span></> : 
+                           reason === 'Return' ? <><span className="text-indigo-500 text-lg">📥</span> Return <span className="text-slate-400 font-normal ml-auto text-xs">คืนของเข้าตู้</span></> : 
                            reason === 'Repair' ? <><span className="text-blue-500 text-lg">🔧</span> Repair <span className="text-slate-400 font-normal ml-auto text-xs">ซ่อมสำเร็จ</span></> : 
                            <><span className="text-red-500 text-lg">🗑️</span> Scrap <span className="text-slate-400 font-normal ml-auto text-xs">แทงจำหน่าย</span></>}
                         </div>
@@ -1033,11 +1043,72 @@ export default function MaintenanceDashboard() {
                 </div> 
                 <div className="overflow-auto flex-1 relative rounded-b-2xl"> 
                   <table className="w-full text-left border-collapse"> 
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm"><tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider"><th className="py-5 px-6">Machine & Line</th><th className="py-5 px-6">Part Info (MTBF)</th><th className="py-5 px-6">Order Date</th><th className="py-5 px-6">Due Date</th><th className="py-5 px-6">Status & Action</th></tr></thead> 
+                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
+                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
+                        <th className="py-4 px-4 text-center w-16">Action</th>
+                        <th className="py-4 px-6 text-center w-20">Image</th>
+                        <th className="py-4 px-6 text-purple-600">Fixture No.</th>
+                        <th className="py-4 px-6 w-[25%]">Model Name</th>
+                        <th className="py-4 px-4 text-center border-l border-slate-200 bg-slate-100/50">Total</th>
+                        <th className="py-4 px-4 text-center bg-red-50/30 text-red-700">Broken</th>
+                        <th className="py-4 px-4 text-center bg-blue-50/30 text-blue-700">Borrowed</th>
+                        <th className="py-4 px-4 text-center bg-emerald-50/30 text-emerald-700">Available</th>
+                        <th className="py-4 px-6 text-center w-32">Status</th>
+                      </tr>
+                    </thead> 
                     <tbody className="text-sm"> 
-                      {filteredScheduleData.map((row, idx) => ( <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 ${row.status === 'MONITORING' ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100' : ''}`}><td className="py-5 px-6 align-top"><div className="font-bold text-slate-800 text-[15px]">{row.machine}</div><div className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5"><i className="bi bi-geo-alt-fill text-blue-400"></i> {row.line}</div></td><td className="py-5 px-6 align-top"><div className="font-bold text-slate-700">{row.partName}</div><div className="text-xs text-slate-400 mt-1.5">Req: <span className="text-blue-600 font-black">{row.reqQty}</span> pcs <span className="mx-1 opacity-30">|</span> MTBF: <span className="text-emerald-600 font-black">{row.mtbfDays}</span> d</div></td><td className="py-5 px-6 align-top font-bold text-blue-600">{row.orderDate}</td><td className="py-5 px-6 align-top font-bold text-red-500">{row.dueDate}</td><td className="py-5 px-6 align-top">{renderStatusBadge(row)}</td></tr> ))} 
-                      {filteredScheduleData.length === 0 && (<tr><td colSpan={5} className="py-10 text-center text-slate-400 font-bold">No schedule data available</td></tr>)}
-                    </tbody> 
+                      {filteredFixtures.map((item, idx) => { 
+                        const borrowedQty = item.BorrowedQty || 0;
+                        const availableQty = item.TotalQty - item.BrokenQty - borrowedQty;
+                        
+                        let fixStatus = 'Available';
+                        if (availableQty <= 0 && borrowedQty > 0) fixStatus = 'Fully Borrowed';
+                        else if (availableQty <= 0 && item.BrokenQty > 0) fixStatus = 'Needs Repair';
+                        else if (borrowedQty > 0) fixStatus = 'In Use';
+
+                        return ( 
+                          <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
+                            <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
+                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.FixtureNo ? null : item.FixtureNo); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-purple-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
+                              {openDropdownId === item.FixtureNo && (
+                                <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
+                                  <button onClick={() => { setSelectedFixture(item); setFixtureActionReason('New Receive'); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-seam text-lg"></i> Update Stock</button>
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => { setSelectedFixture(item); setPreviewImage(item.ImageURL || null); setEditFixtureInfoOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Fixture Info</button>
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => handleDeleteFixture(item.FixtureNo)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Fixture</button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-6 text-center align-middle">
+                              {item.ImageURL ? ( 
+                                <div className="w-14 h-10 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
+                                  <img src={item.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> 
+                                </div>
+                              ) : ( 
+                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
+                              )}
+                            </td>
+                            <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
+                            <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ModelName || '-'}</td> 
+                            
+                            <td className="py-3 px-4 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-base align-middle text-center">{item.TotalQty}</td> 
+                            <td className="py-3 px-4 bg-red-50/10 font-bold text-red-600 text-base align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
+                            <td className="py-3 px-4 bg-blue-50/10 font-bold text-blue-600 text-base align-middle text-center">{borrowedQty > 0 ? borrowedQty : '-'}</td> 
+                            <td className="py-3 px-4 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{availableQty}</td> 
+                            
+                            <td className="py-3 px-6 align-middle text-center">
+                              {fixStatus === 'Fully Borrowed' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-person-fill-check"></i> FULLY BORROWED</span> :
+                               fixStatus === 'Needs Repair' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> NEEDS REPAIR</span> :
+                               fixStatus === 'In Use' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-blue-50 text-blue-700 border border-blue-200"><i className="bi bi-people-fill"></i> IN USE ({borrowedQty})</span> :
+                               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> AVAILABLE</span>
+                              }
+                            </td>
+                          </tr> 
+                        ); 
+                      })} 
+                      {filteredFixtures.length === 0 && (<tr><td colSpan={9} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
+                    </tbody>
                   </table> 
                 </div> 
               </div> 
