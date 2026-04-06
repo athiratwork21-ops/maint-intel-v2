@@ -314,8 +314,10 @@ const handleUndoTransaction = (record: any) => {
     }
   };
 
-  const handleMarkAsOrdered = async (partId: string) => {
-    const { error } = await supabase.from('Part').update({ PendingOrder: true }).eq('PartID', partId);
+  const handleMarkAsOrdered = async (id: string, type: 'part' | 'consumable' = 'part') => {
+    const table = type === 'part' ? 'Part' : 'Consumable';
+    const idField = type === 'part' ? 'PartID' : 'ItemID';
+    const { error } = await supabase.from(table).update({ PendingOrder: true }).eq(idField, id);
     if (!error) { showToast('Status updated to "ORDERED" successfully!', 'success'); fetchAllData(); } 
     else { showToast(`Error: ${error.message}`, 'error'); }
   };
@@ -601,7 +603,15 @@ const handleUndoTransaction = (record: any) => {
     
     const newBalance = actionType === 'receive' ? currentBalance + qty : qty;
     
-    const { error } = await supabase.from('Consumable').update({ Balance: newBalance }).eq('ItemID', selectedConsumable.ItemID);
+    // 🌟 สร้าง Object สำหรับ Update ข้อมูล
+    const updateData: any = { Balance: newBalance };
+    
+    // 🌟 ถ้าเป็นการรับของเข้า (receive) ให้ปลด PendingOrder กลับเป็น false อัตโนมัติ
+    if (actionType === 'receive') {
+      updateData.PendingOrder = false;
+    }
+
+    const { error } = await supabase.from('Consumable').update(updateData).eq('ItemID', selectedConsumable.ItemID);
     if (!error) {
       showToast(`${actionType === 'receive' ? 'Stock received' : 'Stock adjusted'} successfully!`, 'success');
       setReceiveConsumableOpen(false); setReduceConsumableOpen(false); fetchAllData();
@@ -1150,12 +1160,13 @@ const handleUndoTransaction = (record: any) => {
                         <th className="py-5 px-4 text-center w-16">Action</th>
                         <th className="py-5 px-6">Location</th>
                         <th className="py-5 px-6 text-center w-24">Image</th>
-                        <th className="py-5 px-6">Part Details</th>
+                        <th className="py-5 px-6 w-[35%]">Part Details</th>
                         <th className="py-5 px-6 border-l border-slate-200/50 bg-slate-100/50">Physical</th>
                         <th className="py-5 px-6 bg-red-50/30 text-red-700">Reserved</th>
                         <th className="py-5 px-6 bg-emerald-50/30 text-emerald-700">Available</th>
+                        <th className="py-5 px-6 text-center w-32">Order Status</th>
                       </tr>
-                    </thead> 
+                    </thead>
                     <tbody className="text-sm"> 
                       {filteredStockData.map((row, idx) => { 
                         const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; 
@@ -1225,6 +1236,17 @@ const handleUndoTransaction = (record: any) => {
                               )}
                             </td> 
                             <td className="py-4 px-6 bg-emerald-50/10 align-top pt-5"><span className={`px-3 py-1.5 rounded-full text-[13px] font-bold shadow-sm ${finalAvailable <= 0 ? 'bg-red-500 text-white shadow-red-500/20' : 'bg-emerald-500 text-white shadow-emerald-500/20'}`}>{finalAvailable} Pcs</span></td> 
+                            <td className="py-4 px-6 align-top pt-4 text-center border-l border-slate-50">
+                              {partDetails.PendingOrder ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-sm w-full justify-center">
+                                  <i className="bi bi-truck"></i> ORDERED
+                                </span>
+                              ) : (
+                                <button onClick={() => handleMarkAsOrdered(row.PartID, 'part')} className="inline-flex items-center justify-center w-full gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold bg-white text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 transition-all shadow-sm active:scale-95">
+                                  <i className="bi bi-cart-plus"></i> Mark Order
+                                </button>
+                              )}
+                            </td>
                           </tr> 
                         ); 
                       })} 
@@ -1322,14 +1344,22 @@ const handleUndoTransaction = (record: any) => {
                             </td> 
                             
                             <td className="py-3 px-6 align-middle text-center">
-                              {isCritical ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> Critical</span>
+                              {item.PendingOrder ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-truck"></i> ORDERED</span>
+                              ) : isCritical ? (
+                                <div className="flex flex-col gap-2 items-center">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> Critical</span>
+                                  <button onClick={() => handleMarkAsOrdered(item.ItemID, 'consumable')} className="text-[10px] font-bold bg-white border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors active:scale-95 shadow-sm"><i className="bi bi-cart-check"></i> Mark Ordered</button>
+                                </div>
                               ) : isReorder ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
+                                <div className="flex flex-col gap-2 items-center">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
+                                  <button onClick={() => handleMarkAsOrdered(item.ItemID, 'consumable')} className="text-[10px] font-bold bg-white border border-amber-300 text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition-colors active:scale-95 shadow-sm"><i className="bi bi-cart-check"></i> Mark Ordered</button>
+                                </div>
                               ) : (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>                          
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>
                               )}
-                            </td> 
+                            </td>
 
                             <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle text-center tracking-wider border-l border-slate-100 bg-blue-50/30">{item.PartNumber || '-'}
                             </td>
