@@ -1333,7 +1333,7 @@ const handleUndoTransaction = (record: any) => {
                     <button onClick={() => setNewConsumableModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-pink-600 text-white rounded-xl hover:bg-pink-700 active:scale-95 transition-all shadow-md shadow-pink-600/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> Add Item</button>
                   </div> 
                 </div> 
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search item name or location..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-sm shadow-sm transition-all" /></div></div> 
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search item name, P/N, or location..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-sm shadow-sm transition-all" /></div></div> 
                 
                 <div className="overflow-auto flex-1 relative pb-12 rounded-b-2xl"> 
                   <table className="w-full text-left border-collapse whitespace-nowrap"> 
@@ -1342,13 +1342,13 @@ const handleUndoTransaction = (record: any) => {
                         <th className="py-4 px-4 text-center w-16">Action</th>
                         <th className="py-4 px-6">Location</th>
                         <th className="py-4 px-6 text-center w-20">Image</th>
-                        <th className="py-4 px-6">Item Name</th>
-                        <th className="py-4 px-6">Model</th>
+                        <th className="py-4 px-6">Part Details</th>
                         <th className="py-4 px-4 text-center">Min (ROP)</th>
                         <th className="py-4 px-4 text-center">Safety</th>
                         <th className="py-4 px-4 text-center">Max</th>
                         <th className="py-4 px-6 border-l border-slate-200/50 bg-slate-100/50 text-center">Current Balance</th>
                         <th className="py-4 px-6 text-center">Status</th>
+                        <th className="py-4 px-6 text-center text-blue-600 w-24">P/N</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
@@ -1372,7 +1372,6 @@ const handleUndoTransaction = (record: any) => {
                                   <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
-                                  
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
                                 </div>
@@ -1385,14 +1384,15 @@ const handleUndoTransaction = (record: any) => {
                                   <img src={item.ImageURL} alt={item.ItemName} className="w-full h-full object-contain mix-blend-multiply" /> 
                                 </div>
                               ) : ( 
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300">
-                                  <i className="bi bi-image text-xl"></i> 
-                                </div>
+                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
                               )}
                             </td>
                             
-                            <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ItemName}</td> 
-                            <td className="py-3 px-6 text-[13px] font-bold text-slate-500 align-middle">{item.ItemModel || '-'}</td>
+                            {/* 🌟 แก้ไข: ยุบรวม Item Name กับ Model ให้อยู่ช่องเดียวกัน (Part Details) ไม่มีช่องว่างน่าเกลียดแล้ว! 🌟 */}
+                            <td className="py-3 px-6">
+                              <div className="font-bold text-slate-800 text-[14px]">{item.ItemName}</div>
+                              <div className="text-[11px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{item.ItemModel || '-'}</div>
+                            </td> 
                             
                             <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-md border border-slate-200">{min}</span></td>
                             <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1.5 rounded-md border border-orange-200">{safety}</span></td>
@@ -1403,14 +1403,25 @@ const handleUndoTransaction = (record: any) => {
                             </td> 
                             
                             <td className="py-3 px-6 align-middle text-center">
-                              {isCritical ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> Critical</span>
+                              {item.PendingOrder ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-truck"></i> ORDERED</span>
+                              ) : isCritical ? (
+                                <div className="flex flex-col gap-2 items-center">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> Critical</span>
+                                  <button onClick={() => handleMarkAsOrdered(item.ItemID, 'consumable')} className="text-[10px] font-bold bg-white border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors active:scale-95 shadow-sm"><i className="bi bi-cart-check"></i> Mark Ordered</button>
+                                </div>
                               ) : isReorder ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
+                                <div className="flex flex-col gap-2 items-center">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
+                                  <button onClick={() => handleMarkAsOrdered(item.ItemID, 'consumable')} className="text-[10px] font-bold bg-white border border-amber-300 text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition-colors active:scale-95 shadow-sm"><i className="bi bi-cart-check"></i> Mark Ordered</button>
+                                </div>
                               ) : (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>
                               )}
                             </td> 
+                            
+                            {/* 🌟 P/N ย้ายมาอยู่ขวาสุดตรงนี้ครับ 🌟 */}
+                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle text-center tracking-wider border-l border-slate-100 bg-blue-50/30">{item.PartNumber || '-'}</td>
                           </tr> 
                         ); 
                       })} 
