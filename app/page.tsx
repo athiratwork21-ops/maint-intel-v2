@@ -86,6 +86,9 @@ export default function MaintenanceDashboard() {
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [isNewFixtureModalOpen, setNewFixtureModalOpen] = useState(false);
   const [isEditFixtureStockOpen, setEditFixtureStockOpen] = useState(false);
+  const [isEditFixtureInfoOpen, setEditFixtureInfoOpen] = useState(false); // สำหรับหน้าต่างแก้ข้อมูล/แก้รูป
+  const [fixtureActionReason, setFixtureActionReason] = useState('New Receive'); // State สำหรับ Custom Dropdown
+  const [isFixtureReasonDropdownOpen, setIsFixtureReasonDropdownOpen] = useState(false); // State เปิด/ปิด Dropdown
   const [selectedFixture, setSelectedFixture] = useState<any>(null);
   
   const [isReceiveStockModalOpen, setReceiveStockModalOpen] = useState(false);
@@ -463,7 +466,7 @@ const handleUndoTransaction = (record: any) => {
   };
 
 // =========================================================================
-  // 🌟 Fixtures Functions
+  // 🌟 Fixtures Functions (Upgraded with Images & Custom Dropdown)
   // =========================================================================
   const handleNewFixtureSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
@@ -473,21 +476,45 @@ const handleUndoTransaction = (record: any) => {
     const ex = fixtures.find(f => f.FixtureNo === fNo);
     if (ex) { showToast('This Fixture No. already exists!', 'error'); setIsProcessing(false); return; }
 
+    let finalImageUrl = ''; const imageFile = formData.get('imageFile') as File;
+    if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop(); const fileName = `FIX_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
+      if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
+      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
+    }
+
     const { error } = await supabase.from('Fixtures').insert({
-      FixtureNo: fNo,
-      ModelName: formData.get('modelName'),
-      TotalQty: parseInt(formData.get('totalQty') as string) || 0,
-      BrokenQty: 0,
-      DepartmentID: activeDept
+      FixtureNo: fNo, ModelName: formData.get('modelName'), ImageURL: finalImageUrl,
+      TotalQty: parseInt(formData.get('totalQty') as string) || 0, BrokenQty: 0, DepartmentID: activeDept
     });
     
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Added new fixture successfully!', 'success'); setNewFixtureModalOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
 
+  const handleEditFixtureInfoSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    let finalImageUrl = selectedFixture?.ImageURL || ''; const imageFile = formData.get('imageFile') as File;
+    
+    if (imageFile && imageFile.size > 0) {
+      const fileExt = imageFile.name.split('.').pop(); const fileName = `FIX_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('part-images').upload(fileName, imageFile);
+      if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
+      const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
+    }
+
+    const { error } = await supabase.from('Fixtures').update({
+      ModelName: formData.get('modelName'), ImageURL: finalImageUrl
+    }).eq('FixtureNo', selectedFixture.FixtureNo);
+    
+    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Fixture info updated!', 'success'); setEditFixtureInfoOpen(false); fetchAllData(); }
+    setIsProcessing(false);
+  };
+
   const handleEditFixtureStock = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
-    const reason = formData.get('reason') as string;
+    const reason = fixtureActionReason; // 🌟 ใช้ State จาก Custom Dropdown แทน Native Select
     const qty = parseInt(formData.get('qty') as string) || 0;
     
     let newTotal = selectedFixture.TotalQty;
@@ -497,10 +524,10 @@ const handleUndoTransaction = (record: any) => {
       newTotal += qty;
     } else if (reason === 'Repair') {
       if (qty > newBroken) { showToast('Cannot repair more than broken quantity!', 'error'); setIsProcessing(false); return; }
-      newBroken -= qty; // หักออกจากของที่พัง
+      newBroken -= qty; 
     } else if (reason === 'Scrap') {
       if (qty > newBroken) { showToast('Cannot scrap more than broken quantity!', 'error'); setIsProcessing(false); return; }
-      newTotal -= qty;  // หักออกทั้งยอดรวมและยอดพัง
+      newTotal -= qty;  
       newBroken -= qty;
     }
 
@@ -1416,35 +1443,45 @@ const handleUndoTransaction = (record: any) => {
                     <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
                       <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
                         <th className="py-4 px-4 text-center w-16">Action</th>
+                        <th className="py-4 px-6 text-center w-20">Image</th>
                         <th className="py-4 px-6 text-purple-600">Fixture No.</th>
                         <th className="py-4 px-6">Model Name</th>
                         <th className="py-4 px-6 text-center border-l border-slate-200 bg-slate-100/50">Total Qty</th>
                         <th className="py-4 px-6 text-center bg-red-50/30 text-red-700">Broken Qty</th>
                         <th className="py-4 px-6 text-center bg-emerald-50/30 text-emerald-700">Usable Qty</th>
                       </tr>
-                    </thead> 
+                    </thead>
                     <tbody className="text-sm"> 
                       {fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase())).map((item, idx) => { 
                         const usableQty = item.TotalQty - item.BrokenQty;
 
                         return ( 
-                          <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
-                            <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
+                          <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
                               <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.FixtureNo ? null : item.FixtureNo); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-purple-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
                               {openDropdownId === item.FixtureNo && (
-                                <div className="absolute left-14 top-2 w-48 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
-                                  <button onClick={() => { setSelectedFixture(item); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Stock</button>
+                                <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
+                                  <button onClick={() => { setSelectedFixture(item); setFixtureActionReason('New Receive'); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-seam text-lg"></i> Update Stock</button>
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => { setSelectedFixture(item); setPreviewImage(item.ImageURL || null); setEditFixtureInfoOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Fixture Info</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteFixture(item.FixtureNo)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Fixture</button>
                                 </div>
                               )}
                             </td>
+                            <td className="py-3 px-6 text-center align-middle">
+                              {item.ImageURL ? ( 
+                                <div className="w-14 h-10 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
+                                  <img src={item.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> 
+                                </div>
+                              ) : ( 
+                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
+                              )}
+                            </td>
                             <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
                             <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ModelName || '-'}</td> 
-                            
                             <td className="py-3 px-6 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-lg align-middle text-center">{item.TotalQty}</td> 
                             <td className="py-3 px-6 bg-red-50/10 font-bold text-red-600 text-lg align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
-                            <td className="py-3 px-6 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{usableQty}</td> 
+                            <td className="py-3 px-6 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{usableQty}</td>
                           </tr> 
                         ); 
                       })} 
@@ -1456,60 +1493,124 @@ const handleUndoTransaction = (record: any) => {
             </div> 
           )}
 
-      {/* Modal: New Fixture */}
+      {/* 🌟 Modal: New Fixture (พร้อมอัปโหลดรูป) 🌟 */}
       {isNewFixtureModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-purple-500 flex flex-col">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-purple-500 flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-tools text-purple-500 bg-purple-50 p-2 rounded-lg"></i> Add New Fixture</h3>
               <button onClick={() => setNewFixtureModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
             </div>
-            <form className="p-8 space-y-5 bg-slate-50/30" onSubmit={handleNewFixtureSubmit}>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required placeholder="e.g. FIX-001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required placeholder="Model name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
-              <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/30 disabled:opacity-50 text-[15px]"><i className="bi bi-check-lg mr-2"></i>Create Fixture</button>
+            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewFixtureSubmit}>
+              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
+                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Fixture Image</label>
+                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-purple-400 shadow-inner">
+                  {previewImage ? ( <img src={previewImage} className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )}
+                  <label className="absolute bottom-4 left-4 bg-purple-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-purple-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required placeholder="e.g. FIX-001" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required placeholder="Model name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
+                <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-check-lg mr-2"></i>Create Fixture</button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal: Edit Fixture Stock */}
+      {/* 🌟 Modal: Edit Fixture Info (แก้รูปและชื่อ) 🌟 */}
+      {isEditFixtureInfoOpen && selectedFixture && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-fill text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Fixture Info</h3>
+              <button onClick={() => setEditFixtureInfoOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditFixtureInfoSubmit}>
+              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
+                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Fixture Image</label>
+                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner">
+                  {previewImage ? ( <img src={previewImage} className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )}
+                  <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No.</label>
+                  <div className="w-full p-4 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-500 text-sm cursor-not-allowed">{selectedFixture.FixtureNo}</div>
+                  <p className="text-[10px] text-slate-400 mt-1">Fixture ID cannot be changed.</p>
+                </div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required defaultValue={selectedFixture.ModelName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
+                <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-save mr-2"></i>Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 Modal: Edit Fixture Stock (ล้ำๆ ด้วย Custom Dropdown) 🌟 */}
       {isEditFixtureStockOpen && selectedFixture && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Stock</h3>
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-box-seam text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Update Stock</h3>
               <button onClick={() => setEditFixtureStockOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
             </div>
             <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleEditFixtureStock}>
-              <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                <div className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider mb-1">Target Fixture</div>
-                <div className="font-black text-indigo-700 text-lg">{selectedFixture.FixtureNo}</div>
-                <div className="text-sm font-bold text-slate-600 mt-1">{selectedFixture.ModelName}</div>
+              
+              {/* Card แสดงของที่กำลังทำรายการ */}
+              <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <div className="w-12 h-12 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
+                  {selectedFixture.ImageURL ? <img src={selectedFixture.ImageURL} className="w-full h-full object-contain mix-blend-multiply p-1" /> : <i className="bi bi-image text-indigo-300 text-lg"></i>}
+                </div>
+                <div>
+                  <div className="font-black text-slate-800 text-[14px] leading-tight">{selectedFixture.FixtureNo}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 font-bold truncate max-w-[200px]">{selectedFixture.ModelName}</div>
+                </div>
               </div>
               
+              {/* 🌟 Custom Dropdown ล้ำๆ 🌟 */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Select Reason</label>
+                <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">Select Action Reason</label>
                 <div className="relative">
-                  <select name="reason" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 appearance-none shadow-sm">
-                    <option value="New Receive">New Receive</option>
-                    <option value="Repair">Repair</option>
-                    <option value="Scrap">Scrap</option>
-                  </select>
-                  <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                  <div onClick={() => setIsFixtureReasonDropdownOpen(!isFixtureReasonDropdownOpen)} className={`w-full p-4 bg-white border rounded-xl flex justify-between items-center cursor-pointer transition-all shadow-sm ${isFixtureReasonDropdownOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-indigo-400'}`}>
+                    <span className="font-extrabold text-sm text-slate-700">
+                      {fixtureActionReason === 'New Receive' ? <><span className="text-emerald-500 mr-2 text-lg">📦</span> New Receive <span className="text-slate-400 ml-1 font-normal">(รับเข้าใหม่)</span></> : 
+                       fixtureActionReason === 'Repair' ? <><span className="text-blue-500 mr-2 text-lg">🔧</span> Repair <span className="text-slate-400 ml-1 font-normal">(ซ่อมสำเร็จ)</span></> : 
+                       <><span className="text-red-500 mr-2 text-lg">🗑️</span> Scrap <span className="text-slate-400 ml-1 font-normal">(ทิ้ง/แทงจำหน่าย)</span></>}
+                    </span>
+                    <i className={`bi bi-chevron-down text-slate-400 transition-transform duration-300 ${isFixtureReasonDropdownOpen ? 'rotate-180 text-indigo-500' : ''}`}></i>
+                  </div>
+
+                  {/* Menu Options (มี Animation) */}
+                  {isFixtureReasonDropdownOpen && (
+                    <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 py-2 ring-1 ring-slate-900/5">
+                      {['New Receive', 'Repair', 'Scrap'].map(reason => (
+                        <div key={reason} onClick={() => { setFixtureActionReason(reason); setIsFixtureReasonDropdownOpen(false); }} className={`px-5 py-3.5 cursor-pointer font-bold text-sm transition-all flex items-center gap-3 ${fixtureActionReason === reason ? 'bg-indigo-50 text-indigo-700 border-l-4 border-indigo-500' : 'text-slate-600 hover:bg-slate-50 border-l-4 border-transparent'}`}>
+                          {reason === 'New Receive' ? <><span className="text-emerald-500 text-lg">📦</span> New Receive <span className="text-slate-400 font-normal ml-auto text-xs">รับเข้าใหม่</span></> : 
+                           reason === 'Repair' ? <><span className="text-blue-500 text-lg">🔧</span> Repair <span className="text-slate-400 font-normal ml-auto text-xs">ซ่อมสำเร็จ</span></> : 
+                           <><span className="text-red-500 text-lg">🗑️</span> Scrap <span className="text-slate-400 font-normal ml-auto text-xs">แทงจำหน่าย</span></>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Quantity</label>
                 <div className="flex items-center shadow-sm rounded-xl">
-                  <input type="number" name="qty" min="1" defaultValue={1} required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow z-10 text-lg font-bold text-indigo-600" />
+                  <input type="number" name="qty" min="1" defaultValue={1} required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow z-10 text-xl font-black text-indigo-600" />
                   <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span>
                 </div>
+                {fixtureActionReason !== 'New Receive' && (
+                  <p className="text-[11px] font-bold text-amber-600 mt-2 bg-amber-50 p-2 rounded-lg border border-amber-100"><i className="bi bi-info-circle-fill mr-1"></i> จะนำไปหักลบออกจากยอดของพัง (Broken) อัตโนมัติ</p>
+                )}
               </div>
 
-              <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Confirm Action</button>
+              <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Confirm Update</button>
             </form>
           </div>
         </div>
