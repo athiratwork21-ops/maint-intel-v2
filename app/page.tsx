@@ -80,7 +80,13 @@ export default function MaintenanceDashboard() {
   };
 
   const [activeTab, setActiveTab] = useState('dashboard'); 
-  const [expandedGroups, setExpandedGroups] = useState({ Overview: true, Operations: true, MasterData: true });
+  const [expandedGroups, setExpandedGroups] = useState({ Workspace: true, Inventory: true, Operations: true, Settings: true });
+  
+  // 🌟 State for Fixtures
+  const [fixtures, setFixtures] = useState<any[]>([]);
+  const [isNewFixtureModalOpen, setNewFixtureModalOpen] = useState(false);
+  const [isEditFixtureStockOpen, setEditFixtureStockOpen] = useState(false);
+  const [selectedFixture, setSelectedFixture] = useState<any>(null);
   
   const [isReceiveStockModalOpen, setReceiveStockModalOpen] = useState(false);
   const [isReduceStockModalOpen, setReduceStockModalOpen] = useState(false);
@@ -175,6 +181,9 @@ export default function MaintenanceDashboard() {
 
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', activeDept);
       setConsumables(consData || []);
+
+      const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', activeDept);
+      setFixtures(fixData || []);
 
       fetchHistoryData(activeDept);
 
@@ -452,6 +461,68 @@ const handleUndoTransaction = (record: any) => {
       setIsProcessing(false);
     }
   };
+
+// =========================================================================
+  // 🌟 Fixtures Functions
+  // =========================================================================
+  const handleNewFixtureSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    const activeDept = localStorage.getItem('activeDepartment');
+    const fNo = formData.get('fixtureNo') as string;
+    
+    const ex = fixtures.find(f => f.FixtureNo === fNo);
+    if (ex) { showToast('This Fixture No. already exists!', 'error'); setIsProcessing(false); return; }
+
+    const { error } = await supabase.from('Fixtures').insert({
+      FixtureNo: fNo,
+      ModelName: formData.get('modelName'),
+      TotalQty: parseInt(formData.get('totalQty') as string) || 0,
+      BrokenQty: 0,
+      DepartmentID: activeDept
+    });
+    
+    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Added new fixture successfully!', 'success'); setNewFixtureModalOpen(false); fetchAllData(); }
+    setIsProcessing(false);
+  };
+
+  const handleEditFixtureStock = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget);
+    const reason = formData.get('reason') as string;
+    const qty = parseInt(formData.get('qty') as string) || 0;
+    
+    let newTotal = selectedFixture.TotalQty;
+    let newBroken = selectedFixture.BrokenQty;
+
+    if (reason === 'New Receive') {
+      newTotal += qty;
+    } else if (reason === 'Repair') {
+      if (qty > newBroken) { showToast('Cannot repair more than broken quantity!', 'error'); setIsProcessing(false); return; }
+      newBroken -= qty; // หักออกจากของที่พัง
+    } else if (reason === 'Scrap') {
+      if (qty > newBroken) { showToast('Cannot scrap more than broken quantity!', 'error'); setIsProcessing(false); return; }
+      newTotal -= qty;  // หักออกทั้งยอดรวมและยอดพัง
+      newBroken -= qty;
+    }
+
+    const { error } = await supabase.from('Fixtures').update({ TotalQty: newTotal, BrokenQty: newBroken }).eq('FixtureNo', selectedFixture.FixtureNo);
+    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Stock updated successfully!', 'success'); setEditFixtureStockOpen(false); fetchAllData(); }
+    setIsProcessing(false);
+  };
+
+  const handleDeleteFixture = (fixtureNo: string) => {
+    setOpenDropdownId(null);
+    setConfirmDialog({
+      isOpen: true, title: 'Delete Fixture', isDanger: true,
+      message: `Are you sure you want to delete Fixture No: ${fixtureNo}?\nThis cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null); setIsProcessing(true);
+        const { error } = await supabase.from('Fixtures').delete().eq('FixtureNo', fixtureNo);
+        if (!error) { showToast(`Fixture deleted successfully.`, 'success'); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error');
+        setIsProcessing(false);
+      }
+    });
+  };
+  
   // =========================================================================
   
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
@@ -974,57 +1045,80 @@ const handleUndoTransaction = (record: any) => {
           <span className="ml-5 font-bold text-white text-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap tracking-wide">Maint. Intel</span>
         </div> 
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide py-6"> 
-          <button onClick={() => toggleGroup('Overview')} className="flex items-center justify-between w-full px-6 py-3 text-[11px] font-bold tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:text-white whitespace-nowrap">
-             <span>Overview</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Overview ? 'rotate-180' : ''}`}></i>
-          </button> 
-          <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Overview ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0'}`}> 
-            <a onClick={() => setActiveTab('dashboard')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'dashboard' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-grid-1x2 text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Dashboard</span>
-            </a> 
-            <a onClick={() => setActiveTab('stock')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'stock' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-box-seam text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Current Stock</span>
-            </a> 
-            <a onClick={() => setActiveTab('consumables')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'consumables' ? 'border-pink-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-box2-heart text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Consumables</span>
-            </a> 
-          </div> 
+        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide py-6 space-y-2"> 
           
-          <button onClick={() => toggleGroup('Operations')} className="flex items-center justify-between w-full px-6 py-3 text-[11px] font-bold tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-4 hover:text-white whitespace-nowrap">
-             <span>Operations</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Operations ? 'rotate-180' : ''}`}></i>
-          </button> 
-          <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Operations ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0'}`}> 
-            <a onClick={() => setActiveTab('requests')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'requests' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-ticket-detailed text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Request Queue</span>
-            </a> 
-            <a onClick={() => setActiveTab('log-record')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'log-record' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-tools text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Log Record</span>
-            </a>
-            {/* 🌟 Tab ใหม่ History */}
-            <a onClick={() => setActiveTab('history')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'history' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-clock-history text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">History & Correction</span>
-            </a> 
-          </div> 
+          {/* GROUP 1: WORKSPACE */}
+          <div>
+            <button onClick={() => toggleGroup('Workspace')} className="flex items-center justify-between w-full px-6 py-3 text-[10px] font-black tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:text-white whitespace-nowrap">
+              <span>Workspace</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Workspace ? 'rotate-180' : ''}`}></i>
+            </button> 
+            <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Workspace ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0'}`}> 
+              <a onClick={() => setActiveTab('dashboard')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'dashboard' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-grid-1x2 text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Dashboard</span>
+              </a> 
+            </div>
+          </div>
+
+          {/* GROUP 2: INVENTORY (รวมมิตรของทั้งหมด) */}
+          <div>
+            <button onClick={() => toggleGroup('Inventory')} className="flex items-center justify-between w-full px-6 py-3 text-[10px] font-black tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:text-white whitespace-nowrap">
+              <span>Inventory</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Inventory ? 'rotate-180' : ''}`}></i>
+            </button> 
+            <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Inventory ? 'max-h-[300px] opacity-100' : 'max-h-0 opacity-0'}`}> 
+              <a onClick={() => setActiveTab('stock')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'stock' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-box-seam text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Spare Parts</span>
+              </a> 
+              <a onClick={() => setActiveTab('consumables')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'consumables' ? 'border-pink-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-box2-heart text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Consumables</span>
+              </a> 
+              <a onClick={() => setActiveTab('fixtures')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'fixtures' ? 'border-purple-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-tools text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Fixtures</span>
+              </a> 
+            </div>
+          </div>
           
-          <button onClick={() => toggleGroup('MasterData')} className="flex items-center justify-between w-full px-6 py-3 text-[11px] font-bold tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-4 hover:text-white whitespace-nowrap">
-             <span>Master Data</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.MasterData ? 'rotate-180' : ''}`}></i>
-          </button> 
-          <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.MasterData ? 'max-h-[150px] opacity-100' : 'max-h-0 opacity-0'}`}> 
-            <a onClick={() => setActiveTab('machines')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'machines' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-robot text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Machines</span>
-            </a> 
-            <a onClick={() => setActiveTab('basic-info')} className={`relative flex items-center h-14 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'basic-info' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
-               <i className="bi bi-list-columns-reverse text-xl min-w-[24px] text-center"></i>
-               <span className="ml-5 font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Basic Info</span>
-            </a> 
-          </div> 
+          {/* GROUP 3: OPERATIONS */}
+          <div>
+            <button onClick={() => toggleGroup('Operations')} className="flex items-center justify-between w-full px-6 py-3 text-[10px] font-black tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:text-white whitespace-nowrap">
+              <span>Operations</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Operations ? 'rotate-180' : ''}`}></i>
+            </button> 
+            <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Operations ? 'max-h-[300px] opacity-100' : 'max-h-0 opacity-0'}`}> 
+              <a onClick={() => setActiveTab('requests')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'requests' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-ticket-detailed text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Request Queue</span>
+              </a> 
+              <a onClick={() => setActiveTab('log-record')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'log-record' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-wrench-adjustable text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Manual Log</span>
+              </a>
+              <a onClick={() => setActiveTab('history')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'history' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-clock-history text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">History & Undo</span>
+              </a> 
+            </div>
+          </div>
+          
+          {/* GROUP 4: SETTINGS */}
+          <div>
+            <button onClick={() => toggleGroup('Settings')} className="flex items-center justify-between w-full px-6 py-3 text-[10px] font-black tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:text-white whitespace-nowrap">
+              <span>Settings</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Settings ? 'rotate-180' : ''}`}></i>
+            </button> 
+            <div className={`overflow-hidden transition-all duration-300 flex flex-col ${expandedGroups.Settings ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0'}`}> 
+              <a onClick={() => setActiveTab('machines')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'machines' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-robot text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Machines</span>
+              </a> 
+              <a onClick={() => setActiveTab('basic-info')} className={`relative flex items-center h-12 cursor-pointer transition-colors border-l-[3px] pl-[22px] ${activeTab === 'basic-info' ? 'border-blue-500 bg-[#1e293b] text-white' : 'border-transparent hover:bg-[#1e293b] hover:text-white'}`}>
+                <i className="bi bi-list-columns-reverse text-[18px] min-w-[24px] text-center"></i>
+                <span className="ml-5 font-bold text-sm opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300">Basic Info</span>
+              </a> 
+            </div>
+          </div>
+
         </div> 
       </nav>
 
@@ -1040,6 +1134,14 @@ const handleUndoTransaction = (record: any) => {
           </div> 
         </header>
 
+        {/* 🌟 Injected Sub-Tabs (โผล่มาเฉพาะตอนอยู่หน้า Inventory) 🌟 */}
+        {['stock', 'consumables', 'fixtures'].includes(activeTab) && (
+           <div className="bg-white border-b border-slate-200 px-10 flex gap-8 shrink-0 relative z-20">
+               <button onClick={() => setActiveTab('stock')} className={`py-4 text-[13px] font-extrabold border-b-[3px] transition-all ${activeTab === 'stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><i className="bi bi-box-seam mr-2"></i>Spare Parts</button>
+               <button onClick={() => setActiveTab('consumables')} className={`py-4 text-[13px] font-extrabold border-b-[3px] transition-all ${activeTab === 'consumables' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><i className="bi bi-box2-heart mr-2"></i>Consumables</button>
+               <button onClick={() => setActiveTab('fixtures')} className={`py-4 text-[13px] font-extrabold border-b-[3px] transition-all ${activeTab === 'fixtures' ? 'border-purple-500 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><i className="bi bi-tools mr-2"></i>Fixtures & Jigs</button>
+           </div>
+        )}
         <div className="flex-1 relative overflow-hidden">
           
           {/* TAB: DASHBOARD */}
@@ -1293,8 +1395,126 @@ const handleUndoTransaction = (record: any) => {
                 </div> 
               </div> 
             </div> 
+          )}  
+
+          {/* 🌟 TAB: FIXTURES */}
+          {activeTab === 'fixtures' && (
+            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500"> 
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0"> 
+                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0"> 
+                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Fixtures Inventory</h2> 
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
+                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div> 
+                    <button onClick={() => setNewFixtureModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition-all shadow-md shadow-purple-600/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> Add Fixture</button>
+                  </div> 
+                </div> 
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search Fixture No. or Model..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm shadow-sm transition-all" /></div></div> 
+                
+                <div className="overflow-auto flex-1 relative pb-12 rounded-b-2xl"> 
+                  <table className="w-full text-left border-collapse whitespace-nowrap"> 
+                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
+                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
+                        <th className="py-4 px-4 text-center w-16">Action</th>
+                        <th className="py-4 px-6 text-purple-600">Fixture No.</th>
+                        <th className="py-4 px-6">Model Name</th>
+                        <th className="py-4 px-6 text-center border-l border-slate-200 bg-slate-100/50">Total Qty</th>
+                        <th className="py-4 px-6 text-center bg-red-50/30 text-red-700">Broken Qty</th>
+                        <th className="py-4 px-6 text-center bg-emerald-50/30 text-emerald-700">Usable Qty</th>
+                      </tr>
+                    </thead> 
+                    <tbody className="text-sm"> 
+                      {fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase())).map((item, idx) => { 
+                        const usableQty = item.TotalQty - item.BrokenQty;
+
+                        return ( 
+                          <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
+                            <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
+                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.FixtureNo ? null : item.FixtureNo); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-purple-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
+                              {openDropdownId === item.FixtureNo && (
+                                <div className="absolute left-14 top-2 w-48 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
+                                  <button onClick={() => { setSelectedFixture(item); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Stock</button>
+                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
+                                  <button onClick={() => handleDeleteFixture(item.FixtureNo)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Fixture</button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
+                            <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ModelName || '-'}</td> 
+                            
+                            <td className="py-3 px-6 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-lg align-middle text-center">{item.TotalQty}</td> 
+                            <td className="py-3 px-6 bg-red-50/10 font-bold text-red-600 text-lg align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
+                            <td className="py-3 px-6 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{usableQty}</td> 
+                          </tr> 
+                        ); 
+                      })} 
+                      {fixtures.length === 0 && (<tr><td colSpan={6} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
+                    </tbody> 
+                  </table> 
+                </div> 
+              </div> 
+            </div> 
           )}
 
+      {/* Modal: New Fixture */}
+      {isNewFixtureModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-purple-500 flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-tools text-purple-500 bg-purple-50 p-2 rounded-lg"></i> Add New Fixture</h3>
+              <button onClick={() => setNewFixtureModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            <form className="p-8 space-y-5 bg-slate-50/30" onSubmit={handleNewFixtureSubmit}>
+              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required placeholder="e.g. FIX-001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
+              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required placeholder="Model name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
+              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
+              <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/30 disabled:opacity-50 text-[15px]"><i className="bi bi-check-lg mr-2"></i>Create Fixture</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Fixture Stock */}
+      {isEditFixtureStockOpen && selectedFixture && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Stock</h3>
+              <button onClick={() => setEditFixtureStockOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
+            </div>
+            <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleEditFixtureStock}>
+              <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                <div className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider mb-1">Target Fixture</div>
+                <div className="font-black text-indigo-700 text-lg">{selectedFixture.FixtureNo}</div>
+                <div className="text-sm font-bold text-slate-600 mt-1">{selectedFixture.ModelName}</div>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Select Reason</label>
+                <div className="relative">
+                  <select name="reason" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 appearance-none shadow-sm">
+                    <option value="New Receive">New Receive</option>
+                    <option value="Repair">Repair</option>
+                    <option value="Scrap">Scrap</option>
+                  </select>
+                  <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Quantity</label>
+                <div className="flex items-center shadow-sm rounded-xl">
+                  <input type="number" name="qty" min="1" defaultValue={1} required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow z-10 text-lg font-bold text-indigo-600" />
+                  <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span>
+                </div>
+              </div>
+
+              <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Confirm Action</button>
+            </form>
+          </div>
+        </div>
+      )}
+          
           {/* TAB: MACHINES */}
           {activeTab === 'machines' && ( 
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500"> 
