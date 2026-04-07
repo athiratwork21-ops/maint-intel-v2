@@ -1526,10 +1526,6 @@ export default function MaintenanceDashboard() {
                               </button>
                             </div>
                           </td>
-                            <button onClick={() => handleToggleMachineStatus(m.MachineID, m.Active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${m.Active !== false ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ${m.Active !== false ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
-                          </td>
                         </tr> 
                       ))} 
                       {machines.length === 0 && (<tr><td colSpan={4} className="py-10 text-center text-slate-400 font-bold">No data available</td></tr>)}
