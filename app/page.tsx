@@ -500,21 +500,62 @@ export default function MaintenanceDashboard() {
         setConfirmDialog(null); setIsProcessing(true); const activeDept = localStorage.getItem('activeDepartment');
         try {
           for (let i = 0; i < group.items.length; i++) {
-            const req = group.items[i]; const reqIdText = req.RequestID; const numericRecordId = `${Date.now()}${i}`; const pId = req.PartID; const mId = req.MachineID; const qty = req.Qty; const isConsumable = pId.startsWith('CSM-');
-            if (isConsumable) {
+            const req = group.items[i]; 
+            const reqIdText = req.RequestID; 
+            const numericRecordId = `${Date.now()}${i}`; 
+            const pId = req.PartID; 
+            const mId = req.MachineID; 
+            const qty = req.Qty; 
+            const reason = req.Reason; // 🌟 ใช้ Reason เป็นตัวแยกประเภทของ
+
+            // 1️⃣ ถ้าเป็นของสิ้นเปลือง
+            if (reason === 'Consumable' || pId.startsWith('CSM-')) {
               const cons = consumables.find(c => c.ItemID === pId);
-              if (cons) { const newBal = Math.max(0, (parseInt(cons.Balance)||0) - qty); await supabase.from('Consumable').update({ Balance: newBal }).eq('ItemID', pId); }
-            } else {
+              if (cons) { 
+                const newBal = Math.max(0, (parseInt(cons.Balance)||0) - qty); 
+                const { error: updErr } = await supabase.from('Consumable').update({ Balance: newBal }).eq('ItemID', pId); 
+                if (updErr) throw updErr;
+              }
+            } 
+            // 2️⃣ ถ้าเป็นการยืมเครื่องมือ (Fixtures) 🌟 ลอจิกใหม่!
+            else if (reason === 'Borrow') {
+              const fix = fixtures.find(f => f.FixtureNo === pId);
+              if (fix) {
+                const newBorrowed = (parseInt(fix.BorrowedQty)||0) + qty;
+                const { error: updErr } = await supabase.from('Fixtures').update({ BorrowedQty: newBorrowed }).eq('FixtureNo', pId);
+                if (updErr) throw updErr;
+              }
+            } 
+            // 3️⃣ ถ้าเป็นอะไหล่ (Spare Parts) 
+            else {
               const pos = req.Position || '-'; 
-              const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: new Date().toISOString().split('T')[0], ReasonType: req.Reason, "Required Qty": qty, DepartmentID: activeDept, Position: pos }); if (chErr) throw chErr;
-              const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: req.PickerName, LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) throw plErr;
+              
+              // บันทึกลงประวัติ ChangeHistory (คิด MTBF)
+              const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: new Date().toISOString().split('T')[0], ReasonType: reason, "Required Qty": qty, DepartmentID: activeDept, Position: pos }); 
+              if (chErr) throw chErr;
+              
+              // บันทึกลง Log เบิกของ
+              const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: req.PickerName, LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); 
+              if (plErr) throw plErr;
+              
+              // ตัดสต๊อกอะไหล่
               const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); 
-              if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: Math.max(0, (parseInt(tStk.Balance)||0) - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); }
+              if (stk && stk.length > 0) { 
+                const tStk = stk[0]; 
+                await supabase.from('Stock').update({ Balance: Math.max(0, (parseInt(tStk.Balance)||0) - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); 
+              }
             }
-            const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); if (reqErr) throw reqErr;
+
+            // อัปเดตสถานะใบเบิกเป็น Approved
+            const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); 
+            if (reqErr) throw reqErr;
           }
-          showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData(); 
-        } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
+          showToast('อนุมัติจ่ายของและตัดสต๊อกสำเร็จ!', 'success'); fetchAllData(); 
+        } catch (error: any) { 
+          showToast(`Error: ${error.message}`, 'error'); 
+        } finally { 
+          setIsProcessing(false); 
+        }
       }
     });
   };
