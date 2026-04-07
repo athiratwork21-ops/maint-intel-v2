@@ -10,7 +10,8 @@ export default function MaintenanceDashboard() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-
+  const [showIntro, setShowIntro] = useState(false); // 🌟 State คุมหน้า Intro โคตรเท่
+  
   const [departments, setDepartments] = useState<any[]>([]);
   const [selectedDept, setSelectedDept] = useState('');
   const [activeDeptName, setActiveDeptName] = useState('');
@@ -51,11 +52,18 @@ export default function MaintenanceDashboard() {
       showToast('Access Denied. Administrator privileges required.', 'error'); setIsLoggingIn(false); return;
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { showToast(error.message === 'Invalid login credentials' ? 'Invalid email or password' : error.message, 'error');
+    if (error) { 
+      showToast(error.message === 'Invalid login credentials' ? 'Invalid email or password' : error.message, 'error');
+      setIsLoggingIn(false);
     } else {
-      localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept); showToast('Signed in successfully!', 'success');
+      localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept); 
+      
+      // 🌟 ล็อกอินผ่านปุ๊บ สั่งเปิด Intro 3 วินาที 🌟
+      setShowIntro(true);
+      setTimeout(() => {
+        setShowIntro(false);
+      }, 3000); 
     }
-    setIsLoggingIn(false);
   };
   
   const handleLogout = async () => { 
@@ -644,6 +652,59 @@ export default function MaintenanceDashboard() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-700 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
+      {/* 🌟 SCIFI INTRO ANIMATION 🌟 */}
+      {showIntro && (
+        <div className="fixed inset-0 z-[99999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden" style={{ animation: 'introFadeOut 0.5s ease forwards 2.5s' }}>
+          {/* Grid Background */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30"></div>
+          
+          {/* Core Glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] md:w-[400px] md:h-[400px] bg-blue-600/30 rounded-full blur-[100px] mix-blend-screen animate-pulse"></div>
+
+          {/* Logo Ring & Text */}
+          <div className="relative flex flex-col items-center z-10 animate-in zoom-in duration-700 ease-out" style={{ animation: 'introZoomInGlow 2s ease-out forwards' }}>
+            
+            <div className="relative w-32 h-32 flex items-center justify-center mb-4">
+              <div className="absolute inset-0 border-t-4 border-l-4 border-blue-500 rounded-full shadow-[0_0_20px_#3b82f6]" style={{ animation: 'introSpin 1s linear infinite' }}></div>
+              <div className="absolute inset-2 border-r-4 border-b-4 border-indigo-400 rounded-full shadow-[0_0_20px_#818cf8]" style={{ animation: 'introSpin 1.5s linear infinite reverse' }}></div>
+              <div className="absolute inset-4 border-t-4 border-r-4 border-cyan-400 rounded-full border-dashed opacity-50" style={{ animation: 'introSpin 3s linear infinite' }}></div>
+              <i className="bi bi-tools text-5xl text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] z-10 animate-pulse"></i>
+            </div>
+            
+            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 uppercase drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" style={{ animation: 'introGlitchFade 1s ease-out forwards 0.5s', opacity: 0 }}>
+              MAINT. INTEL
+            </h1>
+
+            <div className="mt-8 flex flex-col items-center" style={{ animation: 'introFadeInUp 0.5s ease forwards 1s', opacity: 0 }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></div>
+                <span className="text-emerald-400 text-xs font-mono tracking-widest uppercase shadow-emerald-400 drop-shadow-[0_0_5px_#34d399]">Access Granted</span>
+              </div>
+              <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_10px_#3b82f6]" style={{ animation: 'introProgressLoad 1s ease-out forwards 1s', width: '0%' }}></div>
+              </div>
+              <span className="text-slate-500 text-[10px] font-mono mt-3 uppercase tracking-widest animate-pulse">Initializing System Core...</span>
+            </div>
+
+          </div>
+
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes introSpin { 100% { transform: rotate(360deg); } }
+            @keyframes introZoomInGlow {
+              0% { transform: scale(0.5); opacity: 0; filter: blur(10px); }
+              50% { transform: scale(1.1); opacity: 1; filter: blur(0px); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+            @keyframes introGlitchFade {
+              0% { opacity: 0; transform: translateY(10px); letter-spacing: 0em; }
+              100% { opacity: 1; transform: translateY(0); letter-spacing: 0.3em; }
+            }
+            @keyframes introFadeInUp { to { opacity: 1; transform: translateY(0); } }
+            @keyframes introProgressLoad { 0% { width: 0%; } 60% { width: 80%; } 100% { width: 100%; } }
+            @keyframes introFadeOut { to { opacity: 0; visibility: hidden; transform: scale(1.5); } }
+          `}} />
+        </div>
+      )}
       {zoomedImage && ( <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out" onClick={() => setZoomedImage(null)}> <div className="relative w-full max-w-4xl h-[80vh] flex flex-col items-center justify-center"> <button className="absolute -top-12 right-0 text-white hover:text-red-400 text-3xl transition-colors active:scale-90" onClick={() => setZoomedImage(null)}><i className="bi bi-x-lg"></i></button> <img src={zoomedImage} alt="Zoomed Part" className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()} /> </div> </div> )}
       {toast && ( <div className="fixed top-8 right-8 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300 ease-out"> <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur-md min-w-[280px] ${toast.type === 'success' ? 'border-emerald-500/50 shadow-emerald-500/10' : toast.type === 'error' ? 'border-red-500/50 shadow-red-500/10' : toast.type === 'warning' ? 'border-amber-500/50 shadow-amber-500/10' : 'border-blue-500/50 shadow-blue-500/10'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
       {confirmDialog && confirmDialog.isOpen && ( <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out"> <div className="p-8 pb-6 text-center"> <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border ${confirmDialog.isDanger ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100/50'}`}><i className={`bi ${confirmDialog.isDanger ? 'bi-exclamation-triangle-fill' : 'bi-info-circle-fill'}`}></i></div> <h3 className="text-xl font-bold text-slate-800 mb-2">{confirmDialog.title}</h3> <p className="text-slate-500 text-sm whitespace-pre-line leading-relaxed">{confirmDialog.message}</p> </div> <div className="flex p-4 gap-3 border-t border-slate-100 bg-slate-50/50"> <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all shadow-sm">Cancel</button> <button onClick={confirmDialog.onConfirm} className={`flex-1 py-3 rounded-xl font-bold text-white active:scale-95 transition-all shadow-sm ${confirmDialog.isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>Confirm</button> </div> </div> </div> )}
