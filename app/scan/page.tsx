@@ -11,7 +11,7 @@ export default function RequestPartShoppingPage() {
 
   const [parts, setParts] = useState<any[]>([]);
   const [consumables, setConsumables] = useState<any[]>([]); 
-  const [fixtures, setFixtures] = useState<any[]>([]); // 🌟 State for Fixtures
+  const [fixtures, setFixtures] = useState<any[]>([]); 
   
   const [machines, setMachines] = useState<any[]>([]);
   const [lines, setLines] = useState<string[]>([]);
@@ -25,9 +25,8 @@ export default function RequestPartShoppingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // 🌟 เพิ่มประเภท fixtures ใน State
   const [activeCategory, setActiveCategory] = useState<'parts' | 'consumables' | 'fixtures'>('parts');
-  const [fixtureTab, setFixtureTab] = useState<'list' | 'borrowed'>('list'); // 🌟 แท็บย่อยสำหรับ Fixtures
+  const [fixtureTab, setFixtureTab] = useState<'list' | 'borrowed'>('list'); 
   
   const [cart, setCart] = useState<{ [itemId: string]: { qty: number, type: 'part' | 'consumable' | 'fixture', position?: string } }>({});
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -41,9 +40,10 @@ export default function RequestPartShoppingPage() {
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
-  // 🌟 State สำหรับระบบคืนของ (Return Modal)
-  const [isReturnModalOpen, setReturnModalOpen] = useState(false);
-  const [selectedReturnReq, setSelectedReturnReq] = useState<any>(null);
+  // 🌟 State สำหรับระบบทำรายการพร้อมกัน (Batch Return/Cancel)
+  const [batchReturnState, setBatchReturnState] = useState<{
+    [reqId: string]: { selected: boolean, returnQty: number, brokenQty: number }
+  }>({});
 
   const [reservationModal, setReservationModal] = useState<{
     isOpen: boolean;
@@ -52,11 +52,7 @@ export default function RequestPartShoppingPage() {
     machineInfo: string;
     onConfirm: (() => void) | null;
   }>({
-    isOpen: false,
-    partName: '',
-    totalReserved: 0,
-    machineInfo: '',
-    onConfirm: null,
+    isOpen: false, partName: '', totalReserved: 0, machineInfo: '', onConfirm: null,
   });
 
   useEffect(() => {
@@ -64,10 +60,7 @@ export default function RequestPartShoppingPage() {
     const n = localStorage.getItem('mechanicName');
     
     if (d && n) {
-      setActiveDept(d);
-      setPickerName(n);
-      setIsSetupComplete(true);
-      fetchInitialData(d);
+      setActiveDept(d); setPickerName(n); setIsSetupComplete(true); fetchInitialData(d);
     } else {
       fetchDepartmentsForSetup();
     }
@@ -82,34 +75,24 @@ export default function RequestPartShoppingPage() {
   const handleSetupComplete = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeDept || !pickerName.trim()) return showToast('กรุณากรอกข้อมูลให้ครบ', 'warning');
-    localStorage.setItem('mechanicDept', activeDept);
-    localStorage.setItem('mechanicName', pickerName);
-    setIsSetupComplete(true);
-    fetchInitialData(activeDept);
+    localStorage.setItem('mechanicDept', activeDept); localStorage.setItem('mechanicName', pickerName);
+    setIsSetupComplete(true); fetchInitialData(activeDept);
   };
 
-  const handleChangeProfile = () => {
-    setIsSetupComplete(false);
-    fetchDepartmentsForSetup();
-  };
+  const handleChangeProfile = () => { setIsSetupComplete(false); fetchDepartmentsForSetup(); };
 
   const fetchInitialData = async (dept: string) => {
     setIsLoading(true);
     try {
       const data = await getSmartMaintenanceData(dept);
-      setMachines(data.rawMachines.filter(m => m.Active !== false));
-      setLines(data.rawLines);
-      setParts(data.rawParts);
-      setStockAllocations(data.allocations);
+      setMachines(data.rawMachines.filter(m => m.Active !== false)); setLines(data.rawLines); setParts(data.rawParts); setStockAllocations(data.allocations);
 
-      // 🌟 โหลด PartRequests ทั้งที่ Pending และ Approved (เพื่อให้โชว์หน้ายืมของ)
       const { data: reqData } = await supabase.from('PartRequests').select('*').in('Status', ['Pending', 'Approved']).eq('DepartmentID', dept);
       setPendingRequests(reqData || []);
 
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept);
       setConsumables(consData || []);
 
-      // 🌟 โหลดข้อมูล Fixtures
       const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', dept);
       setFixtures(fixData || []);
 
@@ -136,39 +119,53 @@ export default function RequestPartShoppingPage() {
     const currentCartQty = cart[itemId]?.qty || 0;
 
     if (type === 'part') {
-      const alloc = stockAllocations[itemId] || { physical: 0 };
-      return alloc.physical - otherMechanicsPendingQty - currentCartQty; 
+      return (stockAllocations[itemId]?.physical || 0) - otherMechanicsPendingQty - currentCartQty; 
     } else if (type === 'consumable') {
-      const cons = consumables.find(c => c.ItemID === itemId);
-      return (cons ? cons.Balance : 0) - otherMechanicsPendingQty - currentCartQty;
+      return (consumables.find(c => c.ItemID === itemId)?.Balance || 0) - otherMechanicsPendingQty - currentCartQty;
     } else {
-      // สำหรับ Fixture คำนวณของที่ใช้งานได้จริง
       const fix = fixtures.find(f => f.FixtureNo === itemId);
       if (!fix) return 0;
-      const available = (fix.TotalQty || 0) - (fix.BrokenQty || 0) - (fix.BorrowedQty || 0);
-      return available - otherMechanicsPendingQty - currentCartQty;
+      return (fix.TotalQty || 0) - (fix.BrokenQty || 0) - (fix.BorrowedQty || 0) - otherMechanicsPendingQty - currentCartQty;
     }
   };
 
-  const handleUpdateCart = (itemId: string, type: 'part' | 'consumable' | 'fixture', delta: number) => {
-    const realPhysicalAvailable = getRealAvailableQty(itemId, type);
+  // 🌟 อัปเกรดให้รองรับการพิมพ์ตัวเลขตรงๆ (exactQty)
+  const handleUpdateCart = (itemId: string, type: 'part' | 'consumable' | 'fixture', deltaOrExact: number, isExact: boolean = false) => {
     const currentQty = cart[itemId]?.qty || 0;
-    const newQty = currentQty + delta;
+    let newQty = isExact ? deltaOrExact : currentQty + deltaOrExact;
 
-    if (delta > 0 && realPhysicalAvailable <= 0) {
-      return showToast('ของในตู้หมด หรือมีช่างคนอื่นทำเรื่องเบิก/ยืมไปแล้วครับ!', 'error');
+    if (isNaN(newQty) || newQty < 0) newQty = 0;
+
+    const otherMechanicsPendingQty = pendingRequests.filter(r => r.PartID === itemId && r.Status === 'Pending').reduce((s, r) => s + (r.Qty || 0), 0);
+    let maxAvailable = 0;
+    
+    if (type === 'part') { maxAvailable = (stockAllocations[itemId]?.physical || 0) - otherMechanicsPendingQty; } 
+    else if (type === 'consumable') { maxAvailable = (consumables.find(c => c.ItemID === itemId)?.Balance || 0) - otherMechanicsPendingQty; } 
+    else {
+      const fix = fixtures.find(f => f.FixtureNo === itemId);
+      if (fix) maxAvailable = (fix.TotalQty || 0) - (fix.BrokenQty || 0) - (fix.BorrowedQty || 0) - otherMechanicsPendingQty;
     }
 
-    if (delta > 0 && type === 'part') {
-      const alloc = stockAllocations[itemId] || { available: 0, physical: 0, reserved: 0, machines: [] };
-      const reqs = pendingRequests.filter(r => r.PartID === itemId && r.Status === 'Pending');
-      const mechanicReqQty = reqs.reduce((sum, r) => sum + (r.Qty || 0), 0);
+    // ถ้าระบุเกิน ให้ล็อกไว้ที่ค่าสูงสุดที่เบิกได้
+    if (newQty > maxAvailable) {
+      showToast(`จำนวนเกินสต๊อก! หยิบได้สูงสุด ${maxAvailable} ชิ้น`, 'warning');
+      newQty = maxAvailable;
+    }
 
-      const safeAvailable = (alloc.available || 0) - mechanicReqQty;
+    if (newQty <= 0) {
+      const newCart = { ...cart };
+      delete newCart[itemId];
+      setCart(newCart);
+      return;
+    }
+
+    if (type === 'part' && newQty > currentQty) {
+      const alloc = stockAllocations[itemId] || { available: 0, reserved: 0, machines: [] };
+      const safeAvailable = (alloc.available || 0) - otherMechanicsPendingQty;
 
       if (newQty > safeAvailable) {
         const partName = parts.find(p => p.PartID === itemId)?.PartName || itemId;
-        const totalReserved = (alloc.reserved || 0) + mechanicReqQty;
+        const totalReserved = (alloc.reserved || 0) + otherMechanicsPendingQty;
 
         let reservedDetailsList: string[] = [];
         alloc.machines.forEach((macId: string) => {
@@ -177,7 +174,7 @@ export default function RequestPartShoppingPage() {
           else reservedDetailsList.push(macId);
         });
         
-        reqs.forEach(r => {
+        pendingRequests.filter(r => r.PartID === itemId && r.Status === 'Pending').forEach(r => {
           const m = machines.find(x => x.MachineID === r.MachineID);
           if (m) {
             const posInfo = r.Position && r.Position !== '-' ? ` [จุด: ${r.Position}]` : '';
@@ -186,26 +183,17 @@ export default function RequestPartShoppingPage() {
         });
 
         const formattedReservedInfo = Array.from(new Set(reservedDetailsList)).join('\n🔸 ');
-
         const proceedWithAdding = () => {
           setCart({ ...cart, [itemId]: { qty: newQty, type, position: cart[itemId]?.position || '' } });
           setReservationModal(prev => ({ ...prev, isOpen: false }));
         };
 
-        setReservationModal({
-          isOpen: true, partName: partName, totalReserved: totalReserved, machineInfo: formattedReservedInfo || 'ไม่ระบุ', onConfirm: proceedWithAdding,
-        });
+        setReservationModal({ isOpen: true, partName: partName, totalReserved: totalReserved, machineInfo: formattedReservedInfo || 'ไม่ระบุ', onConfirm: proceedWithAdding });
         return; 
       }
     }
 
-    if (newQty <= 0) {
-      const newCart = { ...cart };
-      delete newCart[itemId];
-      setCart(newCart);
-    } else {
-      setCart({ ...cart, [itemId]: { qty: newQty, type, position: cart[itemId]?.position || '' } });
-    }
+    setCart({ ...cart, [itemId]: { qty: newQty, type, position: cart[itemId]?.position || '' } });
   };
 
   const getSearchTerms = (query: string) => {
@@ -213,8 +201,7 @@ export default function RequestPartShoppingPage() {
     const lowerQuery = query.toLowerCase().trim();
     let terms = lowerQuery.split(' '); 
     dictionary.forEach(word => {
-      const thaiWord = (word.ThaiWord || '').toLowerCase();
-      const engWord = (word.EngWord || '').toLowerCase();
+      const thaiWord = (word.ThaiWord || '').toLowerCase(); const engWord = (word.EngWord || '').toLowerCase();
       if (thaiWord && engWord && (lowerQuery.includes(thaiWord) || thaiWord.includes(lowerQuery))) {
         const engTerms = engWord.split(/[, ]+/).filter(Boolean);
         terms = [...terms, ...engTerms];
@@ -224,80 +211,23 @@ export default function RequestPartShoppingPage() {
   };
 
   const searchTerms = getSearchTerms(searchQuery);
-  
-  const filteredParts = parts.filter(p => {
-    if (!searchQuery) return true;
-    const matchString = `${p.PartName} ${p.PartModel} ${p.PartID}`.toLowerCase();
-    return searchTerms.some(term => matchString.includes(term));
-  });
-  
-  const filteredConsumables = consumables.filter(c => {
-    if (!searchQuery) return true;
-    const matchString = `${c.ItemName} ${c.ItemModel || ''} ${c.ItemID}`.toLowerCase();
-    return searchTerms.some(term => matchString.includes(term));
-  });
+  const filteredParts = parts.filter(p => { if (!searchQuery) return true; return searchTerms.some(term => `${p.PartName} ${p.PartModel} ${p.PartID}`.toLowerCase().includes(term)); });
+  const filteredConsumables = consumables.filter(c => { if (!searchQuery) return true; return searchTerms.some(term => `${c.ItemName} ${c.ItemModel || ''} ${c.ItemID}`.toLowerCase().includes(term)); });
+  const filteredFixtures = fixtures.filter(f => { if (!searchQuery) return true; return searchTerms.some(term => `${f.ModelName} ${f.FixtureNo}`.toLowerCase().includes(term)); });
 
-  const filteredFixtures = fixtures.filter(f => {
-    if (!searchQuery) return true;
-    const matchString = `${f.ModelName} ${f.FixtureNo}`.toLowerCase();
-    return searchTerms.some(term => matchString.includes(term));
-  });
-
-  // 🌟 ดึงรายการที่ช่างกำลังยืม/รออนุมัติ (กรองเฉพาะ Request ของตัวเอง ที่เป็น Fixtures)
   const myFixtureRequests = pendingRequests.filter(r => r.PickerName === pickerName && fixtures.some(f => f.FixtureNo === r.PartID));
-
   const cartItemsCount = Object.values(cart).reduce((sum, item) => sum + item.qty, 0);
   const hasSparePartsInCart = Object.values(cart).some(item => item.type === 'part');
-  // Fixtures อาจจะเกี่ยวเนื่องกับเครื่องจักรได้ เลยอนุโลมให้เลือกเครื่องจักรได้ แต่ไม่บังคับถ้าไม่มีอะไหล่
 
   const handleConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (hasSparePartsInCart && !selectedMachine) return showToast('กรุณาเลือกเครื่องจักรสำหรับอะไหล่', 'warning');
-    
     const missingPos = Object.keys(cart).find(id => cart[id].type === 'part' && !cart[id].position?.trim());
     if (missingPos) return showToast('กรุณาระบุ "จุดที่ติดตั้ง" ให้ครบทุกรายการ', 'warning');
-
-    let hasReservationWarning = false;
-    let warningMessage = '⚠️ แจ้งเตือน: มีอะไหล่ที่คุณกำลังจะเบิก "ติดจอง" อยู่ในระบบ!\n\n';
-
-    for (const itemId of Object.keys(cart)) {
-      if (cart[itemId].type === 'part') {
-        const alloc = stockAllocations[itemId] || { reserved: 0, machines: [] };
-        const reqs = pendingRequests.filter(r => r.PartID === itemId && r.Status === 'Pending');
-        const mechanicReqQty = reqs.reduce((sum, r) => sum + (r.Qty || 0), 0);
-        const totalReserved = alloc.reserved + mechanicReqQty;
-
-        if (totalReserved > 0) {
-          hasReservationWarning = true;
-          const partName = parts.find(p => p.PartID === itemId)?.PartName || itemId;
-          let reservedInfo: string[] = [];
-          
-          alloc.machines.forEach((macId: string) => {
-            const m = machines.find(x => x.MachineID === macId || (x.MachineName && macId.includes(x.MachineName)));
-            if (m) reservedInfo.push(`${macId === m.MachineID ? m.MachineName : macId} (ไลน์: ${m.LineName})`);
-            else reservedInfo.push(macId);
-          });
-          
-          reqs.forEach(r => {
-            const m = machines.find(x => x.MachineID === r.MachineID);
-            if(m) reservedInfo.push(`${m.MachineName} (${m.LineName}) [มีคนกำลังเบิก]`);
-          });
-
-          const uniqueMachines = Array.from(new Set(reservedInfo)).join('\n- ');
-          warningMessage += `🔸 ${partName}\nมียอดติดจอง: ${totalReserved} ชิ้น\nสำหรับเครื่อง:\n- ${uniqueMachines || 'ไม่ระบุ'}\n\n`;
-        }
-      }
-    }
-
-    if (hasReservationWarning) {
-      warningMessage += 'คุณแน่ใจหรือไม่ที่จะยืนยันเบิกอะไหล่เหล่านี้? (อาจเป็นการดึงอะไหล่ตัดหน้าคิวอื่น)';
-      if (!window.confirm(warningMessage)) return;
-    }
 
     setIsSubmitting(true);
 
     try {
-      // ดึงข้อมูลเช็คแบบสดๆ กันพลาด
       const { data: freshReqs } = await supabase.from('PartRequests').select('PartID, Qty').eq('Status', 'Pending').eq('DepartmentID', activeDept);
       const { data: freshStocks } = await supabase.from('Stock').select('PartID, Balance').eq('DepartmentID', activeDept);
       const { data: freshCons } = await supabase.from('Consumable').select('ItemID, Balance').eq('DepartmentID', activeDept);
@@ -306,9 +236,7 @@ export default function RequestPartShoppingPage() {
       for (const itemId of Object.keys(cart)) {
         const item = cart[itemId];
         const pendingQty = freshReqs?.filter(r => r.PartID === itemId).reduce((sum, r) => sum + (r.Qty || 0), 0) || 0;
-        
-        let available = 0;
-        let name = '';
+        let available = 0; let name = '';
         if (item.type === 'part') {
            available = (freshStocks?.filter(s => s.PartID === itemId).reduce((sum, s) => sum + (s.Balance || 0), 0) || 0) - pendingQty;
            name = parts.find(p=>p.PartID === itemId)?.PartName || itemId;
@@ -320,102 +248,85 @@ export default function RequestPartShoppingPage() {
            available = (fix?.TotalQty || 0) - (fix?.BrokenQty || 0) - (fix?.BorrowedQty || 0) - pendingQty;
            name = fix?.ModelName || itemId;
         }
-
-        if (available < item.qty) {
-           throw new Error(`ของไม่พอ! มีคนเบิก/ยืม "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
-        }
+        if (available < item.qty) throw new Error(`ของไม่พอ! มีคนเบิก/ยืม "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
       }
 
       const baseId = Date.now(); 
       const insertData = Object.keys(cart).map((itemId, idx) => ({
         RequestID: `REQ-${baseId}-${idx + 1}`, 
         MachineID: cart[itemId].type === 'part' ? selectedMachine : (selectedMachine || 'GENERAL'),
-        PartID: itemId,
-        Qty: cart[itemId].qty,
+        PartID: itemId, Qty: cart[itemId].qty,
         Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
-        Reason: cart[itemId].type === 'part' ? reason : cart[itemId].type === 'consumable' ? 'Consumable' : 'Borrow', // 🌟 แยก Reason เป็น Borrow สำหรับ Fixtures
-        PickerName: pickerName,
-        Status: 'Pending',
-        DepartmentID: activeDept
+        Reason: cart[itemId].type === 'part' ? reason : cart[itemId].type === 'consumable' ? 'Consumable' : 'Borrow', 
+        PickerName: pickerName, Status: 'Pending', DepartmentID: activeDept
       }));
 
       const { error } = await supabase.from('PartRequests').insert(insertData);
       if (error) throw error;
 
-      // Line Notify
       try {
         const itemNames = Object.keys(cart).map(itemId => {
           if(cart[itemId].type === 'part') return parts.find(p => p.PartID === itemId)?.PartName;
           if(cart[itemId].type === 'consumable') return consumables.find(c => c.ItemID === itemId)?.ItemName;
           return fixtures.find(f => f.FixtureNo === itemId)?.ModelName;
         }).join(', ');
-        
         const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
-        
         await fetch('/api/send-line', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: lineMsg }) });
       } catch (err) { console.error('Line Notify Error:', err); }
 
-      showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success');
-      setCart({}); 
-      setIsCheckoutOpen(false);
-      setSelectedLine(''); setSelectedMachine('');
-      fetchInitialData(activeDept); 
-    } catch (error: any) { 
-      showToast(error.message, 'error'); 
-      fetchInitialData(activeDept); 
-    } finally { 
-      setIsSubmitting(false); 
-    }
+      showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success'); setCart({}); setIsCheckoutOpen(false); setSelectedLine(''); setSelectedMachine(''); fetchInitialData(activeDept); 
+    } catch (error: any) { showToast(error.message, 'error'); fetchInitialData(activeDept); 
+    } finally { setIsSubmitting(false); }
   };
 
-  // 🌟 ฟังก์ชัน ยกเลิกการขอยืมเครื่องมือ (ตอนที่แอดมินยังไม่อนุมัติ)
-  const handleCancelRequest = async (reqId: string) => {
-    if (!window.confirm('คุณแน่ใจหรือไม่ที่จะยกเลิกคำขอยืมเครื่องมือนี้?')) return;
-    setIsSubmitting(true);
-    const { error } = await supabase.from('PartRequests').delete().eq('RequestID', reqId);
-    if (!error) { showToast('ยกเลิกคำขอเรียบร้อยแล้ว', 'success'); fetchInitialData(activeDept); } 
-    else { showToast(`Error: ${error.message}`, 'error'); }
-    setIsSubmitting(false);
+  // 🌟 ฟังก์ชัน: จัดการ Checkbox ระบบคืนของแบบรวดเดียว
+  const handleToggleBatchSelect = (reqId: string, defaultQty: number) => {
+    setBatchReturnState(prev => {
+      const isSelected = !prev[reqId]?.selected;
+      return { ...prev, [reqId]: { selected: isSelected, returnQty: prev[reqId]?.returnQty || defaultQty, brokenQty: prev[reqId]?.brokenQty || 0 } };
+    });
   };
 
-  // 🌟 ฟังก์ชัน กดยืนยันคืนของใน Modal
-  const handleReturnSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleBatchReturnChange = (reqId: string, field: 'returnQty' | 'brokenQty', val: number) => {
+    setBatchReturnState(prev => ({ ...prev, [reqId]: { ...prev[reqId], [field]: val } }));
+  };
+
+  // 🌟 ฟังก์ชัน: ประมวลผลคืนของ/ยกเลิก ทั้งหมดที่ถูกเลือกในครั้งเดียว
+  const handleBatchReturnSubmit = async () => {
+    const selectedReqs = Object.entries(batchReturnState).filter(([_, state]) => state.selected);
+    if (selectedReqs.length === 0) return showToast('กรุณาเลือกรายการอย่างน้อย 1 รายการ', 'warning');
+    
+    if (!window.confirm(`ยืนยันการทำรายการ ${selectedReqs.length} รายการ?`)) return;
+    
     setIsSubmitting(true);
-    const formData = new FormData(e.currentTarget);
-    const returnQty = parseInt(formData.get('returnQty') as string) || 0;
-    const brokenQty = parseInt(formData.get('brokenQty') as string) || 0;
-
-    if (returnQty <= 0 || returnQty > selectedReturnReq.Qty) {
-      showToast('จำนวนที่คืนไม่ถูกต้อง (ต้องมากกว่า 0 และไม่เกินจำนวนที่ยืม)', 'error');
-      setIsSubmitting(false); return;
-    }
-    if (brokenQty > returnQty) {
-      showToast('จำนวนที่พังต้องไม่เกินจำนวนที่กดคืน', 'error');
-      setIsSubmitting(false); return;
-    }
-
     try {
-      // 1. ดึงข้อมูล Fixture ปัจจุบัน
-      const { data: fix } = await supabase.from('Fixtures').select('*').eq('FixtureNo', selectedReturnReq.PartID).single();
-      if (!fix) throw new Error('ไม่พบข้อมูลเครื่องมือในระบบ (อาจถูกลบไปแล้ว)');
+      for (const [reqId, state] of selectedReqs) {
+        const req = myFixtureRequests.find(r => r.RequestID === reqId);
+        if (!req) continue;
 
-      const newBorrowed = Math.max(0, (fix.BorrowedQty || 0) - returnQty);
-      const newBroken = (fix.BrokenQty || 0) + brokenQty;
+        // ถ้ารออนุมัติ -> แปลว่ากดยกเลิก
+        if (req.Status === 'Pending') {
+          await supabase.from('PartRequests').delete().eq('RequestID', reqId);
+        } 
+        // ถ้าอนุมัติแล้ว -> แปลว่ากดคืน
+        else {
+          const rQty = state.returnQty; const bQty = state.brokenQty;
+          if (rQty <= 0 || rQty > req.Qty) throw new Error(`จำนวนคืนของ ${req.PartID} ไม่ถูกต้อง`);
+          if (bQty > rQty) throw new Error(`ของพังต้องไม่เกินของที่คืน (${req.PartID})`);
 
-      // 2. อัปเดตกลับเข้าตาราง Fixtures
-      const { error: fixErr } = await supabase.from('Fixtures').update({ BorrowedQty: newBorrowed, BrokenQty: newBroken }).eq('FixtureNo', fix.FixtureNo);
-      if (fixErr) throw fixErr;
+          const { data: fix } = await supabase.from('Fixtures').select('*').eq('FixtureNo', req.PartID).single();
+          if (fix) {
+            const newBorrowed = Math.max(0, (fix.BorrowedQty || 0) - rQty);
+            const newBroken = (fix.BrokenQty || 0) + bQty;
+            await supabase.from('Fixtures').update({ BorrowedQty: newBorrowed, BrokenQty: newBroken }).eq('FixtureNo', fix.FixtureNo);
+          }
 
-      // 3. อัปเดตสถานะใบเบิก (ถ้าคืนครบก็ปิดจ๊อบ ถ้าคืนไม่ครบก็ลดยอดลง)
-      if (returnQty >= selectedReturnReq.Qty) {
-        await supabase.from('PartRequests').update({ Status: 'Returned' }).eq('RequestID', selectedReturnReq.RequestID);
-      } else {
-        await supabase.from('PartRequests').update({ Qty: selectedReturnReq.Qty - returnQty }).eq('RequestID', selectedReturnReq.RequestID);
+          if (rQty >= req.Qty) await supabase.from('PartRequests').update({ Status: 'Returned' }).eq('RequestID', reqId);
+          else await supabase.from('PartRequests').update({ Qty: req.Qty - rQty }).eq('RequestID', reqId);
+        }
       }
-
-      showToast('ทำรายการคืนเครื่องมือสำเร็จ!', 'success');
-      setReturnModalOpen(false);
+      showToast('ทำรายการสำเร็จเรียบร้อย!', 'success');
+      setBatchReturnState({});
       fetchInitialData(activeDept);
     } catch (error: any) {
       showToast(`Error: ${error.message}`, 'error');
@@ -486,7 +397,6 @@ export default function RequestPartShoppingPage() {
           {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><i className="bi bi-x-circle-fill"></i></button>}
         </div>
 
-        {/* 🌟 อัปเกรด Toggle แยก 3 หมวดหมู่ 🌟 */}
         <div className="flex p-1 bg-slate-800 rounded-xl gap-1">
           <button onClick={() => setActiveCategory('parts')} className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${activeCategory === 'parts' ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-gear-wide-connected"></i> อะไหล่</button>
           <button onClick={() => setActiveCategory('consumables')} className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${activeCategory === 'consumables' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-box2-heart"></i> สิ้นเปลือง</button>
@@ -495,7 +405,6 @@ export default function RequestPartShoppingPage() {
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 z-10 pb-28 bg-[#f8fafc]">
-        {/* 🌟 ซับแท็บสำหรับหน้า Fixtures โดยเฉพาะ 🌟 */}
         {activeCategory === 'fixtures' && (
           <div className="flex gap-2 mb-4">
             <button onClick={() => setFixtureTab('list')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm flex items-center justify-center gap-2 ${fixtureTab === 'list' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
@@ -514,11 +423,9 @@ export default function RequestPartShoppingPage() {
           {activeCategory === 'parts' && filteredParts.map(part => {
             const alloc = stockAllocations[part.PartID] || { available: 0, physical: 0, reserved: 0, machines: [] };
             const otherPendingQty = pendingRequests.filter(r => r.PartID === part.PartID && r.Status === 'Pending').reduce((s, r) => s + (r.Qty || 0), 0);
-            
             const realPhysicalQty = alloc.physical - otherPendingQty;
             const aiAvailableQty = alloc.available - otherPendingQty;
             const inCartQty = cart[part.PartID]?.qty || 0;
-            
             const isOutOfStock = realPhysicalQty <= 0 && inCartQty === 0;
             const isEatingReserved = realPhysicalQty > 0 && aiAvailableQty <= 0;
 
@@ -543,7 +450,8 @@ export default function RequestPartShoppingPage() {
                   {inCartQty > 0 ? (
                     <div className="flex items-center justify-between bg-blue-50 rounded-xl p-1 border border-blue-100">
                       <button onClick={() => handleUpdateCart(part.PartID, 'part', -1)} className="w-8 h-8 flex items-center justify-center text-blue-600 font-black rounded-lg active:bg-blue-100 transition-colors"><i className="bi bi-dash-lg"></i></button>
-                      <span className="font-black text-blue-800 text-sm">{inCartQty}</span>
+                      {/* 🌟 อัปเกรดให้พิมพ์ได้ 🌟 */}
+                      <input type="number" min="0" value={inCartQty} onChange={(e) => handleUpdateCart(part.PartID, 'part', parseInt(e.target.value) || 0, true)} className="w-10 text-center font-black text-blue-800 text-sm bg-transparent outline-none appearance-none" style={{ MozAppearance: 'textfield' }} />
                       <button onClick={() => handleUpdateCart(part.PartID, 'part', 1)} disabled={realPhysicalQty <= 0} className="w-8 h-8 flex items-center justify-center text-blue-600 font-black rounded-lg active:bg-blue-100 disabled:opacity-30 transition-colors"><i className="bi bi-plus-lg"></i></button>
                     </div>
                   ) : (
@@ -580,7 +488,8 @@ export default function RequestPartShoppingPage() {
                   {inCartQty > 0 ? (
                     <div className="flex items-center justify-between bg-pink-50 rounded-xl p-1 border border-pink-100">
                       <button onClick={() => handleUpdateCart(cons.ItemID, 'consumable', -1)} className="w-8 h-8 flex items-center justify-center text-pink-600 font-black rounded-lg active:bg-pink-100 transition-colors"><i className="bi bi-dash-lg"></i></button>
-                      <span className="font-black text-pink-800 text-sm">{inCartQty}</span>
+                      {/* 🌟 อัปเกรดให้พิมพ์ได้ 🌟 */}
+                      <input type="number" min="0" value={inCartQty} onChange={(e) => handleUpdateCart(cons.ItemID, 'consumable', parseInt(e.target.value) || 0, true)} className="w-10 text-center font-black text-pink-800 text-sm bg-transparent outline-none appearance-none" style={{ MozAppearance: 'textfield' }} />
                       <button onClick={() => handleUpdateCart(cons.ItemID, 'consumable', 1)} disabled={showAvailableQty <= 0} className="w-8 h-8 flex items-center justify-center text-pink-600 font-black rounded-lg active:bg-pink-100 disabled:opacity-30 transition-colors"><i className="bi bi-plus-lg"></i></button>
                     </div>
                   ) : (
@@ -617,7 +526,8 @@ export default function RequestPartShoppingPage() {
                   {inCartQty > 0 ? (
                     <div className="flex items-center justify-between bg-purple-50 rounded-xl p-1 border border-purple-100">
                       <button onClick={() => handleUpdateCart(fix.FixtureNo, 'fixture', -1)} className="w-8 h-8 flex items-center justify-center text-purple-600 font-black rounded-lg active:bg-purple-100 transition-colors"><i className="bi bi-dash-lg"></i></button>
-                      <span className="font-black text-purple-800 text-sm">{inCartQty}</span>
+                      {/* 🌟 อัปเกรดให้พิมพ์ได้ 🌟 */}
+                      <input type="number" min="0" value={inCartQty} onChange={(e) => handleUpdateCart(fix.FixtureNo, 'fixture', parseInt(e.target.value) || 0, true)} className="w-10 text-center font-black text-purple-800 text-sm bg-transparent outline-none appearance-none" style={{ MozAppearance: 'textfield' }} />
                       <button onClick={() => handleUpdateCart(fix.FixtureNo, 'fixture', 1)} disabled={showAvailableQty <= 0} className="w-8 h-8 flex items-center justify-center text-purple-600 font-black rounded-lg active:bg-purple-100 disabled:opacity-30 transition-colors"><i className="bi bi-plus-lg"></i></button>
                     </div>
                   ) : (
@@ -628,39 +538,52 @@ export default function RequestPartShoppingPage() {
             );
           })}
 
-          {/* ======================= FIXTURES (รายการที่กำลังยืม) ======================= */}
+          {/* ======================= FIXTURES (รายการที่กำลังยืม/รอดำเนินการ แบบใหม่!) ======================= */}
           {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && myFixtureRequests.map(req => {
             const fix = fixtures.find(f => f.FixtureNo === req.PartID) || {};
             const isPending = req.Status === 'Pending';
+            const bState = batchReturnState[req.RequestID] || { selected: false, returnQty: req.Qty, brokenQty: 0 };
 
             return (
-              <div key={req.RequestID} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col gap-3">
-                <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${isPending ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                    <i className={`bi ${isPending ? 'bi-hourglass-split' : 'bi-check-circle-fill'}`}></i> {isPending ? 'รอแอดมินอนุมัติ' : 'กำลังยืมใช้งาน'}
-                  </span>
+              <div key={req.RequestID} className={`bg-white rounded-2xl shadow-sm border ${bState.selected ? 'border-[#0f172a] ring-2 ring-[#0f172a]/10' : 'border-slate-200'} p-4 flex flex-col gap-3 transition-all`}>
+                
+                {/* ส่วนหัว และ Checkbox */}
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3 cursor-pointer" onClick={() => handleToggleBatchSelect(req.RequestID, req.Qty)}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${bState.selected ? 'bg-[#0f172a] border-[#0f172a] text-white' : 'border-slate-300 bg-slate-50'}`}>
+                      {bState.selected && <i className="bi bi-check-lg text-xs font-black"></i>}
+                    </div>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${isPending ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                      <i className={`bi ${isPending ? 'bi-hourglass-split' : 'bi-check-circle-fill'}`}></i> {isPending ? 'ยกเลิกคำขอ (ยังไม่อนุมัติ)' : 'เลือกคืนเครื่องมือ'}
+                    </span>
+                  </div>
                   <span className="text-[10px] font-bold text-slate-400">{new Date(req.CreatedAt).toLocaleDateString('en-GB')}</span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                    {fix.ImageURL ? <img src={fix.ImageURL} className="w-full h-full object-contain p-1 mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-2xl"></i>}
+
+                {/* รายละเอียด */}
+                <div className="flex items-center gap-4 cursor-pointer" onClick={() => handleToggleBatchSelect(req.RequestID, req.Qty)}>
+                  <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                    {fix.ImageURL ? <img src={fix.ImageURL} className="w-full h-full object-contain p-1 mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>}
                   </div>
                   <div>
                     <h3 className="font-black text-slate-800 text-sm leading-tight">{fix.ModelName || req.PartID}</h3>
-                    <p className="text-[10px] text-slate-500 mt-1 font-bold">จำนวน: <span className={`text-lg ml-1 ${isPending ? 'text-amber-600' : 'text-blue-600'}`}>{req.Qty}</span> ชิ้น</p>
+                    <p className="text-[10px] text-slate-500 mt-1 font-bold">จำนวนเครื่องมือ: <span className={`text-base ml-1 ${isPending ? 'text-amber-600' : 'text-blue-600'}`}>{req.Qty}</span> ชิ้น</p>
                   </div>
                 </div>
-                <div className="mt-1 pt-3 border-t border-slate-50">
-                  {isPending ? (
-                    <button onClick={() => handleCancelRequest(req.RequestID)} disabled={isSubmitting} className="w-full bg-white border border-red-200 text-red-600 font-bold py-2.5 rounded-xl hover:bg-red-50 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5 shadow-sm">
-                      <i className="bi bi-x-circle"></i> ยกเลิกคำขอ
-                    </button>
-                  ) : (
-                    <button onClick={() => { setSelectedReturnReq(req); setReturnModalOpen(true); }} disabled={isSubmitting} className="w-full bg-[#0f172a] text-white font-bold py-2.5 rounded-xl shadow-lg shadow-slate-900/20 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5">
-                      <i className="bi bi-box-arrow-in-down-left text-base"></i> คืนเครื่องมือ
-                    </button>
-                  )}
-                </div>
+
+                {/* 🌟 ช่องใส่จำนวนตอนคืน (โผล่มาเฉพาะเมื่อเลือกติ๊กถูก และอนุมัติแล้ว) 🌟 */}
+                {bState.selected && !isPending && (
+                  <div className="mt-1 pt-3 border-t border-slate-50 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">จำนวนที่คืนทั้งหมด (ชิ้น)</label>
+                      <input type="number" min="1" max={req.Qty} value={bState.returnQty} onChange={(e) => handleBatchReturnChange(req.RequestID, 'returnQty', parseInt(e.target.value)||0)} className="w-full p-2.5 text-center text-sm font-black text-[#0f172a] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-[#0f172a] focus:bg-white transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1 text-red-500">เสีย/พัง (ถ้ามี)</label>
+                      <input type="number" min="0" max={bState.returnQty} value={bState.brokenQty} onChange={(e) => handleBatchReturnChange(req.RequestID, 'brokenQty', parseInt(e.target.value)||0)} className="w-full p-2.5 text-center text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg outline-none focus:border-red-500 focus:bg-white transition-colors" />
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -681,11 +604,20 @@ export default function RequestPartShoppingPage() {
                <p className="font-bold text-sm">คุณไม่มีรายการที่กำลังยืม</p>
              </div>
           )}
-
         </div>
       </main>
 
-      <div className={`absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 transition-transform duration-300 ${cartItemsCount > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
+      {/* 🌟 ป๊อปอัพด้านล่าง สำหรับกดยืนยันคืน/ยกเลิกเครื่องมือรวดเดียว 🌟 */}
+      {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && Object.values(batchReturnState).some(s => s.selected) && (
+        <div className="absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 animate-in slide-in-from-bottom-10">
+          <button onClick={handleBatchReturnSubmit} disabled={isSubmitting} className="w-full bg-[#0f172a] text-white font-black py-4 rounded-xl shadow-xl shadow-slate-900/20 hover:bg-black active:scale-95 transition-all text-[15px] flex items-center justify-center gap-2">
+            {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังดำเนินการ...</> : <><i className="bi bi-check-all text-xl"></i> ยืนยันทำรายการที่เลือก ({Object.values(batchReturnState).filter(s=>s.selected).length})</>}
+          </button>
+        </div>
+      )}
+
+      {/* แถบตะกร้าสินค้าปกติ (โชว์เฉพาะตอนไม่ได้อยู่หน้ายืม/คืนเครื่องมือ) */}
+      <div className={`absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 transition-transform duration-300 ${(activeCategory !== 'fixtures' || fixtureTab !== 'borrowed') && cartItemsCount > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -749,9 +681,7 @@ export default function RequestPartShoppingPage() {
                         {isPart && (
                           <div className="mt-1 relative">
                             <input 
-                              type="text" 
-                              required
-                              disabled={!selectedMachine}
+                              type="text" required disabled={!selectedMachine}
                               placeholder={selectedMachine ? "ระบุจุดที่ติดตั้ง (เช่น ซ้าย, ขวา)" : "โปรดเลือกเครื่องจักรด้านบนก่อน"}
                               value={cart[itemId].position || ''}
                               onChange={(e) => setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: e.target.value } }))}
@@ -764,16 +694,7 @@ export default function RequestPartShoppingPage() {
                             {activeDropdown === itemId && filteredPositions.length > 0 && (
                               <ul className="absolute z-[100] w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-1.5 max-h-40 overflow-y-auto top-full left-0 origin-top animate-in fade-in zoom-in-95 duration-150">
                                 {filteredPositions.map(pos => (
-                                  <li 
-                                    key={pos} 
-                                    onClick={() => {
-                                      setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: pos } }));
-                                      setActiveDropdown(null);
-                                    }}
-                                    className="px-4 py-3.5 text-sm text-slate-700 font-bold hover:bg-blue-50 hover:text-blue-600 cursor-pointer border-b border-slate-50 last:border-0 flex items-center gap-2 transition-colors active:bg-blue-100"
-                                  >
-                                    <i className="bi bi-clock-history text-slate-400 text-xs"></i> {pos}
-                                  </li>
+                                  <li key={pos} onMouseDown={() => { setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: pos } })); setActiveDropdown(null); }} className="px-4 py-3.5 text-sm text-slate-700 font-bold hover:bg-blue-50 hover:text-blue-600 cursor-pointer border-b border-slate-50 last:border-0 flex items-center gap-2 transition-colors active:bg-blue-100"><i className="bi bi-clock-history text-slate-400 text-xs"></i> {pos}</li>
                                 ))}
                               </ul>
                             )}
@@ -795,65 +716,6 @@ export default function RequestPartShoppingPage() {
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* 🌟 Modal: ระบบคืนของ (Return Modal) สำหรับ Fixtures 🌟 */}
-      {/* ========================================================= */}
-      {isReturnModalOpen && selectedReturnReq && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 border-t-4 border-t-[#0f172a] flex flex-col gap-6">
-            
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-xl font-black text-slate-800 tracking-tight">คืนเครื่องมือ</h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">อัปเดตสต๊อกคืนตู้</p>
-              </div>
-              <button onClick={() => setReturnModalOpen(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors"><i className="bi bi-x-lg text-sm"></i></button>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex gap-3 items-center">
-              <div className="w-12 h-12 bg-white rounded-lg border border-slate-200 flex items-center justify-center shrink-0">
-                <i className="bi bi-tools text-slate-400 text-xl"></i>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-slate-700 text-sm truncate">{fixtures.find(f=>f.FixtureNo===selectedReturnReq.PartID)?.ModelName || selectedReturnReq.PartID}</p>
-                <p className="text-[10px] text-slate-500">ยอดที่ยืมไป: <span className="font-bold text-blue-600">{selectedReturnReq.Qty}</span> ชิ้น</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleReturnSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider text-center">จำนวนที่นำมาคืนทั้งหมด (รวมที่พัง)</label>
-                <div className="flex items-center justify-center gap-3">
-                  <input 
-                    type="number" name="returnQty" required min="1" max={selectedReturnReq.Qty} defaultValue={selectedReturnReq.Qty} 
-                    className="w-32 text-center text-3xl font-black text-[#0f172a] py-3 bg-slate-50 border-2 border-slate-200 rounded-xl outline-none focus:border-[#0f172a] focus:bg-white transition-colors" 
-                  />
-                  <span className="text-slate-500 font-bold">ชิ้น</span>
-                </div>
-              </div>
-              
-              <div className="pt-2 border-t border-slate-100">
-                <label className="block text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider text-center">มีของพัง/เสียหายไหม? (ถ้าไม่มีใส่ 0)</label>
-                <div className="flex items-center justify-center gap-3">
-                  <input 
-                    type="number" name="brokenQty" required min="0" defaultValue={0} 
-                    className="w-24 text-center text-xl font-bold text-red-600 py-2 bg-red-50 border border-red-200 rounded-xl outline-none focus:border-red-500 focus:bg-white transition-colors" 
-                  />
-                  <span className="text-slate-500 font-bold text-sm">ชิ้น</span>
-                </div>
-                <p className="text-[10px] text-center text-slate-400 mt-2"><i className="bi bi-info-circle"></i> ยอดที่พังจะถูกนำไปหักออกจากของที่ใช้งานได้</p>
-              </div>
-
-              <button type="submit" disabled={isSubmitting} className="w-full mt-4 bg-[#0f172a] text-white py-4 rounded-xl font-black text-sm shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2">
-                {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังอัปเดต...</> : <><i className="bi bi-check-circle-fill text-lg"></i> ยืนยันคืนเข้าตู้</>}
-              </button>
-            </form>
-
-          </div>
-        </div>
-      )}
-
-      {/* 🌟 แจ้งเตือนของติดจอง 🌟 */}
       {reservationModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100 flex flex-col gap-6">
