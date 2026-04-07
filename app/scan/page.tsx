@@ -40,22 +40,16 @@ export default function RequestPartShoppingPage() {
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
-  // 🌟 State จัดกลุ่ม Batch Return (ตาม Base Request ID) 🌟
-  const [batchReturnState, setBatchReturnState] = useState<{
-    [baseReqId: string]: {
-        selected: boolean;
-        items: {
-            [reqId: string]: { returnQty: number, brokenQty: number, maxQty: number }
-        }
-    }
-  }>({});
+  const [batchReturnState, setBatchReturnState] = useState<{ [reqId: string]: { selected: boolean, returnQty: number, brokenQty: number } }>({});
 
-  // 🌟 ป๊อปอัพ Confirm สุดหรู 🌟
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void, isDanger?: boolean } | null>(null);
 
   const [reservationModal, setReservationModal] = useState<{
     isOpen: boolean; partName: string; totalReserved: number; machineInfo: string; onConfirm: (() => void) | null;
   }>({ isOpen: false, partName: '', totalReserved: 0, machineInfo: '', onConfirm: null });
+
+  const [isReturnModalOpen, setReturnModalOpen] = useState(false);
+  const [selectedReturnReq, setSelectedReturnReq] = useState<any>(null);
 
   useEffect(() => {
     const d = localStorage.getItem('mechanicDept');
@@ -97,6 +91,19 @@ export default function RequestPartShoppingPage() {
       Object.keys(posMap).forEach(k => formattedMap[k] = Array.from(posMap[k]));
       setHistoricalPositions(formattedMap);
     } catch (error) { console.error(error); showToast('โหลดข้อมูลล้มเหลว', 'error'); } finally { setIsLoading(false); }
+  };
+
+  const getRealAvailableQty = (itemId: string, type: 'part' | 'consumable' | 'fixture') => {
+    const otherMechanicsPendingQty = pendingRequests.filter(r => r.PartID === itemId && r.Status === 'Pending').reduce((s, r) => s + (r.Qty || 0), 0);
+    const currentCartQty = cart[itemId]?.qty || 0;
+
+    if (type === 'part') { return (stockAllocations[itemId]?.physical || 0) - otherMechanicsPendingQty - currentCartQty; } 
+    else if (type === 'consumable') { return (consumables.find(c => c.ItemID === itemId)?.Balance || 0) - otherMechanicsPendingQty - currentCartQty; } 
+    else {
+      const fix = fixtures.find(f => f.FixtureNo === itemId);
+      if (!fix) return 0;
+      return (fix.TotalQty || 0) - (fix.BrokenQty || 0) - (fix.BorrowedQty || 0) - otherMechanicsPendingQty - currentCartQty;
+    }
   };
 
   const handleUpdateCart = (itemId: string, type: 'part' | 'consumable' | 'fixture', deltaOrExact: number, isExact: boolean = false) => {
@@ -162,9 +169,9 @@ export default function RequestPartShoppingPage() {
   const filteredConsumables = consumables.filter(c => { if (!searchQuery) return true; return searchTerms.some(term => `${c.ItemName} ${c.ItemModel || ''} ${c.ItemID}`.toLowerCase().includes(term)); });
   const filteredFixtures = fixtures.filter(f => { if (!searchQuery) return true; return searchTerms.some(term => `${f.ModelName} ${f.FixtureNo}`.toLowerCase().includes(term)); });
 
-  // 🌟 ดึงรายการที่กำลังยืม และจัดกลุ่มตามใบเบิก 🌟
+  // 🌟 บังคับ Type: any[] เพื่อสยบ Vercel TypeScript 🌟
   const rawMyFixtureRequests = pendingRequests.filter(r => r.PickerName === pickerName && fixtures.some(f => f.FixtureNo === r.PartID));
-  const groupedFixtureRequests = Object.values(
+  const groupedFixtureRequests: any[] = Object.values(
     rawMyFixtureRequests.reduce((acc: any, req: any) => {
       const reqParts = req.RequestID.split('-');
       const baseId = reqParts.length >= 3 ? `${reqParts[0]}-${reqParts[1]}` : req.RequestID; 
@@ -279,7 +286,6 @@ export default function RequestPartShoppingPage() {
     }
   };
 
-  // 🌟 ฟังก์ชันจัดการ Checkbox แบบกลุ่ม (Group) 🌟
   const handleToggleGroupSelect = (group: any) => {
     setBatchReturnState(prev => {
       const isSelected = !prev[group.baseId]?.selected;
@@ -304,14 +310,15 @@ export default function RequestPartShoppingPage() {
     });
   };
 
-  // 🌟 ฟังก์ชันกดยืนยันคืนของหลายชิ้นแบบจัดกลุ่ม 🌟
   const handleBatchReturnSubmit = async () => {
     const selectedGroups = Object.entries(batchReturnState).filter(([_, state]) => state.selected);
     if (selectedGroups.length === 0) return showToast('กรุณาเลือกรายการอย่างน้อย 1 รายการ', 'warning');
     
     let totalItemsToProcess = 0; let hasCancel = false; let hasReturn = false;
+    
+    // 🌟 ใส่ type: any ลงไปตอนหา group ใน array เพื่อแก้ปัญหา TypeScript 🌟
     selectedGroups.forEach(([baseId, _]) => {
-        const group = groupedFixtureRequests.find((g:any) => g.baseId === baseId);
+        const group: any = groupedFixtureRequests.find((g: any) => g.baseId === baseId);
         if (group) {
             totalItemsToProcess += group.items.length;
             if (group.status === 'Pending') hasCancel = true; else hasReturn = true;
@@ -329,7 +336,8 @@ export default function RequestPartShoppingPage() {
         setConfirmDialog(null); setIsSubmitting(true);
         try {
           for (const [baseId, state] of selectedGroups) {
-            const group = groupedFixtureRequests.find((g:any) => g.baseId === baseId);
+            // 🌟 ใส่ type: any ตรงนี้ด้วย 🌟
+            const group: any = groupedFixtureRequests.find((g: any) => g.baseId === baseId);
             if (!group) continue;
 
             if (group.status === 'Pending') {
@@ -361,6 +369,45 @@ export default function RequestPartShoppingPage() {
         finally { setIsSubmitting(false); }
       }
     });
+  };
+
+  const handleCancelRequest = async (reqId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'ยกเลิกคำขอยืม', message: 'คุณแน่ใจหรือไม่ที่จะยกเลิกคำขอยืมนี้?', isDanger: true,
+      onConfirm: async () => {
+        setConfirmDialog(null); setIsSubmitting(true);
+        const { error } = await supabase.from('PartRequests').delete().eq('RequestID', reqId);
+        if (!error) { showToast('ยกเลิกคำขอเรียบร้อยแล้ว', 'success'); fetchInitialData(activeDept); } 
+        else { showToast(`Error: ${error.message}`, 'error'); }
+        setIsSubmitting(false);
+      }
+    });
+  };
+
+  const handleReturnSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsSubmitting(true);
+    const formData = new FormData(e.currentTarget);
+    const returnQty = parseInt(formData.get('returnQty') as string) || 0;
+    const brokenQty = parseInt(formData.get('brokenQty') as string) || 0;
+
+    if (returnQty <= 0 || returnQty > selectedReturnReq.Qty) { showToast('จำนวนที่คืนไม่ถูกต้อง (ต้องมากกว่า 0 และไม่เกินจำนวนที่ยืม)', 'error'); setIsSubmitting(false); return; }
+    if (brokenQty > returnQty) { showToast('จำนวนที่พังต้องไม่เกินจำนวนที่กดคืน', 'error'); setIsSubmitting(false); return; }
+
+    try {
+      const { data: fix } = await supabase.from('Fixtures').select('*').eq('FixtureNo', selectedReturnReq.PartID).single();
+      if (!fix) throw new Error('ไม่พบข้อมูล Fixture ในระบบ (อาจถูกลบไปแล้ว)');
+
+      const newBorrowed = Math.max(0, (fix.BorrowedQty || 0) - returnQty);
+      const newBroken = (fix.BrokenQty || 0) + brokenQty;
+      const { error: fixErr } = await supabase.from('Fixtures').update({ BorrowedQty: newBorrowed, BrokenQty: newBroken }).eq('FixtureNo', fix.FixtureNo);
+      if (fixErr) throw fixErr;
+
+      if (returnQty >= selectedReturnReq.Qty) { await supabase.from('PartRequests').update({ Status: 'Returned' }).eq('RequestID', selectedReturnReq.RequestID); } 
+      else { await supabase.from('PartRequests').update({ Qty: selectedReturnReq.Qty - returnQty }).eq('RequestID', selectedReturnReq.RequestID); }
+
+      showToast('ทำรายการคืน Fixture สำเร็จ!', 'success'); setReturnModalOpen(false); fetchInitialData(activeDept);
+    } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } 
+    finally { setIsSubmitting(false); }
   };
 
   const filteredMachines = machines.filter(m => m.LineName === selectedLine);
@@ -573,7 +620,7 @@ export default function RequestPartShoppingPage() {
             );
           })}
 
-          {/* 🌟 FIXTURES (รายการที่กำลังยืม/รอดำเนินการ แบบใหม่ จัดกลุ่ม!) 🌟 */}
+          {/* 🌟 FIXTURES (รายการที่กำลังยืม/รอดำเนินการ จัดกลุ่มแล้ว!) 🌟 */}
           {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && groupedFixtureRequests.map(group => {
             const bState = batchReturnState[group.baseId] || { selected: false, items: {} };
             const isPending = group.status === 'Pending';
@@ -581,7 +628,6 @@ export default function RequestPartShoppingPage() {
             return (
               <div key={group.baseId} className={`bg-white rounded-[1.5rem] shadow-sm border ${bState.selected ? 'border-[#0f172a] shadow-lg shadow-slate-900/5' : 'border-slate-200'} flex flex-col transition-all duration-300 overflow-hidden`}>
                 
-                {/* ส่วนหัวของบิล */}
                 <div className={`p-4 flex justify-between items-center cursor-pointer select-none transition-colors ${bState.selected ? 'bg-slate-50' : 'hover:bg-slate-50'}`} onClick={() => handleToggleGroupSelect(group)}>
                   <div className="flex items-center gap-3.5">
                     <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${bState.selected ? 'bg-[#0f172a] border-[#0f172a] text-white' : 'border-slate-300 bg-white'}`}>
@@ -597,7 +643,6 @@ export default function RequestPartShoppingPage() {
                   </span>
                 </div>
 
-                {/* รายการในบิล */}
                 <div className={`flex flex-col ${bState.selected ? 'border-t border-slate-100' : ''}`}>
                   {group.items.map((req: any, index: number) => {
                     const fix = fixtures.find(f => f.FixtureNo === req.PartID) || {};
@@ -616,26 +661,15 @@ export default function RequestPartShoppingPage() {
                           </div>
                         </div>
 
-                        {/* 🌟 ช่องใส่จำนวน (โผล่มาเฉพาะบิลที่ถูกเลือก และบิลนั้นถูกอนุมัติแล้ว) */}
                         {bState.selected && !isPending && (
                           <div className="mt-3 pt-3 border-t border-slate-50 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">จำนวนที่คืน (ชิ้น)</label>
-                              <input 
-                                type="number" min="0" max={req.Qty} value={itemState.returnQty === 0 ? '' : itemState.returnQty} 
-                                onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'returnQty', parseInt(e.target.value)||0)} 
-                                placeholder="0"
-                                className="w-full p-2.5 text-center text-sm font-black text-[#0f172a] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-[#0f172a] focus:bg-white transition-colors" 
-                              />
+                              <input type="number" min="0" max={req.Qty} value={itemState.returnQty === 0 ? '' : itemState.returnQty} onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'returnQty', parseInt(e.target.value)||0)} placeholder="0" className="w-full p-2.5 text-center text-sm font-black text-[#0f172a] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-[#0f172a] focus:bg-white transition-colors" />
                             </div>
                             <div>
                               <label className="block text-[9px] font-bold text-red-400 mb-1 uppercase tracking-widest">เสีย/พัง (ถ้ามี)</label>
-                              <input 
-                                type="number" min="0" max={itemState.returnQty} value={itemState.brokenQty === 0 ? '' : itemState.brokenQty} 
-                                onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'brokenQty', parseInt(e.target.value)||0)} 
-                                placeholder="0"
-                                className="w-full p-2.5 text-center text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg outline-none focus:border-red-500 focus:bg-white transition-colors" 
-                              />
+                              <input type="number" min="0" max={itemState.returnQty} value={itemState.brokenQty === 0 ? '' : itemState.brokenQty} onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'brokenQty', parseInt(e.target.value)||0)} placeholder="0" className="w-full p-2.5 text-center text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg outline-none focus:border-red-500 focus:bg-white transition-colors" />
                             </div>
                           </div>
                         )}
@@ -670,7 +704,7 @@ export default function RequestPartShoppingPage() {
       {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && Object.values(batchReturnState).some(s => s.selected) && (
         <div className="absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 animate-in slide-in-from-bottom-10">
           <button onClick={handleBatchReturnSubmit} disabled={isSubmitting} className="w-full bg-[#0f172a] text-white font-black py-4 rounded-xl shadow-xl shadow-slate-900/20 hover:bg-black active:scale-95 transition-all text-[15px] flex items-center justify-center gap-2">
-            {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังดำเนินการ...</> : <><i className="bi bi-check-all text-xl"></i> ยืนยันการทำรายการที่เลือก</>}
+            {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังดำเนินการ...</> : <><i className="bi bi-check-all text-xl"></i> ยืนยันทำรายการที่เลือก ({Object.values(batchReturnState).filter(s=>s.selected).length})</>}
           </button>
         </div>
       )}
@@ -774,6 +808,29 @@ export default function RequestPartShoppingPage() {
           </div>
         </div>
       )}
+
+      {/* 🌟 แจ้งเตือนของติดจอง 🌟 */}
+      {reservationModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100 flex flex-col gap-6">
+            <div className="flex flex-col gap-2 items-center text-center">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl shadow-inner border border-blue-100"><i className="bi bi-info-circle-fill"></i></div>
+              <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2">แจ้งเตือน: อะไหล่ติดจอง!</h3>
+              <p className="text-xs text-slate-500 font-medium">คุณกำลังหยิบอะไหล่ที่อาจเป็นการดึงตัดหน้าคิวอื่น</p>
+            </div>
+            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-slate-700 space-y-3.5">
+              <div className="flex items-start gap-3"><i className="bi bi-gear-wide-connected text-blue-500 text-base"></i><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่ออะไหล่</p><p className="font-bold text-sm tracking-tight">{reservationModal.partName}</p></div></div>
+              <div className="flex items-start gap-3"><i className="bi bi-bar-chart-fill text-amber-500 text-base"></i><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">มียอดจองรวม</p><p className="font-bold text-sm tracking-tight">{reservationModal.totalReserved} <span className="text-slate-500 text-[11px]">ชิ้น</span></p></div></div>
+              <div className="flex items-start gap-3"><i className="bi bi-geo-alt-fill text-emerald-500 text-base"></i><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">สำหรับเครื่อง (ไลน์) [จุด]</p><p className="font-bold text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">🔸 {reservationModal.machineInfo}</p></div></div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={() => setReservationModal(prev => ({ ...prev, isOpen: false }))} className="w-full bg-slate-50 text-slate-500 py-3.5 rounded-2xl font-black text-sm transition-all hover:bg-slate-100 active:scale-95">ยกเลิก (ไม่หยิบ)</button>
+              <button type="button" onClick={() => { reservationModal.onConfirm && reservationModal.onConfirm(); }} className="w-full bg-[#0f172a] text-white py-4.5 rounded-2xl font-black text-base shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2">แน่ใจที่จะหยิบใส่ตะกร้า <i className="bi bi-arrow-right"></i></button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
