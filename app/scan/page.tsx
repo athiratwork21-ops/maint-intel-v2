@@ -3,6 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { getSmartMaintenanceData } from '../../lib/maintenanceLogic';
 
+// 🌟 สร้าง Interface บังคับ Type ให้ TypeScript เลิกบ่น!
+interface BatchItemState {
+  returnQty: number;
+  brokenQty: number;
+  maxQty: number;
+}
+interface BatchGroupState {
+  selected: boolean;
+  items: { [reqId: string]: BatchItemState };
+}
+
 export default function RequestPartShoppingPage() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [departments, setDepartments] = useState<any[]>([]);
@@ -40,7 +51,8 @@ export default function RequestPartShoppingPage() {
 
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
-  const [batchReturnState, setBatchReturnState] = useState<{ [reqId: string]: { selected: boolean, returnQty: number, brokenQty: number } }>({});
+  // 🌟 บังคับ Type ด้วย Interface ที่สร้างไว้ด้านบน
+  const [batchReturnState, setBatchReturnState] = useState<{ [baseReqId: string]: BatchGroupState }>({});
 
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void, isDanger?: boolean } | null>(null);
 
@@ -169,7 +181,6 @@ export default function RequestPartShoppingPage() {
   const filteredConsumables = consumables.filter(c => { if (!searchQuery) return true; return searchTerms.some(term => `${c.ItemName} ${c.ItemModel || ''} ${c.ItemID}`.toLowerCase().includes(term)); });
   const filteredFixtures = fixtures.filter(f => { if (!searchQuery) return true; return searchTerms.some(term => `${f.ModelName} ${f.FixtureNo}`.toLowerCase().includes(term)); });
 
-  // 🌟 บังคับ Type: any[] เพื่อสยบ Vercel TypeScript 🌟
   const rawMyFixtureRequests = pendingRequests.filter(r => r.PickerName === pickerName && fixtures.some(f => f.FixtureNo === r.PartID));
   const groupedFixtureRequests: any[] = Object.values(
     rawMyFixtureRequests.reduce((acc: any, req: any) => {
@@ -315,8 +326,6 @@ export default function RequestPartShoppingPage() {
     if (selectedGroups.length === 0) return showToast('กรุณาเลือกรายการอย่างน้อย 1 รายการ', 'warning');
     
     let totalItemsToProcess = 0; let hasCancel = false; let hasReturn = false;
-    
-    // 🌟 ใส่ type: any ลงไปตอนหา group ใน array เพื่อแก้ปัญหา TypeScript 🌟
     selectedGroups.forEach(([baseId, _]) => {
         const group: any = groupedFixtureRequests.find((g: any) => g.baseId === baseId);
         if (group) {
@@ -336,7 +345,6 @@ export default function RequestPartShoppingPage() {
         setConfirmDialog(null); setIsSubmitting(true);
         try {
           for (const [baseId, state] of selectedGroups) {
-            // 🌟 ใส่ type: any ตรงนี้ด้วย 🌟
             const group: any = groupedFixtureRequests.find((g: any) => g.baseId === baseId);
             if (!group) continue;
 
@@ -367,19 +375,6 @@ export default function RequestPartShoppingPage() {
           showToast('ทำรายการสำเร็จเรียบร้อย!', 'success'); setBatchReturnState({}); fetchInitialData(activeDept);
         } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } 
         finally { setIsSubmitting(false); }
-      }
-    });
-  };
-
-  const handleCancelRequest = async (reqId: string) => {
-    setConfirmDialog({
-      isOpen: true, title: 'ยกเลิกคำขอยืม', message: 'คุณแน่ใจหรือไม่ที่จะยกเลิกคำขอยืมนี้?', isDanger: true,
-      onConfirm: async () => {
-        setConfirmDialog(null); setIsSubmitting(true);
-        const { error } = await supabase.from('PartRequests').delete().eq('RequestID', reqId);
-        if (!error) { showToast('ยกเลิกคำขอเรียบร้อยแล้ว', 'success'); fetchInitialData(activeDept); } 
-        else { showToast(`Error: ${error.message}`, 'error'); }
-        setIsSubmitting(false);
       }
     });
   };
@@ -449,7 +444,6 @@ export default function RequestPartShoppingPage() {
   return (
     <div className="h-[100dvh] flex flex-col bg-slate-50 font-sans text-slate-800 overflow-hidden relative">
       
-      {/* 🌟 Custom Confirm Dialog สุดโมเดิร์น 🌟 */}
       {confirmDialog && confirmDialog.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out border border-white">
@@ -620,7 +614,7 @@ export default function RequestPartShoppingPage() {
             );
           })}
 
-          {/* 🌟 FIXTURES (รายการที่กำลังยืม/รอดำเนินการ จัดกลุ่มแล้ว!) 🌟 */}
+          {/* FIXTURES (รายการที่กำลังยืม/รอดำเนินการ จัดกลุ่มแล้ว!) */}
           {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && groupedFixtureRequests.map(group => {
             const bState = batchReturnState[group.baseId] || { selected: false, items: {} };
             const isPending = group.status === 'Pending';
@@ -704,7 +698,7 @@ export default function RequestPartShoppingPage() {
       {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && Object.values(batchReturnState).some(s => s.selected) && (
         <div className="absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 animate-in slide-in-from-bottom-10">
           <button onClick={handleBatchReturnSubmit} disabled={isSubmitting} className="w-full bg-[#0f172a] text-white font-black py-4 rounded-xl shadow-xl shadow-slate-900/20 hover:bg-black active:scale-95 transition-all text-[15px] flex items-center justify-center gap-2">
-            {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังดำเนินการ...</> : <><i className="bi bi-check-all text-xl"></i> ยืนยันทำรายการที่เลือก ({Object.values(batchReturnState).filter(s=>s.selected).length})</>}
+            {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังดำเนินการ...</> : <><i className="bi bi-check-all text-xl"></i> ยืนยันการทำรายการที่เลือก</>}
           </button>
         </div>
       )}
