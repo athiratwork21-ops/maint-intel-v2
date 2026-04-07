@@ -448,7 +448,7 @@ export default function RequestPartShoppingPage() {
         <div className="flex p-1 bg-slate-800 rounded-xl gap-1">
           <button onClick={() => setActiveCategory('parts')} className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${activeCategory === 'parts' ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-gear-wide-connected"></i> อะไหล่</button>
           <button onClick={() => setActiveCategory('consumables')} className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${activeCategory === 'consumables' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-box2-heart"></i> สิ้นเปลือง</button>
-          <button onClick={() => setActiveCategory('fixtures')} className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${activeCategory === 'fixtures' ? 'bg-purple-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-tools"></i> เครื่องมือ</button>
+          <button onClick={() => setActiveCategory('fixtures')} className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${activeCategory === 'fixtures' ? 'bg-purple-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-tools"></i> Fixture</button>
         </div>
       </header>
 
@@ -456,10 +456,10 @@ export default function RequestPartShoppingPage() {
         {activeCategory === 'fixtures' && (
           <div className="flex gap-2 mb-4">
             <button onClick={() => setFixtureTab('list')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm flex items-center justify-center gap-2 ${fixtureTab === 'list' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-              <i className="bi bi-list-ul text-sm"></i> รายการเครื่องมือ
+              <i className="bi bi-list-ul text-sm"></i> รายการ Fixture
             </button>
             <button onClick={() => setFixtureTab('borrowed')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm flex items-center justify-center gap-2 relative ${fixtureTab === 'borrowed' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-              <i className="bi bi-person-badge text-sm"></i> เครื่องมือที่ฉันยืม
+              <i className="bi bi-person-badge text-sm"></i> Fixture ที่ฉันยืม
               {myFixtureRequests.length > 0 && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
             </button>
           </div>
@@ -588,7 +588,7 @@ export default function RequestPartShoppingPage() {
                       {bState.selected && <i className="bi bi-check-lg text-xs font-black"></i>}
                     </div>
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${isPending ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                      <i className={`bi ${isPending ? 'bi-hourglass-split' : 'bi-check-circle-fill'}`}></i> {isPending ? 'ยกเลิกคำขอ (ยังไม่อนุมัติ)' : 'เลือกคืนเครื่องมือ'}
+                      <i className={`bi ${isPending ? 'bi-hourglass-split' : 'bi-check-circle-fill'}`}></i> {isPending ? 'ยกเลิกคำขอ (ยังไม่อนุมัติ)' : 'เลือกคืน Fixture'}
                     </span>
                   </div>
                   <span className="text-[10px] font-bold text-slate-400">{new Date(req.CreatedAt).toLocaleDateString('en-GB')}</span>
@@ -600,7 +600,7 @@ export default function RequestPartShoppingPage() {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-800 text-sm leading-tight">{fix.ModelName || req.PartID}</h3>
-                    <p className="text-[10px] text-slate-500 mt-1 font-bold">จำนวนเครื่องมือ: <span className={`text-base ml-1 ${isPending ? 'text-amber-600' : 'text-blue-600'}`}>{req.Qty}</span> ชิ้น</p>
+                    <p className="text-[10px] text-slate-500 mt-1 font-bold">จำนวน Fixture: <span className={`text-base ml-1 ${isPending ? 'text-amber-600' : 'text-blue-600'}`}>{req.Qty}</span> ชิ้น</p>
                   </div>
                 </div>
 
