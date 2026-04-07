@@ -291,7 +291,7 @@ export default function RequestPartShoppingPage() {
 
   const handleCancelRequest = async (reqId: string) => {
     setConfirmDialog({
-      isOpen: true, title: 'ยกเลิกคำขอยืม', message: 'คุณแน่ใจหรือไม่ที่จะยกเลิกคำขอยืมเครื่องมือนี้?', isDanger: true,
+      isOpen: true, title: 'ยกเลิกคำขอยืม', message: 'คุณแน่ใจหรือไม่ที่จะยกเลิกคำขอยืมนี้?', isDanger: true,
       onConfirm: async () => {
         setConfirmDialog(null); setIsSubmitting(true);
         const { error } = await supabase.from('PartRequests').delete().eq('RequestID', reqId);
@@ -349,7 +349,7 @@ export default function RequestPartShoppingPage() {
 
     try {
       const { data: fix } = await supabase.from('Fixtures').select('*').eq('FixtureNo', selectedReturnReq.PartID).single();
-      if (!fix) throw new Error('ไม่พบข้อมูลเครื่องมือในระบบ (อาจถูกลบไปแล้ว)');
+      if (!fix) throw new Error('ไม่พบข้อมูล Fixture ในระบบ (อาจถูกลบไปแล้ว)');
 
       const newBorrowed = Math.max(0, (fix.BorrowedQty || 0) - returnQty);
       const newBroken = (fix.BrokenQty || 0) + brokenQty;
@@ -359,7 +359,7 @@ export default function RequestPartShoppingPage() {
       if (returnQty >= selectedReturnReq.Qty) { await supabase.from('PartRequests').update({ Status: 'Returned' }).eq('RequestID', selectedReturnReq.RequestID); } 
       else { await supabase.from('PartRequests').update({ Qty: selectedReturnReq.Qty - returnQty }).eq('RequestID', selectedReturnReq.RequestID); }
 
-      showToast('ทำรายการคืนเครื่องมือสำเร็จ!', 'success'); setReturnModalOpen(false); fetchInitialData(activeDept);
+      showToast('ทำรายการคืน Fixture สำเร็จ!', 'success'); setReturnModalOpen(false); fetchInitialData(activeDept);
     } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } 
     finally { setIsSubmitting(false); }
   };
