@@ -600,7 +600,7 @@ export default function RequestPartShoppingPage() {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-800 text-sm leading-tight">{fix.ModelName || req.PartID}</h3>
-                    <p className="text-[10px] text-slate-500 mt-1 font-bold">จำนวน Fixture: <span className={`text-base ml-1 ${isPending ? 'text-amber-600' : 'text-blue-600'}`}>{req.Qty}</span> ชิ้น</p>
+                    <p className="text-[10px] text-slate-500 mt-1 font-bold">จำนวนเครื่องมือ: <span className={`text-base ml-1 ${isPending ? 'text-amber-600' : 'text-blue-600'}`}>{req.Qty}</span> ชิ้น</p>
                   </div>
                 </div>
 
@@ -791,6 +791,28 @@ export default function RequestPartShoppingPage() {
                 {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> อัปเดตสต๊อก...</> : <><i className="bi bi-check2-circle text-xl"></i> ยืนยันคืนเข้าตู้</>}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 แจ้งเตือนของติดจอง 🌟 */}
+      {reservationModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100 flex flex-col gap-6">
+            <div className="flex flex-col gap-2 items-center text-center">
+              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl shadow-inner border border-blue-100"><i className="bi bi-info-circle-fill"></i></div>
+              <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2">แจ้งเตือน: อะไหล่ติดจอง!</h3>
+              <p className="text-xs text-slate-500 font-medium">คุณกำลังหยิบอะไหล่ที่อาจเป็นการดึงตัดหน้าคิวอื่น</p>
+            </div>
+            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-slate-700 space-y-3.5">
+              <div className="flex items-start gap-3"><i className="bi bi-gear-wide-connected text-blue-500 text-base"></i><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่ออะไหล่</p><p className="font-bold text-sm tracking-tight">{reservationModal.partName}</p></div></div>
+              <div className="flex items-start gap-3"><i className="bi bi-bar-chart-fill text-amber-500 text-base"></i><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">มียอดจองรวม</p><p className="font-bold text-sm tracking-tight">{reservationModal.totalReserved} <span className="text-slate-500 text-[11px]">ชิ้น</span></p></div></div>
+              <div className="flex items-start gap-3"><i className="bi bi-geo-alt-fill text-emerald-500 text-base"></i><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">สำหรับเครื่อง (ไลน์) [จุด]</p><p className="font-bold text-slate-700 text-xs leading-relaxed whitespace-pre-wrap">🔸 {reservationModal.machineInfo}</p></div></div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={() => setReservationModal(prev => ({ ...prev, isOpen: false }))} className="w-full bg-slate-50 text-slate-500 py-3.5 rounded-2xl font-black text-sm transition-all hover:bg-slate-100 active:scale-95">ยกเลิก (ไม่หยิบ)</button>
+              <button type="button" onClick={() => { reservationModal.onConfirm && reservationModal.onConfirm(); }} className="w-full bg-[#0f172a] text-white py-4.5 rounded-2xl font-black text-base shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2">แน่ใจที่จะหยิบใส่ตะกร้า <i className="bi bi-arrow-right"></i></button>
+            </div>
           </div>
         </div>
       )}
