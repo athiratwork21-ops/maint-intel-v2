@@ -652,56 +652,86 @@ export default function MaintenanceDashboard() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-700 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
-      {/* 🌟 SCIFI INTRO ANIMATION 🌟 */}
+      {/* 🌟 MECHANICAL-INDUSTRIAL INTRO ANIMATION 🌟 */}
       {showIntro && (
-        <div className="fixed inset-0 z-[99999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden" style={{ animation: 'introFadeOut 0.5s ease forwards 2.5s' }}>
-          {/* Grid Background */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30"></div>
+        <div className="fixed inset-0 z-[99999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden" style={{ animation: 'introMechanicalOpen 0.5s ease forwards 2.5s' }}>
           
-          {/* Core Glow */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] md:w-[400px] md:h-[400px] bg-blue-600/30 rounded-full blur-[100px] mix-blend-screen animate-pulse"></div>
+          {/* Background Grid & Scanlines */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_80%,transparent_100%)] opacity-20 z-0"></div>
+          <div className="absolute inset-0 bg-[repeating-linear-gradient(transparent,transparent_2px,#020617_2px,#020617_4px)] opacity-30 z-0 animate-introScanlines"></div>
 
-          {/* Logo Ring & Text */}
-          <div className="relative flex flex-col items-center z-10 animate-in zoom-in duration-700 ease-out" style={{ animation: 'introZoomInGlow 2s ease-out forwards' }}>
+          {/* Central Mechanism with Laser & Gears */}
+          <div className="relative flex flex-col items-center z-10">
             
-            <div className="relative w-32 h-32 flex items-center justify-center mb-4">
-              <div className="absolute inset-0 border-t-4 border-l-4 border-blue-500 rounded-full shadow-[0_0_20px_#3b82f6]" style={{ animation: 'introSpin 1s linear infinite' }}></div>
-              <div className="absolute inset-2 border-r-4 border-b-4 border-indigo-400 rounded-full shadow-[0_0_20px_#818cf8]" style={{ animation: 'introSpin 1.5s linear infinite reverse' }}></div>
-              <div className="absolute inset-4 border-t-4 border-r-4 border-cyan-400 rounded-full border-dashed opacity-50" style={{ animation: 'introSpin 3s linear infinite' }}></div>
-              <i className="bi bi-tools text-5xl text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] z-10 animate-pulse"></i>
+            {/* The Gear Mechanism */}
+            <div className="relative w-40 h-40 flex items-center justify-center mb-6">
+              {/* Outer Gears - Metallic and Pink */}
+              <div className="absolute inset-0 border-[3px] border-slate-700 rounded-full" style={{ animation: 'introSpin 8s linear infinite' }}>
+                {/* Teeth (Gear shapes) */}
+                {[...Array(24)].map((_, i) => (
+                  <div key={i} className="absolute w-2 h-4 bg-slate-700 top-[-8px] left-1/2 -translate-x-1/2 rounded-t-sm origin-bottom" style={{ transform: `rotate(${i * 15}deg)` }}></div>
+                ))}
+              </div>
+              <div className="absolute inset-4 border-[3px] border-emerald-900 rounded-full opacity-50" style={{ animation: 'introSpin 12s linear infinite reverse' }}>
+                 {[...Array(16)].map((_, i) => (
+                  <div key={i} className="absolute w-1.5 h-3 bg-emerald-900 top-[-6px] left-1/2 -translate-x-1/2 rounded-t-sm origin-bottom" style={{ transform: `rotate(${i * 22.5}deg)` }}></div>
+                ))}
+              </div>
+              
+              {/* Core Icon - Metallic and Glowing */}
+              <div className="relative w-28 h-28 flex items-center justify-center bg-slate-900 rounded-full border-[6px] border-slate-600 shadow-[inset_0_0_20px_rgba(255,255,255,0.1),0_0_15px_rgba(59,130,246,0.3)] animate-introMechanicalEngage">
+                <i className="bi bi-tools text-6xl text-slate-100 drop-shadow-[0_0_10px_rgba(255,255,255,0.8)] z-10"></i>
+                
+                {/* Laser Scanning Line */}
+                <div className="absolute inset-0 bg-blue-500/80 rounded-full animate-introLaser h-[2px] w-full top-1/2 -translate-y-1/2 [mask-image:radial-gradient(ellipse_60%_100%,#000_50%,transparent_100%)]"></div>
+              </div>
+
+              {/* Sparks (random placement) */}
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="absolute w-1 h-1 bg-yellow-300 rounded-full animate-introSparks" style={{ top: `${Math.random()*100}%`, left: `${Math.random()*100}%`, animationDelay: `${i*0.4}s` }}></div>
+              ))}
             </div>
             
-            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 uppercase drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" style={{ animation: 'introGlitchFade 1s ease-out forwards 0.5s', opacity: 0 }}>
+            {/* Command Terminal Style Text */}
+            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-indigo-200 to-cyan-300 uppercase tracking-widest drop-shadow-[0_0_8px_rgba(59,130,246,0.4)] animate-introTypewriter">
               MAINT. INTEL
             </h1>
 
-            <div className="mt-8 flex flex-col items-center" style={{ animation: 'introFadeInUp 0.5s ease forwards 1s', opacity: 0 }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></div>
-                <span className="text-emerald-400 text-xs font-mono tracking-widest uppercase shadow-emerald-400 drop-shadow-[0_0_5px_#34d399]">Access Granted</span>
+            {/* Status & Progress */}
+            <div className="mt-8 flex flex-col items-center opacity-0 animate-introFadeInUp" style={{ animationDelay: '1.2s' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_8px_#34d399] animate-ping"></div>
+                <span className="text-emerald-400 text-xs font-mono tracking-widest uppercase shadow-emerald-400 drop-shadow-[0_0_5px_#34d399]">SYSTEMS ONLINE</span>
               </div>
-              <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_10px_#3b82f6]" style={{ animation: 'introProgressLoad 1s ease-out forwards 1s', width: '0%' }}></div>
+              <div className="w-56 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700 shadow-inner relative">
+                {/* Pink "Heat" effect like from the main UI */}
+                <div className="h-full bg-gradient-to-r from-blue-600 via-pink-400 to-cyan-400 animate-introProgressLoad shadow-[0_0_12px_#3b82f6]" style={{ width: '0%' }}></div>
+                {/* Mechanical texture overlay */}
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px)] bg-[size:4px_100%] opacity-10"></div>
               </div>
-              <span className="text-slate-500 text-[10px] font-mono mt-3 uppercase tracking-widest animate-pulse">Initializing System Core...</span>
+              <span className="text-slate-500 text-[10px] font-mono mt-3.5 uppercase tracking-wider animate-pulse">CALIBRATING MECHANICAL COMPONENTS..._</span>
             </div>
 
           </div>
 
           <style dangerouslySetInnerHTML={{__html: `
             @keyframes introSpin { 100% { transform: rotate(360deg); } }
-            @keyframes introZoomInGlow {
-              0% { transform: scale(0.5); opacity: 0; filter: blur(10px); }
-              50% { transform: scale(1.1); opacity: 1; filter: blur(0px); }
+            @keyframes introScanlines { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
+            @keyframes introMechanicalEngage {
+              0% { transform: scale(1.5); opacity: 0; }
+              50% { transform: scale(1.05); opacity: 1; }
               100% { transform: scale(1); opacity: 1; }
             }
-            @keyframes introGlitchFade {
-              0% { opacity: 0; transform: translateY(10px); letter-spacing: 0em; }
-              100% { opacity: 1; transform: translateY(0); letter-spacing: 0.3em; }
+            @keyframes introLaser { 0% { top: 10%; opacity: 0; } 20% { opacity: 1; } 50% { top: 90%; } 80% { opacity: 1; } 100% { top: 10%; opacity: 0; } }
+            @keyframes introSparks { 0%, 100% { opacity: 0; transform: scale(0); } 50% { opacity: 1; transform: scale(1); } }
+            @keyframes introTypewriter { 0% { width: 0; opacity: 0; } 100% { width: 100%; opacity: 1; } }
+            @keyframes introFadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes introProgressLoad { 0% { width: 0%; } 100% { width: 100%; } }
+            @keyframes introMechanicalOpen {
+              0% { opacity: 1; visibility: visible; }
+              90% { opacity: 1; visibility: visible; transform: scale(1); }
+              100% { opacity: 0; visibility: hidden; transform: scale(1.5); }
             }
-            @keyframes introFadeInUp { to { opacity: 1; transform: translateY(0); } }
-            @keyframes introProgressLoad { 0% { width: 0%; } 60% { width: 80%; } 100% { width: 100%; } }
-            @keyframes introFadeOut { to { opacity: 0; visibility: hidden; transform: scale(1.5); } }
           `}} />
         </div>
       )}
