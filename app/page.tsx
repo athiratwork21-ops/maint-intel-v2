@@ -652,84 +652,77 @@ export default function MaintenanceDashboard() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-700 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
-      {/* 🌟 CINEMATIC MECHANICAL INTRO ANIMATION 🌟 */}
+      {/* 🌟 MAINT. INTEL: CINEMATIC INTRO 🌟 */}
       {showIntro && (
         <div className="fixed inset-0 z-[99999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden font-mono" style={{ animation: 'introVaultOpen 0.6s cubic-bezier(0.7, 0, 0.3, 1) forwards 4s' }}>
           
-          {/* Phase 1: The CRT & Scanline Background */}
+          {/* Background CRT & Scanlines */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:40px_40px] opacity-40 z-0"></div>
           <div className="absolute inset-0 pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)', animation: 'introScanlines 10s linear infinite' }}></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,#020617_100%)] z-0"></div>
 
-          {/* Phase 2: The Boot Sequence */}
-          <div className="relative z-10 flex flex-col items-center w-full max-w-2xl px-6">
+          <div className="relative z-10 flex flex-col items-center justify-center w-full px-6">
             
-            {/* The Mechanical Core (Vault Lock) */}
-            <div className="relative w-48 h-48 flex items-center justify-center mb-8 transform scale-0 opacity-0" style={{ animation: 'introCoreAppear 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards 0.2s' }}>
-              
-              {/* Outer Heavy Gear */}
-              <div className="absolute inset-0 rounded-full border-4 border-slate-700/50" style={{ animation: 'introSpinHeavy 8s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}>
-                {[...Array(12)].map((_, i) => (
-                  <div key={i} className="absolute w-4 h-6 bg-slate-800 border-2 border-slate-600 rounded-sm top-[-10px] left-1/2 -translate-x-1/2 origin-[50%_106px]" style={{ transform: `rotate(${i * 30}deg)` }}></div>
-                ))}
+            {/* 🌟 THE MAIN TITLE: MAINT. INTEL 🌟 */}
+            <div className="relative flex flex-col items-center justify-center mb-8 h-40">
+              {/* Background Rotating Gears (Behind Text) */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-[1px] border-slate-700 rounded-full opacity-0" style={{ animation: 'introFadeIn 1s forwards 0.5s, introSpinHeavy 20s linear infinite' }}>
+                <div className="absolute top-[-4px] left-1/2 w-2 h-2 bg-cyan-500 rounded-full shadow-[0_0_10px_#06b6d4]"></div>
+                <div className="absolute bottom-[-4px] left-1/2 w-2 h-2 bg-pink-500 rounded-full shadow-[0_0_10px_#ec4899]"></div>
               </div>
 
-              {/* Inner Fast Gear (Cyan) */}
-              <div className="absolute inset-6 rounded-full border-[3px] border-cyan-900/40" style={{ animation: 'introSpinReverse 4s linear infinite' }}>
-                {[...Array(16)].map((_, i) => (
-                  <div key={i} className="absolute w-2 h-3 bg-cyan-800 top-[-4px] left-1/2 -translate-x-1/2 origin-[50%_80px]" style={{ transform: `rotate(${i * 22.5}deg)` }}></div>
-                ))}
-              </div>
+              {/* Huge Glow Behind Text */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-blue-600/20 blur-[60px] rounded-full opacity-0" style={{ animation: 'introPulseGlow 3s ease-in-out infinite alternate 1s' }}></div>
+
+              {/* The Text Itself */}
+              <h1 className="relative text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-cyan-100 to-blue-400 uppercase tracking-[0.2em] drop-shadow-[0_0_15px_rgba(34,211,238,0.6)] opacity-0 scale-150" style={{ animation: 'introTitleDrop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.1) forwards 0.3s' }}>
+                MAINT<span className="text-cyan-400">.</span> INTEL
+              </h1>
               
-              {/* Core Lens */}
-              <div className="relative w-28 h-28 bg-slate-900 rounded-full border-[8px] border-slate-800 flex items-center justify-center shadow-[inset_0_0_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.2)] overflow-hidden">
-                <i className="bi bi-tools text-5xl text-slate-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] z-10" style={{ animation: 'introPulseGlow 2s ease-in-out infinite alternate' }}></i>
-                {/* Sweeping Laser */}
-                <div className="absolute top-0 left-0 w-full h-[3px] bg-cyan-400 shadow-[0_0_15px_#22d3ee] opacity-0" style={{ animation: 'introLaserSweep 2s ease-in-out forwards 1s' }}></div>
+              {/* Subtitle / System Version */}
+              <div className="absolute -bottom-2 right-0 bg-cyan-900/50 border border-cyan-500/50 text-cyan-400 text-[10px] px-2 py-0.5 rounded font-bold tracking-widest opacity-0" style={{ animation: 'introFadeIn 0.5s forwards 1.2s' }}>
+                v2.0 ONLINE
               </div>
             </div>
 
             {/* Terminal Output Text */}
-            <div className="w-full bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-md mb-6 h-36 flex flex-col justify-end overflow-hidden relative">
-              <div className="absolute top-0 left-0 w-full h-full pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10 bg-[length:100%_4px,3px_100%]"></div>
-              
-              <div className="space-y-2 text-[11px] sm:text-xs text-cyan-500 font-bold tracking-wider opacity-0" style={{ animation: 'introFadeIn 0.1s forwards 0.8s' }}>
-                <p className="opacity-0" style={{ animation: 'introTypewriter 0.1s forwards 0.8s' }}>{`> INITIATING OVERRIDE PROTOCOL...`}</p>
-                <p className="opacity-0" style={{ animation: 'introTypewriter 0.1s forwards 1.2s' }}>{`> BYPASSING SECURITY FIREWALL... [OK]`}</p>
-                <p className="opacity-0" style={{ animation: 'introTypewriter 0.1s forwards 1.6s' }}>{`> CALIBRATING HYDRAULICS... [OK]`}</p>
-                <p className="opacity-0 text-amber-400" style={{ animation: 'introTypewriter 0.1s forwards 2.0s' }}>{`> SYNCHRONIZING MAINT. INTEL CORE...`}</p>
-                <p className="opacity-0 text-emerald-400 text-sm" style={{ animation: 'introTypewriter 0.1s forwards 2.5s' }}>{`> ACCESS GRANTED.`}</p>
+            <div className="w-full max-w-lg bg-slate-900/80 border-l-2 border-cyan-500 p-4 shadow-[0_0_20px_rgba(0,0,0,0.5)] backdrop-blur-md mb-6 h-28 flex flex-col justify-end overflow-hidden relative opacity-0" style={{ animation: 'introFadeIn 0.2s forwards 1s' }}>
+              <div className="space-y-1.5 text-[11px] sm:text-xs text-slate-400 font-bold tracking-wider">
+                <p className="opacity-0 flex items-center gap-2" style={{ animation: 'introTypewriter 0.1s forwards 1.2s' }}><i className="bi bi-cpu-fill text-slate-500"></i> {`INITIALIZING CORE MECHANICS...`}</p>
+                <p className="opacity-0 flex items-center gap-2" style={{ animation: 'introTypewriter 0.1s forwards 1.6s' }}><i className="bi bi-shield-lock-fill text-slate-500"></i> {`VERIFYING CREDENTIALS... `}<span className="text-emerald-400">[VALID]</span></p>
+                <p className="opacity-0 flex items-center gap-2 text-cyan-400" style={{ animation: 'introTypewriter 0.1s forwards 2.2s' }}><i className="bi bi-broadcast text-cyan-500"></i> {`CONNECTING TO MAINT. INTEL DATABASE...`}</p>
               </div>
             </div>
 
-            {/* Progress Bar (The 'Boot' phase) */}
-            <div className="w-full flex flex-col items-center opacity-0" style={{ animation: 'introFadeIn 0.3s forwards 2.6s' }}>
-              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700 relative">
-                <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-pink-500 shadow-[0_0_15px_#ec4899] w-0" style={{ animation: 'introProgressBar 1.2s cubic-bezier(0.65, 0, 0.35, 1) forwards 2.7s' }}></div>
+            {/* Progress Bar & Access Granted */}
+            <div className="w-full max-w-lg flex flex-col items-center opacity-0" style={{ animation: 'introFadeIn 0.3s forwards 2.5s' }}>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700 relative">
+                <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 via-cyan-400 to-white shadow-[0_0_15px_#22d3ee] w-0" style={{ animation: 'introProgressBar 1s cubic-bezier(0.65, 0, 0.35, 1) forwards 2.5s' }}></div>
               </div>
-              <span className="text-slate-500 text-[10px] mt-3 uppercase tracking-[0.2em] animate-pulse">Loading Main Interface...</span>
+              <div className="flex justify-between w-full mt-2">
+                <span className="text-slate-600 text-[10px] uppercase tracking-[0.2em] font-black">Boot Sequence</span>
+                <span className="text-emerald-400 text-[11px] font-black uppercase tracking-widest opacity-0 animate-pulse" style={{ animation: 'introFadeIn 0.1s forwards 3.5s' }}>ACCESS GRANTED</span>
+              </div>
             </div>
 
           </div>
 
-          {/* Phase 3: The Reveal Flash (White screen flash before dashboard) */}
-          <div className="absolute inset-0 bg-white z-50 opacity-0 pointer-events-none" style={{ animation: 'introFlash 0.5s ease-out forwards 3.9s' }}></div>
+          {/* Phase 3: The Reveal Flash */}
+          <div className="absolute inset-0 bg-cyan-400 mix-blend-overlay z-50 opacity-0 pointer-events-none" style={{ animation: 'introFlash 0.5s ease-out forwards 3.8s' }}></div>
 
           <style dangerouslySetInnerHTML={{__html: `
             @keyframes introScanlines { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
-            @keyframes introCoreAppear { 0% { transform: scale(0.5) rotate(-45deg); opacity: 0; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
-            @keyframes introSpinHeavy { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            @keyframes introSpinReverse { 0% { transform: rotate(0deg); } 100% { transform: rotate(-360deg); } }
-            @keyframes introPulseGlow { 0% { opacity: 0.7; filter: drop-shadow(0 0 2px rgba(255,255,255,0.3)); } 100% { opacity: 1; filter: drop-shadow(0 0 12px rgba(6,182,212,0.8)); } }
-            @keyframes introLaserSweep { 0% { top: -10%; opacity: 0; } 10% { opacity: 1; } 90% { top: 110%; opacity: 1; } 100% { top: 120%; opacity: 0; } }
+            @keyframes introSpinHeavy { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+            @keyframes introPulseGlow { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } }
+            @keyframes introTitleDrop { 0% { opacity: 0; transform: scale(1.5); filter: blur(10px); } 100% { opacity: 1; transform: scale(1); filter: blur(0px); } }
             @keyframes introFadeIn { to { opacity: 1; } }
             @keyframes introTypewriter { 0% { opacity: 0; transform: translateX(-10px); } 100% { opacity: 1; transform: translateX(0); } }
-            @keyframes introProgressBar { 0% { width: 0%; } 40% { width: 30%; } 70% { width: 80%; } 100% { width: 100%; } }
-            @keyframes introFlash { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
+            @keyframes introProgressBar { 0% { width: 0%; } 40% { width: 40%; } 70% { width: 85%; } 100% { width: 100%; } }
+            @keyframes introFlash { 0% { opacity: 0; } 20% { opacity: 0.8; } 100% { opacity: 0; } }
             @keyframes introVaultOpen { 
               0% { transform: scale(1); opacity: 1; filter: blur(0px); } 
-              40% { transform: scale(0.95); opacity: 1; filter: blur(2px); } 
-              100% { transform: scale(3); opacity: 0; filter: blur(20px); visibility: hidden; } 
+              40% { transform: scale(0.98); opacity: 1; filter: blur(1px); } 
+              100% { transform: scale(2.5); opacity: 0; filter: blur(20px); visibility: hidden; } 
             }
           `}} />
         </div>
