@@ -3,17 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { getSmartMaintenanceData } from '../../lib/maintenanceLogic';
 
-// 🌟 สร้าง Interface บังคับ Type ให้ TypeScript เลิกบ่น!
-interface BatchItemState {
-  returnQty: number;
-  brokenQty: number;
-  maxQty: number;
-}
-interface BatchGroupState {
-  selected: boolean;
-  items: { [reqId: string]: BatchItemState };
-}
-
 export default function RequestPartShoppingPage() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [departments, setDepartments] = useState<any[]>([]);
@@ -49,10 +38,9 @@ export default function RequestPartShoppingPage() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'warning' | 'info' | 'error'} | null>(null);
   const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
 
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-
-  // 🌟 บังคับ Type ด้วย Interface ที่สร้างไว้ด้านบน
-  const [batchReturnState, setBatchReturnState] = useState<{ [baseReqId: string]: BatchGroupState }>({});
+  const [batchReturnState, setBatchReturnState] = useState<{
+    [baseReqId: string]: { selected: boolean; items: { [reqId: string]: { returnQty: number; brokenQty: number; maxQty: number; } } }
+  }>({});
 
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void, isDanger?: boolean } | null>(null);
 
@@ -62,6 +50,10 @@ export default function RequestPartShoppingPage() {
 
   const [isReturnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedReturnReq, setSelectedReturnReq] = useState<any>(null);
+
+  // 🌟 State ใหม่สำหรับ ป๊อปอัพเลือกจุดติดตั้ง 🌟
+  const [positionModal, setPositionModal] = useState<{ isOpen: boolean, itemId: string, itemName: string } | null>(null);
+  const [tempPositionSearch, setTempPositionSearch] = useState('');
 
   useEffect(() => {
     const d = localStorage.getItem('mechanicDept');
@@ -103,19 +95,6 @@ export default function RequestPartShoppingPage() {
       Object.keys(posMap).forEach(k => formattedMap[k] = Array.from(posMap[k]));
       setHistoricalPositions(formattedMap);
     } catch (error) { console.error(error); showToast('โหลดข้อมูลล้มเหลว', 'error'); } finally { setIsLoading(false); }
-  };
-
-  const getRealAvailableQty = (itemId: string, type: 'part' | 'consumable' | 'fixture') => {
-    const otherMechanicsPendingQty = pendingRequests.filter(r => r.PartID === itemId && r.Status === 'Pending').reduce((s, r) => s + (r.Qty || 0), 0);
-    const currentCartQty = cart[itemId]?.qty || 0;
-
-    if (type === 'part') { return (stockAllocations[itemId]?.physical || 0) - otherMechanicsPendingQty - currentCartQty; } 
-    else if (type === 'consumable') { return (consumables.find(c => c.ItemID === itemId)?.Balance || 0) - otherMechanicsPendingQty - currentCartQty; } 
-    else {
-      const fix = fixtures.find(f => f.FixtureNo === itemId);
-      if (!fix) return 0;
-      return (fix.TotalQty || 0) - (fix.BrokenQty || 0) - (fix.BorrowedQty || 0) - otherMechanicsPendingQty - currentCartQty;
-    }
   };
 
   const handleUpdateCart = (itemId: string, type: 'part' | 'consumable' | 'fixture', deltaOrExact: number, isExact: boolean = false) => {
@@ -444,6 +423,7 @@ export default function RequestPartShoppingPage() {
   return (
     <div className="h-[100dvh] flex flex-col bg-slate-50 font-sans text-slate-800 overflow-hidden relative">
       
+      {/* 🌟 Custom Confirm Dialog สุดโมเดิร์น 🌟 */}
       {confirmDialog && confirmDialog.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out border border-white">
@@ -463,6 +443,85 @@ export default function RequestPartShoppingPage() {
       )}
 
       {toast && ( <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[300] animate-in slide-in-from-top-5 fade-in duration-300"> <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border-l-4 bg-white/95 backdrop-blur-sm ${toast.type === 'success' ? 'border-emerald-500' : toast.type === 'error' ? 'border-red-500' : 'border-blue-500'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button type="button" onClick={() => setToast(null)} className="ml-auto text-slate-400"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
+
+      {/* 🌟 Modal: เลือกจุดที่ติดตั้ง (Position Selection) 🌟 */}
+      {positionModal && positionModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-t-[2rem] sm:rounded-3xl shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 flex flex-col max-h-[85vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="font-black text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-geo-alt-fill text-blue-500"></i> ระบุจุดที่ติดตั้ง</h3>
+                <p className="text-xs text-slate-500 mt-1 font-medium truncate max-w-[250px]">{positionModal.itemName}</p>
+              </div>
+              <button type="button" onClick={() => setPositionModal(null)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors"><i className="bi bi-x-lg text-sm"></i></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4 bg-slate-50/50">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="พิมพ์จุดติดตั้งใหม่ หรือค้นหาประวัติ..."
+                  value={tempPositionSearch}
+                  onChange={(e) => setTempPositionSearch(e.target.value)}
+                  className="w-full p-4 pl-11 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm shadow-sm"
+                  autoFocus
+                />
+                <i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                {tempPositionSearch && (
+                  <button type="button" onClick={() => setTempPositionSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><i className="bi bi-x-circle-fill"></i></button>
+                )}
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">ประวัติจุดที่เคยติดตั้งเครื่องนี้</p>
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm max-h-60 overflow-y-auto">
+                  {(() => {
+                    const positions = selectedMachine ? (historicalPositions[`${selectedMachine}_${positionModal.itemId}`] || []) : [];
+                    const filteredPositions = positions.filter(p => p.toLowerCase().includes(tempPositionSearch.toLowerCase()));
+
+                    if (positions.length === 0) {
+                      return <div className="p-6 text-center text-slate-400 text-xs font-bold bg-slate-50"><i className="bi bi-info-circle mb-1 block text-lg"></i>ยังไม่มีประวัติการติดตั้งอะไหล่นี้ในเครื่องนี้</div>;
+                    }
+
+                    if (filteredPositions.length === 0 && tempPositionSearch) {
+                       return <div className="p-4 text-center text-slate-400 text-xs font-bold">ไม่พบประวัติ "{tempPositionSearch}"<br/><span className="text-blue-500">กดปุ่มยืนยันด้านล่างเพื่อใช้คำนี้ได้เลย</span></div>;
+                    }
+
+                    return filteredPositions.map(pos => (
+                      <button
+                        key={pos}
+                        type="button"
+                        onClick={() => {
+                          setCart(prev => ({ ...prev, [positionModal.itemId]: { ...prev[positionModal.itemId], position: pos } }));
+                          setPositionModal(null);
+                        }}
+                        className="w-full text-left p-4 text-sm font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 border-b border-slate-50 last:border-0 transition-colors flex items-center justify-between group"
+                      >
+                        <span className="flex items-center gap-2"><i className="bi bi-clock-history text-slate-300 group-hover:text-blue-400"></i> {pos}</span>
+                        <i className="bi bi-check2 text-blue-500 opacity-0 group-hover:opacity-100"></i>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-white shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCart(prev => ({ ...prev, [positionModal.itemId]: { ...prev[positionModal.itemId], position: tempPositionSearch.trim() } }));
+                  setPositionModal(null);
+                }}
+                disabled={!tempPositionSearch.trim()}
+                className="w-full bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg shadow-blue-600/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px] disabled:opacity-50 disabled:shadow-none flex justify-center items-center gap-2"
+              >
+                <i className="bi bi-check2-circle text-lg"></i> ใช้จุดติดตั้งนี้
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <header className="bg-[#0f172a] text-white px-5 pt-8 pb-5 shrink-0 z-20 shadow-md">
         <div className="flex justify-between items-center mb-4">
@@ -614,7 +673,7 @@ export default function RequestPartShoppingPage() {
             );
           })}
 
-          {/* FIXTURES (รายการที่กำลังยืม/รอดำเนินการ จัดกลุ่มแล้ว!) */}
+          {/* 🌟 FIXTURES (รายการที่กำลังยืม/รอดำเนินการ แบบใหม่ จัดกลุ่ม!) 🌟 */}
           {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && groupedFixtureRequests.map(group => {
             const bState = batchReturnState[group.baseId] || { selected: false, items: {} };
             const isPending = group.status === 'Pending';
@@ -622,6 +681,7 @@ export default function RequestPartShoppingPage() {
             return (
               <div key={group.baseId} className={`bg-white rounded-[1.5rem] shadow-sm border ${bState.selected ? 'border-[#0f172a] shadow-lg shadow-slate-900/5' : 'border-slate-200'} flex flex-col transition-all duration-300 overflow-hidden`}>
                 
+                {/* ส่วนหัวของบิล */}
                 <div className={`p-4 flex justify-between items-center cursor-pointer select-none transition-colors ${bState.selected ? 'bg-slate-50' : 'hover:bg-slate-50'}`} onClick={() => handleToggleGroupSelect(group)}>
                   <div className="flex items-center gap-3.5">
                     <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${bState.selected ? 'bg-[#0f172a] border-[#0f172a] text-white' : 'border-slate-300 bg-white'}`}>
@@ -637,6 +697,7 @@ export default function RequestPartShoppingPage() {
                   </span>
                 </div>
 
+                {/* รายการในบิล */}
                 <div className={`flex flex-col ${bState.selected ? 'border-t border-slate-100' : ''}`}>
                   {group.items.map((req: any, index: number) => {
                     const fix = fixtures.find(f => f.FixtureNo === req.PartID) || {};
@@ -655,15 +716,26 @@ export default function RequestPartShoppingPage() {
                           </div>
                         </div>
 
+                        {/* 🌟 ช่องใส่จำนวน (โผล่มาเฉพาะบิลที่ถูกเลือก และบิลนั้นถูกอนุมัติแล้ว) */}
                         {bState.selected && !isPending && (
                           <div className="mt-3 pt-3 border-t border-slate-50 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
                             <div>
                               <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">จำนวนที่คืน (ชิ้น)</label>
-                              <input type="number" min="0" max={req.Qty} value={itemState.returnQty === 0 ? '' : itemState.returnQty} onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'returnQty', parseInt(e.target.value)||0)} placeholder="0" className="w-full p-2.5 text-center text-sm font-black text-[#0f172a] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-[#0f172a] focus:bg-white transition-colors" />
+                              <input 
+                                type="number" min="0" max={req.Qty} value={itemState.returnQty === 0 ? '' : itemState.returnQty} 
+                                onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'returnQty', parseInt(e.target.value)||0)} 
+                                placeholder="0"
+                                className="w-full p-2.5 text-center text-sm font-black text-[#0f172a] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-[#0f172a] focus:bg-white transition-colors" 
+                              />
                             </div>
                             <div>
                               <label className="block text-[9px] font-bold text-red-400 mb-1 uppercase tracking-widest">เสีย/พัง (ถ้ามี)</label>
-                              <input type="number" min="0" max={itemState.returnQty} value={itemState.brokenQty === 0 ? '' : itemState.brokenQty} onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'brokenQty', parseInt(e.target.value)||0)} placeholder="0" className="w-full p-2.5 text-center text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg outline-none focus:border-red-500 focus:bg-white transition-colors" />
+                              <input 
+                                type="number" min="0" max={itemState.returnQty} value={itemState.brokenQty === 0 ? '' : itemState.brokenQty} 
+                                onChange={(e) => handleGroupReturnChange(group.baseId, req.RequestID, 'brokenQty', parseInt(e.target.value)||0)} 
+                                placeholder="0"
+                                className="w-full p-2.5 text-center text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg outline-none focus:border-red-500 focus:bg-white transition-colors" 
+                              />
                             </div>
                           </div>
                         )}
@@ -671,6 +743,7 @@ export default function RequestPartShoppingPage() {
                     );
                   })}
                 </div>
+
               </div>
             );
           })}
@@ -752,9 +825,6 @@ export default function RequestPartShoppingPage() {
                     if(isPart) name = parts.find(p => p.PartID === itemId)?.PartName;
                     else if (isFix) name = fixtures.find(f => f.FixtureNo === itemId)?.ModelName;
                     else name = consumables.find(c => c.ItemID === itemId)?.ItemName;
-                    
-                    const positions = selectedMachine ? (historicalPositions[`${selectedMachine}_${itemId}`] || []) : [];
-                    const filteredPositions = positions.filter(p => p.toLowerCase().includes((cart[itemId].position || '').toLowerCase()));
 
                     return (
                       <div key={itemId} className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
@@ -765,26 +835,30 @@ export default function RequestPartShoppingPage() {
                           <span className={`font-black px-2 py-0.5 rounded-md ${isPart ? 'text-blue-600 bg-blue-50' : isFix ? 'text-purple-600 bg-purple-50' : 'text-pink-600 bg-pink-50'}`}>x{cart[itemId].qty}</span>
                         </div>
                         
+                        {/* 🌟 อัปเกรดปุ่มระบุจุดติดตั้งเป็นป๊อปอัพ (Modal) แทนการพิมพ์ 🌟 */}
                         {isPart && (
-                          <div className="mt-1 relative">
-                            <input 
-                              type="text" required disabled={!selectedMachine}
-                              placeholder={selectedMachine ? "ระบุจุดที่ติดตั้ง (เช่น ซ้าย, ขวา)" : "โปรดเลือกเครื่องจักรด้านบนก่อน"}
-                              value={cart[itemId].position || ''}
-                              onChange={(e) => setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: e.target.value } }))}
-                              onFocus={() => setActiveDropdown(itemId)}
-                              onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
-                              className="w-full p-3 pl-4 pr-10 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 disabled:opacity-50 disabled:bg-slate-100 transition-all" 
-                            />
-                            <i className="bi bi-geo-alt absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                            
-                            {activeDropdown === itemId && filteredPositions.length > 0 && (
-                              <ul className="absolute z-[100] w-full bg-white border border-slate-200 rounded-xl shadow-2xl mt-1.5 max-h-40 overflow-y-auto top-full left-0 origin-top animate-in fade-in zoom-in-95 duration-150">
-                                {filteredPositions.map(pos => (
-                                  <li key={pos} onMouseDown={() => { setCart(prev => ({ ...prev, [itemId]: { ...prev[itemId], position: pos } })); setActiveDropdown(null); }} className="px-4 py-3.5 text-sm text-slate-700 font-bold hover:bg-blue-50 hover:text-blue-600 cursor-pointer border-b border-slate-50 last:border-0 flex items-center gap-2 transition-colors active:bg-blue-100"><i className="bi bi-clock-history text-slate-400 text-xs"></i> {pos}</li>
-                                ))}
-                              </ul>
-                            )}
+                          <div className="mt-2">
+                            <button 
+                              type="button" 
+                              disabled={!selectedMachine}
+                              onClick={() => {
+                                setPositionModal({ isOpen: true, itemId: itemId, itemName: name || itemId });
+                                setTempPositionSearch(cart[itemId].position || '');
+                              }}
+                              className={`w-full p-3 rounded-xl border flex items-center justify-between transition-all ${
+                                !selectedMachine ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' :
+                                cart[itemId].position ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <i className="bi bi-geo-alt-fill"></i>
+                                <span className="font-bold text-xs">
+                                  {!selectedMachine ? 'โปรดเลือกเครื่องจักรด้านบนก่อน' : 
+                                   cart[itemId].position ? `จุด: ${cart[itemId].position}` : 'ระบุจุดที่ติดตั้ง (คลิก)'}
+                                </span>
+                              </div>
+                              {selectedMachine && <i className="bi bi-chevron-right text-xs"></i>}
+                            </button>
                           </div>
                         )}
                       </div>
