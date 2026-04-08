@@ -484,7 +484,7 @@ export default function RequestPartShoppingPage() {
                     }
 
                     if (filteredPositions.length === 0 && tempPositionSearch) {
-                       return <div className="p-4 text-center text-slate-400 text-xs font-bold">ไม่พบประวัติ "{tempPositionSearch}"<br/><span className="text-blue-500">กดปุ่มยืนยันด้านล่างเพื่อใช้คำนี้ได้เลย</span></div>;
+                      return <div className="p-4 text-center text-slate-400 text-xs font-bold">ไม่พบประวัติ &quot;{tempPositionSearch}&quot;<br/><span className="text-blue-500">กดปุ่มยืนยันด้านล่างเพื่อใช้คำนี้ได้เลย</span></div>;
                     }
 
                     return filteredPositions.map(pos => (
