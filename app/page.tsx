@@ -47,18 +47,25 @@ export default function MaintenanceDashboard() {
     if (!selectedDept) { showToast('Please select a department before signing in.', 'warning'); return; }
     setIsLoggingIn(true);
     
-    const { data: roleData, error: roleError } = await supabase.from('UserRoles').select('*').eq('Email', email).single();
+    // 🌟 ระบบ Auto-Append Domain: พิมพ์แค่ชื่อ ก็เติม @deltaww.com ให้เลย 🌟
+    const loginEmail = email.includes('@') ? email : `${email}@deltaww.com`;
+
+    const { data: roleData, error: roleError } = await supabase.from('UserRoles').select('*').eq('Email', loginEmail).single();
     if (roleError || !roleData || roleData.Role !== 'Admin') {
       showToast('Access Denied. Administrator privileges required.', 'error'); setIsLoggingIn(false); return;
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
     if (error) { 
       showToast(error.message === 'Invalid login credentials' ? 'Invalid email or password' : error.message, 'error');
       setIsLoggingIn(false);
     } else {
       localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept); 
+      
+      // 🌟 ล็อกอินผ่านปุ๊บ สั่งเปิด Intro 3 วินาที 🌟
       setShowIntro(true);
-      setTimeout(() => { setShowIntro(false); }, 4500); 
+      setTimeout(() => {
+        setShowIntro(false);
+      }, 4500); 
     }
   };
   
@@ -700,7 +707,13 @@ export default function MaintenanceDashboard() {
                 <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm"></i>
               </div>
             </div>
-            <div><label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Email Address</label><div className="relative"><i className="bi bi-envelope-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="admin@example.com" /> </div></div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Username or Email</label>
+              <div className="relative">
+                <i className="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
+                <input type="text" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="e.g. athmaras" /> 
+              </div>
+            </div>
             <div><label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Password</label><div className="relative"><i className="bi bi-lock-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="••••••••" /> </div></div>
           </div>
           <button type="submit" disabled={isLoggingIn} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 shadow-lg shadow-blue-500/30 mt-8 flex justify-center items-center gap-2 text-[15px]">{isLoggingIn ? <><i className="bi bi-arrow-repeat animate-spin text-xl"></i> Authenticating...</> : 'Sign In'}</button> 
