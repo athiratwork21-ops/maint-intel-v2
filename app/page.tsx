@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
+import Image from 'next/image';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
