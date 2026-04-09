@@ -786,6 +786,31 @@ export default function MaintenanceDashboard() {
           `}} />
         </div>
       )}
+      
+      {/* 🌟 Maint. Intel: FULLSCREEN PROCESSING OVERLAY 🌟 */}
+      {isProcessing && (
+        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-sm font-mono animate-in fade-in duration-200">
+          <div className="relative flex items-center justify-center w-32 h-32 mb-6">
+            {/* วงแหวนหมุนด้านนอก */}
+            <div className="absolute inset-0 border-[3px] border-t-cyan-500 border-r-cyan-500/20 border-b-cyan-500/5 border-l-cyan-500/20 rounded-full animate-spin"></div>
+            {/* วงแหวนหมุนย้อนกลับด้านใน */}
+            <div className="absolute inset-3 border-[3px] border-t-blue-500 border-l-blue-500/20 border-b-blue-500/5 border-r-blue-500/20 rounded-full animate-[spin_1.5s_linear_infinite_reverse]"></div>
+            {/* ไอคอน CPU ตรงกลาง */}
+            <i className="bi bi-cpu text-4xl text-cyan-300 animate-pulse drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]"></i>
+          </div>
+          
+          {/* กล่องข้อความ */}
+          <div className="bg-slate-900/90 border border-cyan-500/30 px-8 py-4 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.15)] flex flex-col items-center">
+            <span className="text-cyan-400 font-black tracking-[0.25em] text-xs mb-3">TRANSMITTING DATA</span>
+            <div className="flex gap-2">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {zoomedImage && ( <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out" onClick={() => setZoomedImage(null)}> <div className="relative w-full max-w-4xl h-[80vh] flex flex-col items-center justify-center"> <button className="absolute -top-12 right-0 text-white hover:text-red-400 text-3xl transition-colors active:scale-90" onClick={() => setZoomedImage(null)}><i className="bi bi-x-lg"></i></button> <img src={zoomedImage} alt="Zoomed Part" className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()} /> </div> </div> )}
       {toast && ( <div className="fixed top-8 right-8 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300 ease-out"> <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur-md min-w-[280px] ${toast.type === 'success' ? 'border-emerald-500/50 shadow-emerald-500/10' : toast.type === 'error' ? 'border-red-500/50 shadow-red-500/10' : toast.type === 'warning' ? 'border-amber-500/50 shadow-amber-500/10' : 'border-blue-500/50 shadow-blue-500/10'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
       {confirmDialog && confirmDialog.isOpen && ( <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out"> <div className="p-8 pb-6 text-center"> <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border ${confirmDialog.isDanger ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100/50'}`}><i className={`bi ${confirmDialog.isDanger ? 'bi-exclamation-triangle-fill' : 'bi-info-circle-fill'}`}></i></div> <h3 className="text-xl font-bold text-slate-800 mb-2">{confirmDialog.title}</h3> <p className="text-slate-500 text-sm whitespace-pre-line leading-relaxed">{confirmDialog.message}</p> </div> <div className="flex p-4 gap-3 border-t border-slate-100 bg-slate-50/50"> <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all shadow-sm">Cancel</button> <button onClick={confirmDialog.onConfirm} className={`flex-1 py-3 rounded-xl font-bold text-white active:scale-95 transition-all shadow-sm ${confirmDialog.isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>Confirm</button> </div> </div> </div> )}
