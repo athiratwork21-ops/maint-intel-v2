@@ -211,7 +211,7 @@ export default function MaintenanceDashboard() {
             const newBalance = (parseInt(targetStock.Balance) || 0) + qty;
             await supabase.from('Stock').update({ Balance: newBalance, LastUpdated: new Date().toISOString() }).eq('PartID', targetStock.PartID).eq('Location', targetStock.Location).eq('DepartmentID', activeDept);
           } else {
-            await supabase.from('Stock').insert({ PartID: record.PartID, PartName: partName, Location: targetLocation, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+            await supabase.from('Stock').insert({ PartID: record.PartID, Location: targetLocation, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
           }
           await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
           await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
@@ -345,7 +345,7 @@ export default function MaintenanceDashboard() {
         if (partErr) throw partErr;
         
         const { error: stkErr } = await supabase.from('Stock').insert({ 
-          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, 
+          PartID: newId, 
           Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, 
           LastUpdated: new Date().toISOString(), DepartmentID: activeDept 
         });
@@ -384,7 +384,7 @@ export default function MaintenanceDashboard() {
 
     const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept });
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
-    if (locationVal) { await supabase.from('Stock').insert({ Location: locationVal, PartID: generatedPartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
+    await supabase.from('Stock').insert({ Location: locationVal || '-', PartID: generatedPartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
     showToast('Part registered successfully!', 'success'); setNewPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
 
@@ -401,8 +401,9 @@ export default function MaintenanceDashboard() {
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
     if (locationVal) {
       const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
-      if (exStock) { await supabase.from('Stock').update({ Location: locationVal, PartName: formData.get('name') }).eq('PartID', editingPartData.PartID); } 
-      else { await supabase.from('Stock').insert({ Location: locationVal, PartID: editingPartData.PartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
+      const locToSave = locationVal || '-';
+    if (exStock) { await supabase.from('Stock').update({ Location: locToSave }).eq('PartID', editingPartData.PartID); } 
+    else { await supabase.from('Stock').insert({ Location: locToSave, PartID: editingPartData.PartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
     }
     showToast('Part updated successfully!', 'success'); setEditPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
@@ -410,7 +411,7 @@ export default function MaintenanceDashboard() {
   const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; const activeDept = localStorage.getItem('activeDepartment');
     if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
-    else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, PartName: selectedActionPart?.name || '', Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } 
+    else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } 
     await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId);
     showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData(); 
   };
