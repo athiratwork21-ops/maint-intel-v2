@@ -305,9 +305,25 @@ export default function MaintenanceDashboard() {
         const newId = `CSM-${String(nextNum).padStart(5, '0')}`;
 
         const min = parseInt(formData.get('min') as string); const safety = parseInt(formData.get('safety') as string); const max = parseInt(formData.get('max') as string);
-        const { error: insErr } = await supabase.from('Consumable').insert({ ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '', Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '', Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept });
+        
+        // 🌟 เพิ่ม PartNumber ตรงนี้ 🌟
+        const { error: insErr } = await supabase.from('Consumable').insert({ 
+          ItemID: newId, 
+          PartNumber: moveCategoryModal.itemData.PartNumber || '', // โยน P/N ตามมาด้วย
+          ItemName: moveCategoryModal.itemData.PartName, 
+          ItemModel: moveCategoryModal.itemData.PartModel || '', 
+          Location: moveCategoryModal.location, 
+          ImageURL: moveCategoryModal.itemData.ImageURL || '', 
+          Balance: moveCategoryModal.stockBalance, 
+          MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept 
+        });
         if (insErr) throw insErr;
-        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('Stock').delete().eq('PartID', oldId); await supabase.from('Part').delete().eq('PartID', oldId);
+        
+        // อัปเดตประวัติให้ชี้ไปที่ ID ใหม่ และลบของเก่า
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('Stock').delete().eq('PartID', oldId); 
+        await supabase.from('Part').delete().eq('PartID', oldId);
       } else {
         // ย้ายไป Part (รันเลข P- ใหม่)
         const { data: latestPart } = await supabase.from('Part').select('PartID').ilike('PartID', 'P-%').order('PartID', { ascending: false }).limit(1);
@@ -316,11 +332,29 @@ export default function MaintenanceDashboard() {
         const newId = `P-${String(nextNum).padStart(11, '0')}`;
 
         const buffer = parseInt(formData.get('buffer') as string);
-        const { error: partErr } = await supabase.from('Part').insert({ PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '', ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept });
+        
+        // 🌟 เพิ่ม PartNumber ตรงนี้ 🌟
+        const { error: partErr } = await supabase.from('Part').insert({ 
+          PartID: newId, 
+          PartNumber: moveCategoryModal.itemData.PartNumber || '', // โยน P/N ตามมาด้วย
+          PartName: moveCategoryModal.itemData.ItemName, 
+          PartModel: moveCategoryModal.itemData.ItemModel || '', 
+          ImageURL: moveCategoryModal.itemData.ImageURL || '', 
+          SafetyBufferDays: buffer, DepartmentID: activeDept 
+        });
         if (partErr) throw partErr;
-        const { error: stkErr } = await supabase.from('Stock').insert({ PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+        
+        const { error: stkErr } = await supabase.from('Stock').insert({ 
+          PartID: newId, PartName: moveCategoryModal.itemData.ItemName, 
+          Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, 
+          LastUpdated: new Date().toISOString(), DepartmentID: activeDept 
+        });
         if (stkErr) throw stkErr;
-        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('Consumable').delete().eq('ItemID', oldId);
+        
+        // อัปเดตประวัติให้ชี้ไปที่ ID ใหม่ และลบของเก่า
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('Consumable').delete().eq('ItemID', oldId);
       }
       showToast('ย้ายหมวดหมู่สำเร็จ! ประวัติและการเบิกยังอยู่ครบ', 'success'); setMoveCategoryModal(null); fetchAllData();
     } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
