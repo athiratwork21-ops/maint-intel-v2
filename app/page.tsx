@@ -349,7 +349,6 @@ export default function MaintenanceDashboard() {
           Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, 
           LastUpdated: new Date().toISOString(), DepartmentID: activeDept 
         });
-        if (stkErr) throw stkErr;
         
         // อัปเดตประวัติให้ชี้ไปที่ ID ใหม่ และลบของเก่า
         await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); 
