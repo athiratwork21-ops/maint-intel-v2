@@ -296,14 +296,26 @@ export default function MaintenanceDashboard() {
     const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment');
     try {
       const oldId = moveCategoryModal.source === 'part' ? moveCategoryModal.itemData.PartID : moveCategoryModal.itemData.ItemID;
+      
       if (moveCategoryModal.source === 'part') {
-        const newId = `CSM-${Date.now()}`;
+        // ย้ายไป Consumable (รันเลข CSM ใหม่)
+        const { data: latestCsm } = await supabase.from('Consumable').select('ItemID').ilike('ItemID', 'CSM-%').order('ItemID', { ascending: false }).limit(1);
+        let nextNum = 1;
+        if (latestCsm && latestCsm.length > 0) { const match = latestCsm[0].ItemID.match(/CSM-(\d+)/); if (match) nextNum = parseInt(match[1], 10) + 1; }
+        const newId = `CSM-${String(nextNum).padStart(5, '0')}`;
+
         const min = parseInt(formData.get('min') as string); const safety = parseInt(formData.get('safety') as string); const max = parseInt(formData.get('max') as string);
         const { error: insErr } = await supabase.from('Consumable').insert({ ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '', Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '', Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept });
         if (insErr) throw insErr;
         await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('Stock').delete().eq('PartID', oldId); await supabase.from('Part').delete().eq('PartID', oldId);
       } else {
-        const newId = `P-${Date.now()}`; const buffer = parseInt(formData.get('buffer') as string);
+        // ย้ายไป Part (รันเลข P- ใหม่)
+        const { data: latestPart } = await supabase.from('Part').select('PartID').ilike('PartID', 'P-%').order('PartID', { ascending: false }).limit(1);
+        let nextNum = 1;
+        if (latestPart && latestPart.length > 0) { const match = latestPart[0].PartID.match(/P-(\d+)/); if (match) nextNum = parseInt(match[1], 10) + 1; }
+        const newId = `P-${String(nextNum).padStart(11, '0')}`;
+
+        const buffer = parseInt(formData.get('buffer') as string);
         const { error: partErr } = await supabase.from('Part').insert({ PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '', ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept });
         if (partErr) throw partErr;
         const { error: stkErr } = await supabase.from('Stock').insert({ PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
@@ -326,7 +338,16 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const generatedPartID = `P-${Date.now()}`;
+    
+    // 🌟 ระบบรันเลข PartID อัตโนมัติ (P-00000000XXX) 🌟
+    const { data: latestPart } = await supabase.from('Part').select('PartID').ilike('PartID', 'P-%').order('PartID', { ascending: false }).limit(1);
+    let nextNum = 1;
+    if (latestPart && latestPart.length > 0) {
+      const match = latestPart[0].PartID.match(/P-(\d+)/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const generatedPartID = `P-${String(nextNum).padStart(11, '0')}`;
+
     const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept });
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
     if (locationVal) { await supabase.from('Stock').insert({ Location: locationVal, PartID: generatedPartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
@@ -380,7 +401,16 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const itemId = `CSM-${Date.now()}`;
+
+    // 🌟 ระบบรันเลข ConsumableID อัตโนมัติ (CSM-XXXXX) 🌟
+    const { data: latestCsm } = await supabase.from('Consumable').select('ItemID').ilike('ItemID', 'CSM-%').order('ItemID', { ascending: false }).limit(1);
+    let nextNum = 1;
+    if (latestCsm && latestCsm.length > 0) {
+      const match = latestCsm[0].ItemID.match(/CSM-(\d+)/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const itemId = `CSM-${String(nextNum).padStart(5, '0')}`;
+
     const minVal = parseInt(formData.get('min') as string); const maxVal = parseInt(formData.get('max') as string); const safetyVal = parseInt(formData.get('safety') as string); const balVal = parseInt(formData.get('balance') as string);
     const { error } = await supabase.from('Consumable').insert({
       ItemID: itemId, PartNumber: formData.get('partNumber') as string, ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
