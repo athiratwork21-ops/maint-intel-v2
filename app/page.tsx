@@ -10,7 +10,8 @@ export default function MaintenanceDashboard() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-
+  const [showIntro, setShowIntro] = useState(false);
+  
   const [departments, setDepartments] = useState<any[]>([]);
   const [selectedDept, setSelectedDept] = useState('');
   const [activeDeptName, setActiveDeptName] = useState('');
@@ -51,11 +52,14 @@ export default function MaintenanceDashboard() {
       showToast('Access Denied. Administrator privileges required.', 'error'); setIsLoggingIn(false); return;
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { showToast(error.message === 'Invalid login credentials' ? 'Invalid email or password' : error.message, 'error');
+    if (error) { 
+      showToast(error.message === 'Invalid login credentials' ? 'Invalid email or password' : error.message, 'error');
+      setIsLoggingIn(false);
     } else {
-      localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept); showToast('Signed in successfully!', 'success');
+      localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept); 
+      setShowIntro(true);
+      setTimeout(() => { setShowIntro(false); }, 4500); 
     }
-    setIsLoggingIn(false);
   };
   
   const handleLogout = async () => { 
@@ -63,7 +67,6 @@ export default function MaintenanceDashboard() {
   };
 
   const [activeTab, setActiveTab] = useState('dashboard'); 
-  // 🌟 อัปเกรดจัดกลุ่ม Sidebar เป็น 4 หมวด
   const [expandedGroups, setExpandedGroups] = useState({ Workspace: true, Inventory: true, Operations: true, Settings: true });
   
   const [isReceiveStockModalOpen, setReceiveStockModalOpen] = useState(false);
@@ -71,7 +74,9 @@ export default function MaintenanceDashboard() {
   const [isLeadTimeModalOpen, setLeadTimeModalOpen] = useState(false);
   const [isNewPartModalOpen, setNewPartModalOpen] = useState(false);
   const [isEditPartModalOpen, setEditPartModalOpen] = useState(false); 
-  const [isNewMachineModalOpen, setNewMachineModalOpen] = useState(false); 
+  const [isNewMachineModalOpen, setNewMachineModalOpen] = useState(false);
+  const [isEditMachineModalOpen, setEditMachineModalOpen] = useState(false);
+  const [editingMachineData, setEditingMachineData] = useState<any>(null);
   const [editingPartData, setEditingPartData] = useState<any>(null); 
   const [basicInfoModal, setBasicInfoModal] = useState<{ isOpen: boolean, type: 'line' | 'location' }>({ isOpen: false, type: 'line' });
 
@@ -164,7 +169,6 @@ export default function MaintenanceDashboard() {
       setFixtures(fixData || []);
 
       fetchHistoryData(activeDept);
-
     } catch (error) { showToast('Error loading data', 'warning'); } finally { setIsLoading(false); }
   };
 
@@ -172,7 +176,6 @@ export default function MaintenanceDashboard() {
     const [year, month] = historyMonthFilter.split('-');
     const startDate = `${year}-${month}-01`;
     const endDate = new Date(parseInt(year), parseInt(month), 0).toISOString().split('T')[0];
-
     const { data: history } = await supabase.from('ChangeHistory').select('*').eq('DepartmentID', dept).gte('ChangeDate', startDate).lte('ChangeDate', endDate).order('ChangeDate', { ascending: false });
     setChangeHistoryData(history || []);
   };
@@ -201,7 +204,8 @@ export default function MaintenanceDashboard() {
             const newBalance = (parseInt(targetStock.Balance) || 0) + qty;
             await supabase.from('Stock').update({ Balance: newBalance, LastUpdated: new Date().toISOString() }).eq('PartID', targetStock.PartID).eq('Location', targetStock.Location).eq('DepartmentID', activeDept);
           } else {
-            await supabase.from('Stock').insert({ PartID: record.PartID, PartName: partName, Location: targetLocation, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+            // 🚨 ลบการส่ง PartName ไปยัง Stock แล้ว 🚨
+            await supabase.from('Stock').insert({ PartID: record.PartID, Location: targetLocation, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
           }
           await supabase.from('ChangeHistory').delete().eq('RecordID', record.RecordID);
           await supabase.from('PickLog').delete().eq('RecordID', record.RecordID);
@@ -217,7 +221,6 @@ export default function MaintenanceDashboard() {
     else { showToast(`Error: ${error.message}`, 'error'); }
   };
 
-  // 🌟 อัปเกรดให้รับ Type
   const handleMarkAsOrdered = async (id: string, type: 'part' | 'consumable' = 'part') => {
     const table = type === 'part' ? 'Part' : 'Consumable';
     const idField = type === 'part' ? 'PartID' : 'ItemID';
@@ -286,19 +289,52 @@ export default function MaintenanceDashboard() {
     const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment');
     try {
       const oldId = moveCategoryModal.source === 'part' ? moveCategoryModal.itemData.PartID : moveCategoryModal.itemData.ItemID;
+      
       if (moveCategoryModal.source === 'part') {
-        const newId = `CSM-${Date.now()}`;
+        const { data: latestCsm } = await supabase.from('Consumable').select('ItemID').ilike('ItemID', 'CSM-%').order('ItemID', { ascending: false }).limit(1);
+        let nextNum = 1;
+        if (latestCsm && latestCsm.length > 0) { const match = latestCsm[0].ItemID.match(/CSM-(\d+)/); if (match) nextNum = parseInt(match[1], 10) + 1; }
+        const newId = `CSM-${String(nextNum).padStart(5, '0')}`;
+
         const min = parseInt(formData.get('min') as string); const safety = parseInt(formData.get('safety') as string); const max = parseInt(formData.get('max') as string);
-        const { error: insErr } = await supabase.from('Consumable').insert({ ItemID: newId, ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '', Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '', Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept });
+        
+        const { error: insErr } = await supabase.from('Consumable').insert({ 
+          ItemID: newId, PartNumber: moveCategoryModal.itemData.PartNumber || '', 
+          ItemName: moveCategoryModal.itemData.PartName, ItemModel: moveCategoryModal.itemData.PartModel || '', 
+          Location: moveCategoryModal.location, ImageURL: moveCategoryModal.itemData.ImageURL || '', 
+          Balance: moveCategoryModal.stockBalance, MinQty: min, MaxQty: max, SafetyStock: safety, DepartmentID: activeDept 
+        });
         if (insErr) throw insErr;
-        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('Stock').delete().eq('PartID', oldId); await supabase.from('Part').delete().eq('PartID', oldId);
+        
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('Stock').delete().eq('PartID', oldId); 
+        await supabase.from('Part').delete().eq('PartID', oldId);
       } else {
-        const newId = `P-${Date.now()}`; const buffer = parseInt(formData.get('buffer') as string);
-        const { error: partErr } = await supabase.from('Part').insert({ PartID: newId, PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '', ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept });
+        const { data: latestPart } = await supabase.from('Part').select('PartID').ilike('PartID', 'P-%').order('PartID', { ascending: false }).limit(1);
+        let nextNum = 1;
+        if (latestPart && latestPart.length > 0) { const match = latestPart[0].PartID.match(/P-(\d+)/); if (match) nextNum = parseInt(match[1], 10) + 1; }
+        const newId = `P-${String(nextNum).padStart(11, '0')}`;
+
+        const buffer = parseInt(formData.get('buffer') as string);
+        
+        const { error: partErr } = await supabase.from('Part').insert({ 
+          PartID: newId, PartNumber: moveCategoryModal.itemData.PartNumber || '', 
+          PartName: moveCategoryModal.itemData.ItemName, PartModel: moveCategoryModal.itemData.ItemModel || '', 
+          ImageURL: moveCategoryModal.itemData.ImageURL || '', SafetyBufferDays: buffer, DepartmentID: activeDept 
+        });
         if (partErr) throw partErr;
-        const { error: stkErr } = await supabase.from('Stock').insert({ PartID: newId, PartName: moveCategoryModal.itemData.ItemName, Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+        
+        // 🚨 ลบการส่ง PartName ไปยัง Stock แล้ว 🚨
+        const { error: stkErr } = await supabase.from('Stock').insert({ 
+          PartID: newId, Location: moveCategoryModal.location, Balance: moveCategoryModal.stockBalance, 
+          LastUpdated: new Date().toISOString(), DepartmentID: activeDept 
+        });
         if (stkErr) throw stkErr;
-        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); await supabase.from('Consumable').delete().eq('ItemID', oldId);
+        
+        await supabase.from('ChangeHistory').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('PickLog').update({ PartID: newId }).eq('PartID', oldId); 
+        await supabase.from('Consumable').delete().eq('ItemID', oldId);
       }
       showToast('ย้ายหมวดหมู่สำเร็จ! ประวัติและการเบิกยังอยู่ครบ', 'success'); setMoveCategoryModal(null); fetchAllData();
     } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
@@ -316,10 +352,27 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const generatedPartID = `P-${Date.now()}`;
-    const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept });
+    
+    const { data: latestPart } = await supabase.from('Part').select('PartID').ilike('PartID', 'P-%').order('PartID', { ascending: false }).limit(1);
+    let nextNum = 1;
+    if (latestPart && latestPart.length > 0) {
+      const match = latestPart[0].PartID.match(/P-(\d+)/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const generatedPartID = `P-${String(nextNum).padStart(11, '0')}`;
+
+    const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept });
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
-    if (locationVal) { await supabase.from('Stock').insert({ Location: locationVal, PartID: generatedPartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
+    
+    // 🚨 ลบ PartName และ ดักจับ Error แบบเด็ดขาด 🚨
+    const { error: stockErr } = await supabase.from('Stock').insert({ Location: locationVal || '-', PartID: generatedPartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+    if (stockErr) {
+      showToast(`Stock DB Error: ${stockErr.message}`, 'error'); 
+      console.error("Stock Insert Error:", stockErr);
+      setIsProcessing(false);
+      return;
+    }
+
     showToast('Part registered successfully!', 'success'); setNewPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
 
@@ -332,20 +385,39 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl; 
     }
-    const { error: partErr } = await supabase.from('Part').update({ PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string) }).eq('PartID', editingPartData.PartID);
+    const { error: partErr } = await supabase.from('Part').update({ PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string) }).eq('PartID', editingPartData.PartID);
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
-    if (locationVal) {
-      const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
-      if (exStock) { await supabase.from('Stock').update({ Location: locationVal, PartName: formData.get('name') }).eq('PartID', editingPartData.PartID); } 
-      else { await supabase.from('Stock').insert({ Location: locationVal, PartID: editingPartData.PartID, PartName: formData.get('name'), Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
+    
+    const locToSave = locationVal || '-';
+    const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
+    
+    let stockErr = null;
+    // 🚨 ลบ PartName และ ดักจับ Error 🚨
+    if (exStock) { 
+      const { error } = await supabase.from('Stock').update({ Location: locToSave }).eq('PartID', editingPartData.PartID); 
+      stockErr = error;
+    } else { 
+      const { error } = await supabase.from('Stock').insert({ Location: locToSave, PartID: editingPartData.PartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); 
+      stockErr = error;
     }
+
+    if (stockErr) {
+      showToast(`Stock DB Error: ${stockErr.message}`, 'error');
+      console.error("Stock Edit Error:", stockErr);
+      setIsProcessing(false);
+      return;
+    }
+
     showToast('Part updated successfully!', 'success'); setEditPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
 
   const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; const activeDept = localStorage.getItem('activeDepartment');
     if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); } 
-    else { await supabase.from('Stock').insert({ Location: loc, PartID: pId, PartName: selectedActionPart?.name || '', Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); } 
+    else { 
+      // 🚨 ลบ PartName ออกแล้ว 🚨
+      await supabase.from('Stock').insert({ Location: loc, PartID: pId, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); 
+    } 
     await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId);
     showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData(); 
   };
@@ -370,7 +442,15 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const itemId = `CSM-${Date.now()}`;
+
+    const { data: latestCsm } = await supabase.from('Consumable').select('ItemID').ilike('ItemID', 'CSM-%').order('ItemID', { ascending: false }).limit(1);
+    let nextNum = 1;
+    if (latestCsm && latestCsm.length > 0) {
+      const match = latestCsm[0].ItemID.match(/CSM-(\d+)/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const itemId = `CSM-${String(nextNum).padStart(5, '0')}`;
+
     const minVal = parseInt(formData.get('min') as string); const maxVal = parseInt(formData.get('max') as string); const safetyVal = parseInt(formData.get('safety') as string); const balVal = parseInt(formData.get('balance') as string);
     const { error } = await supabase.from('Consumable').insert({
       ItemID: itemId, PartNumber: formData.get('partNumber') as string, ItemName: formData.get('name'), ItemModel: formData.get('model') as string, Location: formData.get('location') || '-', ImageURL: finalImageUrl,
@@ -398,7 +478,6 @@ export default function MaintenanceDashboard() {
     setIsProcessing(false);
   };
 
-  // 🌟 อัปเกรดปลดล็อคสถานะ Ordered อัตโนมัติ
   const handleConsumableAction = async (e: React.FormEvent<HTMLFormElement>, actionType: 'receive' | 'adjust') => {
     e.preventDefault(); const formData = new FormData(e.currentTarget); const qty = parseInt(formData.get('qty') as string); const currentBalance = parseInt(selectedConsumable.Balance) || 0;
     const newBalance = actionType === 'receive' ? currentBalance + qty : qty;
@@ -422,7 +501,6 @@ export default function MaintenanceDashboard() {
     });
   };
 
-  // 🌟 Fixtures Functions (Upgraded with Borrow/Return logic)
   const handleNewFixtureSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const fNo = formData.get('fixtureNo') as string;
     const ex = fixtures.find(f => f.FixtureNo === fNo); if (ex) { showToast('This Fixture No. already exists!', 'error'); setIsProcessing(false); return; }
@@ -454,16 +532,13 @@ export default function MaintenanceDashboard() {
 
   const handleEditFixtureStock = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const reason = fixtureActionReason; const qty = parseInt(formData.get('qty') as string) || 0;
-    let newTotal = selectedFixture.TotalQty || 0; let newBroken = selectedFixture.BrokenQty || 0; let newBorrowed = selectedFixture.BorrowedQty || 0;
-    const currentAvailable = newTotal - newBroken - newBorrowed;
-
+    let newTotal = selectedFixture.TotalQty || 0; let newBroken = selectedFixture.BrokenQty || 0;
+    
     if (reason === 'New Receive') { newTotal += qty; } 
     else if (reason === 'Repair') { if (qty > newBroken) { showToast('Cannot repair more than broken qty!', 'error'); setIsProcessing(false); return; } newBroken -= qty; } 
     else if (reason === 'Scrap') { if (qty > newBroken) { showToast('Cannot scrap more than broken qty!', 'error'); setIsProcessing(false); return; } newTotal -= qty; newBroken -= qty; }
-    else if (reason === 'Borrow') { if (qty > currentAvailable) { showToast('Not enough usable stock to borrow!', 'error'); setIsProcessing(false); return; } newBorrowed += qty; }
-    else if (reason === 'Return') { if (qty > newBorrowed) { showToast('Cannot return more than borrowed qty!', 'error'); setIsProcessing(false); return; } newBorrowed -= qty; }
 
-    const { error } = await supabase.from('Fixtures').update({ TotalQty: newTotal, BrokenQty: newBroken, BorrowedQty: newBorrowed }).eq('FixtureNo', selectedFixture.FixtureNo);
+    const { error } = await supabase.from('Fixtures').update({ TotalQty: newTotal, BrokenQty: newBroken }).eq('FixtureNo', selectedFixture.FixtureNo);
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Stock updated successfully!', 'success'); setEditFixtureStockOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
@@ -474,6 +549,12 @@ export default function MaintenanceDashboard() {
 
   const handleUpdateLeadTime = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('LeadTime').insert({ RecordID: Date.now().toString(), PartID: selectedActionPart?.id || '', LeadTimeDays: parseInt(formData.get('days') as string), RecordDate: new Date().toISOString(), DepartmentID: activeDept }); if (!error) { showToast('Lead time updated successfully!', 'success'); setLeadTimeModalOpen(false); fetchAllData(); } };
   const handleNewMachineSubmit = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); const { error } = await supabase.from('Machine').insert({ MachineID: formData.get('id'), MachineName: formData.get('name'), LineName: formData.get('line'), Active: true, DepartmentID: activeDept }); if (!error) { showToast('Machine registered successfully!', 'success'); setNewMachineModalOpen(false); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error'); setIsProcessing(false); };
+  const handleEditMachineSubmit = async (e: React.FormEvent<HTMLFormElement>) => { 
+    e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); 
+    const { error } = await supabase.from('Machine').update({ MachineName: formData.get('name'), LineName: formData.get('line') }).eq('MachineID', editingMachineData.MachineID); 
+    if (!error) { showToast('อัปเดตข้อมูลเครื่องจักรสำเร็จ!', 'success'); setEditMachineModalOpen(false); fetchAllData(); } 
+    else showToast(`Error: ${error.message}`, 'error'); setIsProcessing(false); 
+  };
   const handleToggleMachineStatus = async (machineId: string, currentStatus: boolean) => { const newStatus = currentStatus === false ? true : false; const { error } = await supabase.from('Machine').update({ Active: newStatus }).eq('MachineID', machineId); if (!error) { showToast(`Machine status changed successfully`, 'success'); fetchAllData(); } };
   
   const handleBasicInfoSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -500,21 +581,54 @@ export default function MaintenanceDashboard() {
         setConfirmDialog(null); setIsProcessing(true); const activeDept = localStorage.getItem('activeDepartment');
         try {
           for (let i = 0; i < group.items.length; i++) {
-            const req = group.items[i]; const reqIdText = req.RequestID; const numericRecordId = `${Date.now()}${i}`; const pId = req.PartID; const mId = req.MachineID; const qty = req.Qty; const isConsumable = pId.startsWith('CSM-');
-            if (isConsumable) {
+            const req = group.items[i]; 
+            const reqIdText = req.RequestID; 
+            const numericRecordId = `${Date.now()}${i}`; 
+            const pId = req.PartID; 
+            const mId = req.MachineID; 
+            const qty = req.Qty; 
+            const reason = req.Reason; 
+
+            if (reason === 'Consumable' || pId.startsWith('CSM-')) {
               const cons = consumables.find(c => c.ItemID === pId);
-              if (cons) { const newBal = Math.max(0, (parseInt(cons.Balance)||0) - qty); await supabase.from('Consumable').update({ Balance: newBal }).eq('ItemID', pId); }
-            } else {
+              if (cons) { 
+                const newBal = Math.max(0, (parseInt(cons.Balance)||0) - qty); 
+                const { error: updErr } = await supabase.from('Consumable').update({ Balance: newBal }).eq('ItemID', pId); 
+                if (updErr) throw updErr;
+              }
+            } 
+            else if (reason === 'Borrow') {
+              const fix = fixtures.find(f => f.FixtureNo === pId);
+              if (fix) {
+                const newBorrowed = (parseInt(fix.BorrowedQty)||0) + qty;
+                const { error: updErr } = await supabase.from('Fixtures').update({ BorrowedQty: newBorrowed }).eq('FixtureNo', pId);
+                if (updErr) throw updErr;
+              }
+            } 
+            else {
               const pos = req.Position || '-'; 
-              const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: new Date().toISOString().split('T')[0], ReasonType: req.Reason, "Required Qty": qty, DepartmentID: activeDept, Position: pos }); if (chErr) throw chErr;
-              const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: req.PickerName, LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); if (plErr) throw plErr;
+              
+              const { error: chErr } = await supabase.from('ChangeHistory').insert({ RecordID: numericRecordId, MachineID: mId, PartID: pId, ChangeDate: new Date().toISOString().split('T')[0], ReasonType: reason, "Required Qty": qty, DepartmentID: activeDept, Position: pos }); 
+              if (chErr) throw chErr;
+              
+              const { error: plErr } = await supabase.from('PickLog').insert({ RecordID: numericRecordId, Timestamp: new Date().toISOString(), Location: 'A01', PartID: pId, MachineID: mId, Qty: qty, PickerName: req.PickerName, LineUserID: session?.user?.email || 'AdminWeb', DepartmentID: activeDept }); 
+              if (plErr) throw plErr;
+              
               const { data: stk } = await supabase.from('Stock').select('*').eq('PartID', pId).gt('Balance', 0); 
-              if (stk && stk.length > 0) { const tStk = stk[0]; await supabase.from('Stock').update({ Balance: Math.max(0, (parseInt(tStk.Balance)||0) - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); }
+              if (stk && stk.length > 0) { 
+                const tStk = stk[0]; 
+                await supabase.from('Stock').update({ Balance: Math.max(0, (parseInt(tStk.Balance)||0) - qty), LastUpdated: new Date().toISOString() }).eq('Location', tStk.Location).eq('PartID', pId); 
+              }
             }
-            const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); if (reqErr) throw reqErr;
+            const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); 
+            if (reqErr) throw reqErr;
           }
-          showToast('จ่ายของและตัดสต๊อกทั้งหมดสำเร็จ!', 'success'); fetchAllData(); 
-        } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } finally { setIsProcessing(false); }
+          showToast('อนุมัติจ่ายของและตัดสต๊อกสำเร็จ!', 'success'); fetchAllData(); 
+        } catch (error: any) { 
+          showToast(`Error: ${error.message}`, 'error'); 
+        } finally { 
+          setIsProcessing(false); 
+        }
       }
     });
   };
@@ -531,9 +645,8 @@ export default function MaintenanceDashboard() {
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
 
   const filteredScheduleData = scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
-  const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
+  const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
   
-  // 🌟 อัปเกรดระบบจัดเรียง และค้นหาด้วย P/N
   const filteredConsumables = consumables.filter(c => !searchQuery || c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || c.PartNumber?.toLowerCase().includes(searchQuery.toLowerCase()) || c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
       const getPriority = (item: any) => {
@@ -598,6 +711,81 @@ export default function MaintenanceDashboard() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-700 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
+      {/* 🌟 MAINT. INTEL: CINEMATIC INTRO 🌟 */}
+      {showIntro && (
+        <div className="fixed inset-0 z-[99999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden font-mono" style={{ animation: 'introVaultOpen 0.6s cubic-bezier(0.7, 0, 0.3, 1) forwards 4s' }}>
+          
+          {/* Background CRT & Scanlines */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:40px_40px] opacity-40 z-0"></div>
+          <div className="absolute inset-0 pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)', animation: 'introScanlines 10s linear infinite' }}></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,#020617_100%)] z-0"></div>
+
+          <div className="relative z-10 flex flex-col items-center justify-center w-full px-6">
+            
+            {/* 🌟 THE MAIN TITLE: MAINT. INTEL 🌟 */}
+            <div className="relative flex flex-col items-center justify-center mb-8 h-40">
+              {/* Background Rotating Gears (Behind Text) */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-[1px] border-slate-700 rounded-full opacity-0" style={{ animation: 'introFadeIn 1s forwards 0.5s, introSpinHeavy 20s linear infinite' }}>
+                <div className="absolute top-[-4px] left-1/2 w-2 h-2 bg-cyan-500 rounded-full shadow-[0_0_10px_#06b6d4]"></div>
+                <div className="absolute bottom-[-4px] left-1/2 w-2 h-2 bg-pink-500 rounded-full shadow-[0_0_10px_#ec4899]"></div>
+              </div>
+
+              {/* Huge Glow Behind Text */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 bg-blue-600/20 blur-[60px] rounded-full opacity-0" style={{ animation: 'introPulseGlow 3s ease-in-out infinite alternate 1s' }}></div>
+
+              {/* The Text Itself */}
+              <h1 className="relative text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-cyan-100 to-blue-400 uppercase tracking-[0.2em] drop-shadow-[0_0_15px_rgba(34,211,238,0.6)] opacity-0 scale-150" style={{ animation: 'introTitleDrop 1.5s cubic-bezier(0.175, 0.885, 0.32, 1.1) forwards 0.3s' }}>
+                MAINT<span className="text-cyan-400">.</span> INTEL
+              </h1>
+              
+              {/* Subtitle / System Version */}
+              <div className="absolute -bottom-2 right-0 bg-cyan-900/50 border border-cyan-500/50 text-cyan-400 text-[10px] px-2 py-0.5 rounded font-bold tracking-widest opacity-0" style={{ animation: 'introFadeIn 0.5s forwards 1.2s' }}>
+                v2.0 ONLINE
+              </div>
+            </div>
+
+            {/* Terminal Output Text */}
+            <div className="w-full max-w-lg bg-slate-900/80 border-l-2 border-cyan-500 p-4 shadow-[0_0_20px_rgba(0,0,0,0.5)] backdrop-blur-md mb-6 h-28 flex flex-col justify-end overflow-hidden relative opacity-0" style={{ animation: 'introFadeIn 0.2s forwards 1s' }}>
+              <div className="space-y-1.5 text-[11px] sm:text-xs text-slate-400 font-bold tracking-wider">
+                <p className="opacity-0 flex items-center gap-2" style={{ animation: 'introTypewriter 0.1s forwards 1.2s' }}><i className="bi bi-cpu-fill text-slate-500"></i> {`INITIALIZING CORE MECHANICS...`}</p>
+                <p className="opacity-0 flex items-center gap-2" style={{ animation: 'introTypewriter 0.1s forwards 1.6s' }}><i className="bi bi-shield-lock-fill text-slate-500"></i> {`VERIFYING CREDENTIALS... `}<span className="text-emerald-400">[VALID]</span></p>
+                <p className="opacity-0 flex items-center gap-2 text-cyan-400" style={{ animation: 'introTypewriter 0.1s forwards 2.2s' }}><i className="bi bi-broadcast text-cyan-500"></i> {`CONNECTING TO MAINT. INTEL DATABASE...`}</p>
+              </div>
+            </div>
+
+            {/* Progress Bar & Access Granted */}
+            <div className="w-full max-w-lg flex flex-col items-center opacity-0" style={{ animation: 'introFadeIn 0.3s forwards 2.5s' }}>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700 relative">
+                <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 via-cyan-400 to-white shadow-[0_0_15px_#22d3ee] w-0" style={{ animation: 'introProgressBar 1s cubic-bezier(0.65, 0, 0.35, 1) forwards 2.5s' }}></div>
+              </div>
+              <div className="flex justify-between w-full mt-2">
+                <span className="text-slate-600 text-[10px] uppercase tracking-[0.2em] font-black">Boot Sequence</span>
+                <span className="text-emerald-400 text-[11px] font-black uppercase tracking-widest opacity-0 animate-pulse" style={{ animation: 'introFadeIn 0.1s forwards 3.5s' }}>ACCESS GRANTED</span>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Phase 3: The Reveal Flash */}
+          <div className="absolute inset-0 bg-cyan-400 mix-blend-overlay z-50 opacity-0 pointer-events-none" style={{ animation: 'introFlash 0.5s ease-out forwards 3.8s' }}></div>
+
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes introScanlines { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
+            @keyframes introSpinHeavy { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+            @keyframes introPulseGlow { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } }
+            @keyframes introTitleDrop { 0% { opacity: 0; transform: scale(1.5); filter: blur(10px); } 100% { opacity: 1; transform: scale(1); filter: blur(0px); } }
+            @keyframes introFadeIn { to { opacity: 1; } }
+            @keyframes introTypewriter { 0% { opacity: 0; transform: translateX(-10px); } 100% { opacity: 1; transform: translateX(0); } }
+            @keyframes introProgressBar { 0% { width: 0%; } 40% { width: 40%; } 70% { width: 85%; } 100% { width: 100%; } }
+            @keyframes introFlash { 0% { opacity: 0; } 20% { opacity: 0.8; } 100% { opacity: 0; } }
+            @keyframes introVaultOpen { 
+              0% { transform: scale(1); opacity: 1; filter: blur(0px); } 
+              40% { transform: scale(0.98); opacity: 1; filter: blur(1px); } 
+              100% { transform: scale(2.5); opacity: 0; filter: blur(20px); visibility: hidden; } 
+            }
+          `}} />
+        </div>
+      )}
       {zoomedImage && ( <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out" onClick={() => setZoomedImage(null)}> <div className="relative w-full max-w-4xl h-[80vh] flex flex-col items-center justify-center"> <button className="absolute -top-12 right-0 text-white hover:text-red-400 text-3xl transition-colors active:scale-90" onClick={() => setZoomedImage(null)}><i className="bi bi-x-lg"></i></button> <img src={zoomedImage} alt="Zoomed Part" className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()} /> </div> </div> )}
       {toast && ( <div className="fixed top-8 right-8 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300 ease-out"> <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur-md min-w-[280px] ${toast.type === 'success' ? 'border-emerald-500/50 shadow-emerald-500/10' : toast.type === 'error' ? 'border-red-500/50 shadow-red-500/10' : toast.type === 'warning' ? 'border-amber-500/50 shadow-amber-500/10' : 'border-blue-500/50 shadow-blue-500/10'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
       {confirmDialog && confirmDialog.isOpen && ( <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out"> <div className="p-8 pb-6 text-center"> <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border ${confirmDialog.isDanger ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100/50'}`}><i className={`bi ${confirmDialog.isDanger ? 'bi-exclamation-triangle-fill' : 'bi-info-circle-fill'}`}></i></div> <h3 className="text-xl font-bold text-slate-800 mb-2">{confirmDialog.title}</h3> <p className="text-slate-500 text-sm whitespace-pre-line leading-relaxed">{confirmDialog.message}</p> </div> <div className="flex p-4 gap-3 border-t border-slate-100 bg-slate-50/50"> <button onClick={() => setConfirmDialog(null)} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 transition-all shadow-sm">Cancel</button> <button onClick={confirmDialog.onConfirm} className={`flex-1 py-3 rounded-xl font-bold text-white active:scale-95 transition-all shadow-sm ${confirmDialog.isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>Confirm</button> </div> </div> </div> )}
@@ -715,13 +903,81 @@ export default function MaintenanceDashboard() {
           </div>
         </div>
       )}
+      
+      {isNewPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Part</h3> <button onClick={() => setNewPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-blue-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-blue-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"><div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label><input type="text" name="partNumber" placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm focus:bg-white" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label><input type="text" name="name" required placeholder="Part Name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div className="grid grid-cols-2 gap-4"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Uploading...</> : <><i className="bi bi-check-lg mr-2"></i>Create Part</>} </button> </div> </form> </div> </div> )}
 
-      {isNewPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Part</h3> <button onClick={() => setNewPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-blue-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-blue-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label><input type="text" name="name" required placeholder="Part Name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div className="grid grid-cols-2 gap-4"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Uploading...</> : <><i className="bi bi-check-lg mr-2"></i>Create Part</>} </button> </div> </form> </div> </div> )}
-      {isEditPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Part Details</h3> <button onClick={() => setEditPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label><input type="text" name="name" required defaultValue={editingPartData?.PartName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div className="grid grid-cols-2 gap-4"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" defaultValue={editingPartData?.PartModel} placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" defaultValue={editingPartData?.Location} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="buffer" required defaultValue={editingPartData?.SafetyBufferDays || 7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 z-10" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-3.5 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>} </button> </div> </form> </div> </div> )}
+      {isEditPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Part Details</h3> <button onClick={() => setEditPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"> 
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label>
+          <input type="text" name="partNumber" defaultValue={editingPartData?.PartNumber} placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm focus:bg-white" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label>
+          <input type="text" name="name" required defaultValue={editingPartData?.PartName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" />
+        </div> 
+        <div className="grid grid-cols-2 gap-4"> 
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label>
+            <input type="text" name="model" defaultValue={editingPartData?.PartModel} placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" />
+          </div> 
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label>
+            <div className="relative">
+              <select name="location" defaultValue={editingPartData?.Location} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm">
+                <option value="">-- Not specified --</option>
+                {locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}
+              </select>
+              <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+            </div>
+          </div> 
+        </div> 
+        <div> 
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> 
+          <div className="flex items-center shadow-sm rounded-xl"> 
+            <input type="number" name="buffer" required defaultValue={editingPartData?.SafetyBufferDays || 7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 z-10" /> 
+            <span className="bg-slate-100 border border-slate-200 border-l-0 p-3.5 rounded-r-xl font-bold text-slate-500">Days</span> 
+          </div> 
+        </div> 
+        <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>} </button> </div> </form> </div> </div> )}
+
       {isReceiveStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-emerald-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-box-arrow-in-down-right text-emerald-500 bg-emerald-50 p-2 rounded-lg"></i> Receive Stock</h3> <button onClick={() => setReceiveStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReceiveStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Receive Qty</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="1" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow hover:border-emerald-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> </div> <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-600/20"><i className="bi bi-plus-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
       {isReduceStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Adjust Stock</h3> <button onClick={() => setReduceStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReduceStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Correct Balance</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="0" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow hover:border-indigo-300 z-10 text-lg font-bold text-indigo-600" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> <p className="text-xs text-slate-500 mt-2">Enter the exact new balance to overwrite existing data</p> </div> <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
       {isLeadTimeModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-amber-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-clock-history text-amber-500 bg-amber-50 p-2 rounded-lg"></i> Update Lead Time</h3> <button onClick={() => setLeadTimeModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleUpdateLeadTime}> <p className="text-sm text-slate-500 mb-2 leading-relaxed">Update supplier lead time to improve AI prediction accuracy.</p> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">New Lead Time</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="days" placeholder="e.g. 30" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-amber-500 transition-shadow hover:border-amber-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" className="w-full bg-amber-500 text-white font-bold py-4 rounded-xl mt-4 hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-500/20"><i className="bi bi-check-circle mr-2"></i>Save Lead Time</button> </form> </div> </div> )}
       {isNewMachineModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine</h3> <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label><input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label><input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label> <div className="relative"><select name="line" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all"><option value="">-- Select Line --</option>{linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div> </div> <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]"><i className="bi bi-plus-lg mr-2"></i>Create Machine</button> </form> </div> </div> )}
+      {isEditMachineModalOpen && editingMachineData && ( 
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> 
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> 
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> 
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Edit Machine</h3> 
+              <button onClick={() => setEditMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> 
+            </div> 
+            <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleEditMachineSubmit}> 
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label>
+                <input type="text" disabled defaultValue={editingMachineData.MachineID} className="w-full p-4 bg-slate-100 border border-slate-200 rounded-xl font-bold text-sm text-slate-500 cursor-not-allowed" />
+                <p className="text-[10px] text-slate-400 mt-1">Machine ID cannot be changed.</p>
+              </div> 
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label>
+                <input type="text" name="name" required defaultValue={editingMachineData.MachineName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" />
+              </div> 
+              <div> 
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line (Current: {editingMachineData.LineName || '-'})</label> 
+                <div className="relative">
+                  <select name="line" required defaultValue={editingMachineData.LineName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all">
+                    <option value="">-- Select Line --</option>
+                    {linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}
+                  </select>
+                  <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                </div> 
+              </div> 
+              <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]">
+                {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>}
+              </button> 
+            </form> 
+          </div> 
+        </div> 
+      )}
       {openDropdownId && ( <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenDropdownId(null)}></div> )}
 
       {/* 🌟 Modal: โยกย้ายหมวดหมู่ (Move Category) 🌟 */}
@@ -863,8 +1119,6 @@ export default function MaintenanceDashboard() {
                   <div onClick={() => setIsFixtureReasonDropdownOpen(!isFixtureReasonDropdownOpen)} className={`w-full p-4 bg-white border rounded-xl flex justify-between items-center cursor-pointer transition-all shadow-sm ${isFixtureReasonDropdownOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-indigo-400'}`}>
                     <span className="font-extrabold text-sm text-slate-700">
                       {fixtureActionReason === 'New Receive' ? <><span className="text-emerald-500 mr-2 text-lg">📦</span> New Receive <span className="text-slate-400 ml-1 font-normal">(รับเข้าใหม่)</span></> : 
-                       fixtureActionReason === 'Borrow' ? <><span className="text-purple-500 mr-2 text-lg">📤</span> Borrow <span className="text-slate-400 ml-1 font-normal">(เบิกยืมใช้งาน)</span></> : 
-                       fixtureActionReason === 'Return' ? <><span className="text-indigo-500 mr-2 text-lg">📥</span> Return <span className="text-slate-400 ml-1 font-normal">(คืนของเข้าตู้)</span></> : 
                        fixtureActionReason === 'Repair' ? <><span className="text-blue-500 mr-2 text-lg">🔧</span> Repair <span className="text-slate-400 ml-1 font-normal">(ซ่อมสำเร็จ)</span></> : 
                        <><span className="text-red-500 mr-2 text-lg">🗑️</span> Scrap <span className="text-slate-400 ml-1 font-normal">(ทิ้ง/แทงจำหน่าย)</span></>}
                     </span>
@@ -874,11 +1128,9 @@ export default function MaintenanceDashboard() {
                   {/* Menu Options (มี Animation) */}
                   {isFixtureReasonDropdownOpen && (
                     <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 py-2 ring-1 ring-slate-900/5">
-                      {['New Receive', 'Borrow', 'Return', 'Repair', 'Scrap'].map(reason => (
+                      {['New Receive', 'Repair', 'Scrap'].map(reason => (
                         <div key={reason} onClick={() => { setFixtureActionReason(reason); setIsFixtureReasonDropdownOpen(false); }} className={`px-5 py-3.5 cursor-pointer font-bold text-sm transition-all flex items-center gap-3 ${fixtureActionReason === reason ? 'bg-indigo-50 text-indigo-700 border-l-4 border-indigo-500' : 'text-slate-600 hover:bg-slate-50 border-l-4 border-transparent'}`}>
                           {reason === 'New Receive' ? <><span className="text-emerald-500 text-lg">📦</span> New Receive <span className="text-slate-400 font-normal ml-auto text-xs">รับเข้าใหม่</span></> : 
-                           reason === 'Borrow' ? <><span className="text-purple-500 text-lg">📤</span> Borrow <span className="text-slate-400 font-normal ml-auto text-xs">เบิกยืมใช้งาน</span></> : 
-                           reason === 'Return' ? <><span className="text-indigo-500 text-lg">📥</span> Return <span className="text-slate-400 font-normal ml-auto text-xs">คืนของเข้าตู้</span></> : 
                            reason === 'Repair' ? <><span className="text-blue-500 text-lg">🔧</span> Repair <span className="text-slate-400 font-normal ml-auto text-xs">ซ่อมสำเร็จ</span></> : 
                            <><span className="text-red-500 text-lg">🗑️</span> Scrap <span className="text-slate-400 font-normal ml-auto text-xs">แทงจำหน่าย</span></>}
                         </div>
@@ -928,7 +1180,7 @@ export default function MaintenanceDashboard() {
             </div>
           </div>
 
-          {/* GROUP 2: INVENTORY (รวมมิตรของทั้งหมด) */}
+          {/* GROUP 2: INVENTORY */}
           <div>
             <button onClick={() => toggleGroup('Inventory')} className="flex items-center justify-between w-full px-6 py-3 text-[10px] font-black tracking-widest text-left text-[#64748b] uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-2 hover:text-white whitespace-nowrap">
               <span>Inventory</span><i className={`bi bi-chevron-down transition-transform duration-300 ${expandedGroups.Inventory ? 'rotate-180' : ''}`}></i>
@@ -1044,71 +1296,32 @@ export default function MaintenanceDashboard() {
                 <div className="overflow-auto flex-1 relative rounded-b-2xl"> 
                   <table className="w-full text-left border-collapse"> 
                     <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-                        <th className="py-4 px-4 text-center w-16">Action</th>
-                        <th className="py-4 px-6 text-center w-20">Image</th>
-                        <th className="py-4 px-6 text-purple-600">Fixture No.</th>
-                        <th className="py-4 px-6 w-[25%]">Model Name</th>
-                        <th className="py-4 px-4 text-center border-l border-slate-200 bg-slate-100/50">Total</th>
-                        <th className="py-4 px-4 text-center bg-red-50/30 text-red-700">Broken</th>
-                        <th className="py-4 px-4 text-center bg-blue-50/30 text-blue-700">Borrowed</th>
-                        <th className="py-4 px-4 text-center bg-emerald-50/30 text-emerald-700">Available</th>
-                        <th className="py-4 px-6 text-center w-32">Status</th>
+                      <tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider">
+                        <th className="py-5 px-6">Machine & Line</th>
+                        <th className="py-5 px-6">Part Info (MTBF)</th>
+                        <th className="py-5 px-6">Order Date</th>
+                        <th className="py-5 px-6">Due Date</th>
+                        <th className="py-5 px-6">Status & Action</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
-                      {filteredFixtures.map((item, idx) => { 
-                        const borrowedQty = item.BorrowedQty || 0;
-                        const availableQty = item.TotalQty - item.BrokenQty - borrowedQty;
-                        
-                        let fixStatus = 'Available';
-                        if (availableQty <= 0 && borrowedQty > 0) fixStatus = 'Fully Borrowed';
-                        else if (availableQty <= 0 && item.BrokenQty > 0) fixStatus = 'Needs Repair';
-                        else if (borrowedQty > 0) fixStatus = 'In Use';
-
-                        return ( 
-                          <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
-                            <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
-                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.FixtureNo ? null : item.FixtureNo); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-purple-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
-                              {openDropdownId === item.FixtureNo && (
-                                <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
-                                  <button onClick={() => { setSelectedFixture(item); setFixtureActionReason('New Receive'); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-seam text-lg"></i> Update Stock</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => { setSelectedFixture(item); setPreviewImage(item.ImageURL || null); setEditFixtureInfoOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Fixture Info</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => handleDeleteFixture(item.FixtureNo)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Fixture</button>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-3 px-6 text-center align-middle">
-                              {item.ImageURL ? ( 
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
-                                  <img src={item.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> 
-                                </div>
-                              ) : ( 
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
-                              )}
-                            </td>
-                            <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
-                            <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ModelName || '-'}</td> 
-                            
-                            <td className="py-3 px-4 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-base align-middle text-center">{item.TotalQty}</td> 
-                            <td className="py-3 px-4 bg-red-50/10 font-bold text-red-600 text-base align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
-                            <td className="py-3 px-4 bg-blue-50/10 font-bold text-blue-600 text-base align-middle text-center">{borrowedQty > 0 ? borrowedQty : '-'}</td> 
-                            <td className="py-3 px-4 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{availableQty}</td> 
-                            
-                            <td className="py-3 px-6 align-middle text-center">
-                              {fixStatus === 'Fully Borrowed' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-person-fill-check"></i> FULLY BORROWED</span> :
-                               fixStatus === 'Needs Repair' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> NEEDS REPAIR</span> :
-                               fixStatus === 'In Use' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-blue-50 text-blue-700 border border-blue-200"><i className="bi bi-people-fill"></i> IN USE ({borrowedQty})</span> :
-                               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> AVAILABLE</span>
-                              }
-                            </td>
-                          </tr> 
-                        ); 
-                      })} 
-                      {filteredFixtures.length === 0 && (<tr><td colSpan={9} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
-                    </tbody>
+                      {filteredScheduleData.map((row, idx) => ( 
+                        <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 ${row.status === 'MONITORING' ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100' : ''}`}>
+                          <td className="py-5 px-6 align-top">
+                            <div className="font-bold text-slate-800 text-[15px]">{row.machine}</div>
+                            <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5"><i className="bi bi-geo-alt-fill text-blue-400"></i> {row.line}</div>
+                          </td>
+                          <td className="py-5 px-6 align-top">
+                            <div className="font-bold text-slate-700">{row.partName}</div>
+                            <div className="text-xs text-slate-400 mt-1.5">Req: <span className="text-blue-600 font-black">{row.reqQty}</span> pcs <span className="mx-1 opacity-30">|</span> MTBF: <span className="text-emerald-600 font-black">{row.mtbfDays}</span> d</div>
+                          </td>
+                          <td className="py-5 px-6 align-top font-bold text-blue-600">{row.orderDate}</td>
+                          <td className="py-5 px-6 align-top font-bold text-red-500">{row.dueDate}</td>
+                          <td className="py-5 px-6 align-top">{renderStatusBadge(row)}</td>
+                        </tr> 
+                      ))} 
+                      {filteredScheduleData.length === 0 && (<tr><td colSpan={5} className="py-10 text-center text-slate-400 font-bold">No schedule data available</td></tr>)}
+                    </tbody> 
                   </table> 
                 </div> 
               </div> 
@@ -1137,11 +1350,12 @@ export default function MaintenanceDashboard() {
                         <th className="py-5 px-4 text-center w-16">Action</th>
                         <th className="py-5 px-6">Location</th>
                         <th className="py-5 px-6 text-center w-24">Image</th>
-                        <th className="py-5 px-6 w-[35%]">Part Details</th>
+                        <th className="py-5 px-6 w-[30%]">Part Details</th>
                         <th className="py-5 px-6 border-l border-slate-200/50 bg-slate-100/50">Physical</th>
                         <th className="py-5 px-6 bg-red-50/30 text-red-700">Reserved</th>
                         <th className="py-5 px-6 bg-emerald-50/30 text-emerald-700">Available</th>
                         <th className="py-5 px-6 text-center w-32">Order Status</th>
+                        <th className="py-5 px-6 text-center text-blue-600 w-24">P/N</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
@@ -1223,6 +1437,9 @@ export default function MaintenanceDashboard() {
                                   <i className="bi bi-cart-plus"></i> Mark Order
                                 </button>
                               )}
+                            </td>
+                            <td className="py-4 px-6 text-[13px] font-black text-blue-600 align-top pt-5 text-center tracking-wider border-l border-slate-100 bg-blue-50/30">
+                              {partDetails.PartNumber || '-'}
                             </td>
                           </tr> 
                         ); 
@@ -1364,15 +1581,23 @@ export default function MaintenanceDashboard() {
                         <th className="py-4 px-4 text-center w-16">Action</th>
                         <th className="py-4 px-6 text-center w-20">Image</th>
                         <th className="py-4 px-6 text-purple-600">Fixture No.</th>
-                        <th className="py-4 px-6">Model Name</th>
-                        <th className="py-4 px-6 text-center border-l border-slate-200 bg-slate-100/50">Total Qty</th>
-                        <th className="py-4 px-6 text-center bg-red-50/30 text-red-700">Broken Qty</th>
-                        <th className="py-4 px-6 text-center bg-emerald-50/30 text-emerald-700">Usable Qty</th>
+                        <th className="py-4 px-6 w-[25%]">Model Name</th>
+                        <th className="py-4 px-4 text-center border-l border-slate-200 bg-slate-100/50">Total</th>
+                        <th className="py-4 px-4 text-center bg-red-50/30 text-red-700">Broken</th>
+                        <th className="py-4 px-4 text-center bg-blue-50/30 text-blue-700">Borrowed</th>
+                        <th className="py-4 px-4 text-center bg-emerald-50/30 text-emerald-700">Available</th>
+                        <th className="py-4 px-6 text-center w-32">Status</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
                       {filteredFixtures.map((item, idx) => { 
-                        const usableQty = item.TotalQty - item.BrokenQty;
+                        const borrowedQty = item.BorrowedQty || 0;
+                        const availableQty = (item.TotalQty || 0) - (item.BrokenQty || 0) - borrowedQty;
+                        
+                        let fixStatus = 'Available';
+                        if (availableQty <= 0 && borrowedQty > 0) fixStatus = 'Fully Borrowed';
+                        else if (availableQty <= 0 && (item.BrokenQty || 0) > 0) fixStatus = 'Needs Repair';
+                        else if (borrowedQty > 0) fixStatus = 'In Use';
 
                         return ( 
                           <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
@@ -1399,13 +1624,23 @@ export default function MaintenanceDashboard() {
                             </td>
                             <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
                             <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ModelName || '-'}</td> 
-                            <td className="py-3 px-6 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-lg align-middle text-center">{item.TotalQty}</td> 
-                            <td className="py-3 px-6 bg-red-50/10 font-bold text-red-600 text-lg align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
-                            <td className="py-3 px-6 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{usableQty}</td> 
+                            
+                            <td className="py-3 px-4 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-base align-middle text-center">{item.TotalQty}</td> 
+                            <td className="py-3 px-4 bg-red-50/10 font-bold text-red-600 text-base align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
+                            <td className="py-3 px-4 bg-blue-50/10 font-bold text-blue-600 text-base align-middle text-center">{borrowedQty > 0 ? borrowedQty : '-'}</td> 
+                            <td className="py-3 px-4 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{availableQty}</td> 
+                            
+                            <td className="py-3 px-6 align-middle text-center">
+                              {fixStatus === 'Fully Borrowed' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-person-fill-check"></i> FULLY BORROWED</span> :
+                               fixStatus === 'Needs Repair' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> NEEDS REPAIR</span> :
+                               fixStatus === 'In Use' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-blue-50 text-blue-700 border border-blue-200"><i className="bi bi-people-fill"></i> IN USE ({borrowedQty})</span> :
+                               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> AVAILABLE</span>
+                              }
+                            </td>
                           </tr> 
                         ); 
                       })} 
-                      {filteredFixtures.length === 0 && (<tr><td colSpan={7} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
+                      {filteredFixtures.length === 0 && (<tr><td colSpan={9} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
                     </tbody> 
                   </table> 
                 </div> 
@@ -1448,7 +1683,7 @@ export default function MaintenanceDashboard() {
                         <th className="py-5 px-6">Machine ID</th>
                         <th className="py-5 px-6">Machine Name</th>
                         <th className="py-5 px-6">Production Line</th>
-                        <th className="py-5 px-6 text-center w-32">Status (Active)</th>
+                        <th className="py-5 px-6 text-center w-40">Actions</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
@@ -1457,10 +1692,15 @@ export default function MaintenanceDashboard() {
                           <td className="py-4 px-6 font-extrabold text-slate-700">{m.MachineID}</td> 
                           <td className="py-4 px-6 font-bold text-slate-800">{m.MachineName}</td> 
                           <td className="py-4 px-6"><span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-md text-xs font-bold border border-indigo-100">{m.LineName || '-'}</span></td> 
-                          <td className="py-4 px-6 text-center">
-                            <button onClick={() => handleToggleMachineStatus(m.MachineID, m.Active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${m.Active !== false ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 ${m.Active !== false ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-center gap-3">
+                              <button onClick={() => { setEditingMachineData(m); setEditMachineModalOpen(true); }} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center shadow-sm active:scale-95" title="Edit Machine">
+                                <i className="bi bi-pencil-fill"></i>
+                              </button>
+                              <button onClick={() => handleToggleMachineStatus(m.MachineID, m.Active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none shadow-inner ${m.Active !== false ? 'bg-emerald-500' : 'bg-slate-300'}`} title="Toggle Active Status">
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 shadow-sm ${m.Active !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                              </button>
+                            </div>
                           </td>
                         </tr> 
                       ))} 
