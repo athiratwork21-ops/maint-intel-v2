@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@imgly/background-removal": "^1.4.3",
     "@google/generative-ai": "latest",
     "@supabase/supabase-js": "latest",
     "@types/node": "20.6.2",
