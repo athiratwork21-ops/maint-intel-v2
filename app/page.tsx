@@ -398,15 +398,16 @@ export default function MaintenanceDashboard() {
     }
     const { error: partErr } = await supabase.from('Part').update({ PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string) }).eq('PartID', editingPartData.PartID);
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
-    if (locationVal) {
-      const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
-      const locToSave = locationVal || '-';
+    
+    // 🌟 แก้ไขตรงนี้: ลบ if (locationVal) ที่เปิดค้างไว้ และจัดระเบียบให้ถูกต้อง 🌟
+    const locToSave = locationVal || '-';
     const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
     if (exStock) { 
       await supabase.from('Stock').update({ Location: locToSave, PartName: formData.get('name'), PartModel: formData.get('model') as string }).eq('PartID', editingPartData.PartID); 
     } else { 
       await supabase.from('Stock').insert({ Location: locToSave, PartID: editingPartData.PartID, PartName: formData.get('name'), PartModel: formData.get('model') as string, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); 
     }
+    
     showToast('Part updated successfully!', 'success'); setEditPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
 
