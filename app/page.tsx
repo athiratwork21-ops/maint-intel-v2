@@ -373,7 +373,6 @@ export default function MaintenanceDashboard() {
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
     
-    // 🌟 ระบบรันเลข PartID อัตโนมัติ (P-00000000XXX) 🌟
     const { data: latestPart } = await supabase.from('Part').select('PartID').ilike('PartID', 'P-%').order('PartID', { ascending: false }).limit(1);
     let nextNum = 1;
     if (latestPart && latestPart.length > 0) {
@@ -384,7 +383,17 @@ export default function MaintenanceDashboard() {
 
     const { error: partErr } = await supabase.from('Part').insert({ PartID: generatedPartID, PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string), DepartmentID: activeDept });
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
-    await supabase.from('Stock').insert({ Location: locationVal || '-', PartID: generatedPartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+    
+    // 🚨 ดักจับ Error ของตาราง Stock แบบเด็ดขาด! 🚨
+    const { error: stockErr } = await supabase.from('Stock').insert({ Location: locationVal || '-', PartID: generatedPartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
+    
+    if (stockErr) {
+      showToast(`Stock DB Error: ${stockErr.message}`, 'error'); // จะเด้งตัวแดงบอกทันทีว่าทำไมถึงเซฟไม่ลง!
+      console.error("Stock Insert Error:", stockErr);
+      setIsProcessing(false);
+      return;
+    }
+
     showToast('Part registered successfully!', 'success'); setNewPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
 
@@ -399,12 +408,27 @@ export default function MaintenanceDashboard() {
     }
     const { error: partErr } = await supabase.from('Part').update({ PartNumber: formData.get('partNumber') as string, PartName: formData.get('name'), PartModel: formData.get('model'), ImageURL: finalImageUrl, SafetyBufferDays: parseInt(formData.get('buffer') as string) }).eq('PartID', editingPartData.PartID);
     if (partErr) { showToast(`Error: ${partErr.message}`, 'error'); setIsProcessing(false); return; }
-    if (locationVal) {
-      const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
-      const locToSave = locationVal || '-';
-    if (exStock) { await supabase.from('Stock').update({ Location: locToSave }).eq('PartID', editingPartData.PartID); } 
-    else { await supabase.from('Stock').insert({ Location: locToSave, PartID: editingPartData.PartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); }
+    
+    const locToSave = locationVal || '-';
+    const { data: exStock } = await supabase.from('Stock').select('*').eq('PartID', editingPartData.PartID).single();
+    
+    let stockErr = null;
+    // 🚨 ดักจับ Error ของตาราง Stock 🚨
+    if (exStock) { 
+      const { error } = await supabase.from('Stock').update({ Location: locToSave }).eq('PartID', editingPartData.PartID); 
+      stockErr = error;
+    } else { 
+      const { error } = await supabase.from('Stock').insert({ Location: locToSave, PartID: editingPartData.PartID, Balance: 0, LastUpdated: new Date().toISOString(), DepartmentID: activeDept }); 
+      stockErr = error;
     }
+
+    if (stockErr) {
+      showToast(`Stock DB Error: ${stockErr.message}`, 'error');
+      console.error("Stock Edit Error:", stockErr);
+      setIsProcessing(false);
+      return;
+    }
+
     showToast('Part updated successfully!', 'success'); setEditPartModalOpen(false); fetchAllData(); setIsProcessing(false);
   };
 
