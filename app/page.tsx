@@ -112,9 +112,6 @@ export default function MaintenanceDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-  // 🌟 State สำหรับระบบ AI ลบพื้นหลัง 🌟
-  const [isRemovingBg, setIsRemovingBg] = useState(false);
-  const [processedImageFile, setProcessedImageFile] = useState<File | null>(null);
 
   const [changeHistoryData, setChangeHistoryData] = useState<any[]>([]);
   const [historyMonthFilter, setHistoryMonthFilter] = useState(new Date().toISOString().slice(0, 7));
@@ -351,61 +348,7 @@ export default function MaintenanceDashboard() {
   };
   
   const openNewPartModal = () => { setPreviewImage(null); setNewPartModalOpen(true); };
-  // 🌟 ฟังก์ชันแปลงภาพทุกสกุลให้เป็น .png ก่อนอัปโหลด (เร็วปรื๊ด) 🌟
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => { 
-    const file = e.target.files?.[0]; 
-    if (file) { 
-      setIsProcessing(true);
-      showToast('กำลังเตรียมรูปภาพ...', 'info');
-
-      try {
-        // สร้าง Image Object เพื่อวาดรูปลง Canvas
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(file);
-        
-        img.onload = () => {
-          // สร้าง Canvas เพื่อแปลงรูป
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          
-          if (ctx) {
-            // ถมพื้นหลังสีขาว (เผื่อไฟล์เดิมเป็น png ใส จะได้ไม่ดำ)
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // วาดรูปลงไป
-            ctx.drawImage(img, 0, 0);
-            
-            // แปลง Canvas กลับมาเป็นไฟล์ .png
-            canvas.toBlob((blob) => {
-              if (blob) {
-                // เปลี่ยนชื่อไฟล์เดิมให้ลงท้ายด้วย .png เสมอ
-                const originalName = file.name.replace(/\.[^/.]+$/, "");
-                const newPngFile = new File([blob], `${originalName}.png`, { type: 'image/png' });
-                
-                setPreviewImage(URL.createObjectURL(blob));
-                setProcessedImageFile(newPngFile); // ส่งไฟล์ .png ไปรออัปโหลด
-                showToast('แปลงเป็นไฟล์ PNG สำเร็จ!', 'success');
-              }
-              setIsProcessing(false);
-            }, 'image/png', 1.0); // บังคับ format เป็น image/png
-          }
-          URL.revokeObjectURL(objectUrl); // คืนหน่วยความจำ
-        };
-        
-        img.src = objectUrl;
-
-      } catch (error) {
-        console.error("Image Conversion Error:", error);
-        showToast('⚠️ ไม่สามารถแปลงไฟล์ได้ จะใช้รูปต้นฉบับแทน', 'warning');
-        setPreviewImage(URL.createObjectURL(file));
-        setProcessedImageFile(file); // ถ้าพัง ก็กลับไปใช้ไฟล์เดิม
-        setIsProcessing(false);
-      }
-    } 
-  };
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { setPreviewImage(URL.createObjectURL(file)); } };
 
   const handleNewPartSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const activeDept = localStorage.getItem('activeDepartment'); 
