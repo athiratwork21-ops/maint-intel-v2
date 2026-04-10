@@ -183,9 +183,6 @@ export default function MaintenanceDashboard() {
   // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
   const [mlInsights, setMlInsights] = useState<any[]>([]);
 
-  // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
-  const [mlInsights, setMlInsights] = useState<any[]>([]);
-
   // 🌟 ฟังก์ชัน AI: พยากรณ์อายุการใช้งานด้วย Linear Regression 🌟
   useEffect(() => {
     const runMLAnalysis = async () => {
