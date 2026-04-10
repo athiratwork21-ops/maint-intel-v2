@@ -188,7 +188,7 @@ export default function MaintenanceDashboard() {
     const runMLAnalysis = async () => {
       if (changeHistoryData.length > 0 && parts.length > 0) {
         try {
-          // 1. เรียกใช้ AI แบบ Dynamic (กันเว็บพังตอนโหลดครั้งแรก)
+          // @ts-ignore
           const { SimpleLinearRegression } = await import('ml-regression');
           
           // 2. จัดกลุ่มประวัติการซ่อม แยกตาม ID อะไหล่
