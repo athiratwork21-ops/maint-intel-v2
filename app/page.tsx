@@ -182,6 +182,8 @@ export default function MaintenanceDashboard() {
 
   // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
   const [mlInsights, setMlInsights] = useState<any[]>([]);
+  // 🌟 State ควบคุมการพับ/กาง ของกล่อง AI (ค่าเริ่มต้นให้กางไว้ก่อน) 🌟
+  const [isMlExpanded, setIsMlExpanded] = useState(true);
 
   // 🌟 ฟังก์ชัน AI: พยากรณ์อายุการใช้งานด้วย Linear Regression 🌟
   useEffect(() => {
@@ -1408,43 +1410,65 @@ export default function MaintenanceDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-6 flex-shrink-0"> 
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-robot"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Machines</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.machines}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-gear-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Active Parts</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.parts}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-exclamation-triangle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Out of Stock</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.outOfStock}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-x-circle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Overdue Jobs</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.overdue}</p></div></div> 
               </div>
-              {/* 🌟 AI PREDICTIVE INSIGHTS WIDGET 🌟 */}
+              {/* 🌟 AI PREDICTIVE INSIGHTS WIDGET (พับได้) 🌟 */}
               {mlInsights.length > 0 && (
-                <div className="bg-gradient-to-br from-slate-900 to-[#0f172a] rounded-2xl p-6 shadow-xl mb-6 border border-cyan-500/30 flex-shrink-0 relative overflow-hidden">
+                <div className="bg-gradient-to-br from-slate-900 to-[#0f172a] rounded-2xl shadow-xl mb-6 border border-cyan-500/30 flex-shrink-0 relative overflow-hidden transition-all duration-300">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[50px] rounded-full pointer-events-none"></div>
                   
-                  <div className="flex items-center justify-between mb-5 relative z-10">
-                    <h3 className="font-black text-xl text-white flex items-center gap-3">
-                      <i className="bi bi-cpu-fill text-cyan-400 animate-pulse"></i> ML Predictive Insights
-                    </h3>
-                    <span className="text-[10px] font-bold bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30 uppercase tracking-widest">AI Active</span>
+                  {/* แถบหัวข้อ (คลิกเพื่อพับ/กาง) */}
+                  <div 
+                    className="flex items-center justify-between p-5 relative z-10 cursor-pointer hover:bg-white/5 transition-colors"
+                    onClick={() => setIsMlExpanded(!isMlExpanded)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-black text-xl text-white flex items-center gap-3">
+                        <i className={`bi bi-cpu-fill text-cyan-400 ${isMlExpanded ? 'animate-pulse' : ''}`}></i> 
+                        ML Predictive Insights
+                      </h3>
+                      {/* แจ้งเตือนเล็กๆ เวลาพับกล่อง แล้วมีอะไหล่สีแดง */}
+                      {!isMlExpanded && mlInsights.some(i => i.trend === 'Degrading') && (
+                        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-2 py-1 rounded-md font-bold border border-rose-500/30 animate-pulse">
+                          ⚠️ พบอะไหล่เสี่ยงสูง
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] font-bold bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30 uppercase tracking-widest hidden sm:block">AI Active</span>
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
+                        <i className={`bi bi-chevron-${isMlExpanded ? 'up' : 'down'} text-slate-400`}></i>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex overflow-x-auto gap-4 pb-4 relative z-10 snap-x" style={{ scrollbarWidth: 'thin' }}>
-                    {mlInsights.map((insight, idx) => (
-                      <div key={idx} className="bg-slate-800/50 backdrop-blur-md border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:border-cyan-400/50 transition-colors min-w-[320px] shrink-0 snap-start">
-                        <div className="w-12 h-12 rounded-lg bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
-                          {insight.image ? <img src={insight.image} className="w-full h-full object-contain" /> : <i className="bi bi-gear text-slate-400 text-xl"></i>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-200 text-sm truncate">{insight.partName}</p>
-                          {/* 🌟 แสดงชื่อเครื่องจักรใต้ชื่ออะไหล่ 🌟 */}
-                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                            <i className="bi bi-geo-alt-fill text-cyan-500/70 mr-1"></i> 
-                            เครื่อง: {insight.machines}
-                          </p>
-                          <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
-                            <span className="text-slate-400" title="ค่าเฉลี่ยแบบเก่า">MTBF: {insight.mtbf}d</span>
-                            <span className="text-slate-600">|</span>
-                            <span className={`${insight.trend === 'Degrading' ? 'text-rose-400' : 'text-emerald-400'}`} title="AI ทำนายล่วงหน้า">
-                              <i className={`bi ${insight.trend === 'Degrading' ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow'} mr-1`}></i> 
-                              ML Predict: {insight.mlPrediction}d
-                            </span>
+                  {/* เนื้อหาการ์ด (จะโชว์ก็ต่อเมื่อ isMlExpanded เป็น true) */}
+                  {isMlExpanded && (
+                    <div className="px-5 pb-5 pt-1 relative z-10">
+                      <div className="flex overflow-x-auto gap-4 pb-2 snap-x" style={{ scrollbarWidth: 'thin' }}>
+                        {mlInsights.map((insight, idx) => (
+                          <div key={idx} className="bg-slate-800/50 backdrop-blur-md border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:border-cyan-400/50 transition-colors min-w-[320px] shrink-0 snap-start">
+                            <div className="w-12 h-12 rounded-lg bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+                              {insight.image ? <img src={insight.image} className="w-full h-full object-contain" /> : <i className="bi bi-gear text-slate-400 text-xl"></i>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-slate-200 text-sm truncate">{insight.partName}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                                <i className="bi bi-geo-alt-fill text-cyan-500/70 mr-1"></i> เครื่อง: {insight.machines}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
+                                <span className="text-slate-400" title="ค่าเฉลี่ยแบบเก่า">MTBF: {insight.mtbf}d</span>
+                                <span className="text-slate-600">|</span>
+                                <span className={`${insight.trend === 'Degrading' ? 'text-rose-400' : 'text-emerald-400'}`} title="AI ทำนายล่วงหน้า">
+                                  <i className={`bi ${insight.trend === 'Degrading' ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow'} mr-1`}></i> 
+                                  Predict: {insight.mlPrediction}d
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0"> 
