@@ -732,11 +732,25 @@ export default function MaintenanceDashboard() {
             if (reqErr) throw reqErr;
           }
           
-          // 🌟 โค้ดสะกิด API ส่ง Line แจ้งเตือนตอนอนุมัติ 🌟
+          // 🌟 โค้ดส่ง Line แจ้งเตือนตอนอนุมัติ (ของจริง ไม่ใช่คอมเมนต์แล้ววว!) 🌟
           try {
-             // ... (โค้ดดึงชื่ออะไหล่และเรียก fetch api/send-line) ...
+            const itemNames = group.items.map((req: any) => {
+              const isConsumable = req.PartID.startsWith('CSM-');
+              const pName = isConsumable 
+                ? (consumables.find(c => c.ItemID === req.PartID)?.ItemName || req.PartID) 
+                : (parts.find(p => p.PartID === req.PartID)?.PartName || req.PartID);
+              return `- ${pName} (${req.Qty} ชิ้น)`;
+            }).join('\n');
+
+            const msg = `✅ แอดมินอนุมัติจ่ายของแล้ว!\nผู้เบิก: ${group.pickerName}\nรายการ:\n${itemNames}`;
+            
+            await fetch('/api/send-line', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: msg }),
+            });
           } catch (lineError) {
-             console.error("Line Notify Failed:", lineError);
+            console.error("Line Notify Failed:", lineError);
           }
 
           showToast('อนุมัติจ่ายของและตัดสต๊อกสำเร็จ!', 'success'); fetchAllData(); 
