@@ -742,7 +742,7 @@ export default function MaintenanceDashboard() {
               return `- ${pName} (${req.Qty} ชิ้น)`;
             }).join('\n');
 
-            const msg = `✅ แอดมินอนุมัติจ่ายของแล้ว!\nผู้เบิก: ${group.pickerName}\nรายการ:\n${itemNames}`;
+            const msg = `✅ อนุมัติจ่ายของแล้ว!\nผู้เบิก: ${group.pickerName}\nรายการ:\n${itemNames}`;
             
             await fetch('/api/send-line', {
               method: 'POST',
