@@ -183,72 +183,82 @@ export default function MaintenanceDashboard() {
   // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
   const [mlInsights, setMlInsights] = useState<any[]>([]);
 
+  // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
+  const [mlInsights, setMlInsights] = useState<any[]>([]);
+
   // 🌟 ฟังก์ชัน AI: พยากรณ์อายุการใช้งานด้วย Linear Regression 🌟
   useEffect(() => {
     const runMLAnalysis = async () => {
-      if (changeHistoryData.length > 0 && parts.length > 0) {
-        try {
-          // @ts-ignore
-          const { SimpleLinearRegression } = await import('ml-regression');
+      const activeDept = localStorage.getItem('activeDepartment');
+      // เช็คว่าโหลดข้อมูล Parts เสร็จหรือยัง
+      if (!activeDept || parts.length === 0) return;
+
+      try {
+        // 🚨 สั่งให้ AI ทะลวงไปหลังบ้าน ดึงประวัติ "ทั้งหมด" มาวิเคราะห์ (ไม่สนเดือน!)
+        const { data: fullHistory } = await supabase
+          .from('ChangeHistory')
+          .select('*')
+          .eq('DepartmentID', activeDept)
+          .order('ChangeDate', { ascending: true }); // เรียงจากเก่าไปใหม่
+
+        if (!fullHistory || fullHistory.length === 0) return;
+
+        // @ts-ignore
+        const { SimpleLinearRegression } = await import('ml-regression');
+        
+        // จัดกลุ่มประวัติการซ่อม แยกตาม ID อะไหล่
+        const grouped = fullHistory.reduce((acc: any, curr: any) => {
+          if (!acc[curr.PartID]) acc[curr.PartID] = [];
+          acc[curr.PartID].push(curr);
+          return acc;
+        }, {});
+
+        const insights: any[] = [];
+
+        // เริ่มสอน AI ทีละอะไหล่
+        Object.keys(grouped).forEach(partId => {
+          const records = grouped[partId];
           
-          // 2. จัดกลุ่มประวัติการซ่อม แยกตาม ID อะไหล่
-          const grouped = changeHistoryData.reduce((acc: any, curr) => {
-            if (!acc[curr.PartID]) acc[curr.PartID] = [];
-            acc[curr.PartID].push(curr);
-            return acc;
-          }, {});
-
-          const insights: any[] = [];
-
-          // 3. เริ่มสอน AI ทีละอะไหล่
-          Object.keys(grouped).forEach(partId => {
-            // เรียงวันที่จากเก่าไปใหม่
-            const records = grouped[partId].sort((a: any, b: any) => new Date(a.ChangeDate).getTime() - new Date(b.ChangeDate).getTime());
-            
-            if (records.length >= 3) { // ต้องเปลี่ยนมาแล้วอย่างน้อย 3 ครั้ง ถึงจะเห็น 'แนวโน้ม'
-              const cycles = [];
-              // คำนวณหา "อายุการใช้งาน (วัน)" ของแต่ละรอบ
-              for (let i = 1; i < records.length; i++) {
-                const days = (new Date(records[i].ChangeDate).getTime() - new Date(records[i-1].ChangeDate).getTime()) / (1000 * 3600 * 24);
-                if (days > 0) cycles.push(days);
-              }
-
-              if (cycles.length >= 2) {
-                // ชุดข้อมูลสำหรับสอน AI (X = รอบที่, Y = อายุที่ใช้ได้จริง)
-                const x = cycles.map((_, i) => i + 1); // เช่น [1, 2, 3]
-                const y = cycles; // เช่น [40 วัน, 35 วัน, 28 วัน]
-
-                // คำนวณแบบเก่า (MTBF ค่าเฉลี่ย)
-                const mtbf = y.reduce((a, b) => a + b, 0) / y.length;
-
-                // คำนวณแบบใหม่ (ML Regression ดูแนวโน้มเสื่อมสภาพ)
-                const regression = new SimpleLinearRegression(x, y);
-                const nextCycleX = x.length + 1; // ทายผลรอบต่อไป
-                const mlPrediction = regression.predict(nextCycleX);
-
-                const partDetails = parts.find(p => p.PartID === partId);
-                
-                insights.push({
-                  partId,
-                  partName: partDetails?.PartName || partId,
-                  image: partDetails?.ImageURL || null,
-                  mtbf: Math.round(mtbf),
-                  mlPrediction: Math.round(mlPrediction),
-                  // ถ้ารอบหน้าพังเร็วกว่าค่าเฉลี่ย แปลว่าสภาพเริ่มแย่ลง!
-                  trend: mlPrediction < mtbf ? 'Degrading' : 'Stable'
-                });
-              }
+          if (records.length >= 3) { 
+            const cycles = [];
+            // คำนวณหาระยะห่างของวัน
+            for (let i = 1; i < records.length; i++) {
+              const days = (new Date(records[i].ChangeDate).getTime() - new Date(records[i-1].ChangeDate).getTime()) / (1000 * 3600 * 24);
+              if (days > 0) cycles.push(days);
             }
-          });
 
-          setMlInsights(insights);
-        } catch (error) {
-          console.error("ML Training Error:", error);
-        }
+            if (cycles.length >= 2) {
+              const x = cycles.map((_, i) => i + 1); 
+              const y = cycles; 
+
+              const mtbf = y.reduce((a, b) => a + b, 0) / y.length;
+              const regression = new SimpleLinearRegression(x, y);
+              const nextCycleX = x.length + 1; 
+              const mlPrediction = regression.predict(nextCycleX);
+
+              const partDetails = parts.find(p => p.PartID === partId);
+              
+              insights.push({
+                partId,
+                partName: partDetails?.PartName || partId,
+                image: partDetails?.ImageURL || null,
+                mtbf: Math.round(mtbf),
+                mlPrediction: Math.round(mlPrediction),
+                trend: mlPrediction < mtbf ? 'Degrading' : 'Stable'
+              });
+            }
+          }
+        });
+
+        setMlInsights(insights);
+      } catch (error) {
+        console.error("ML Training Error:", error);
       }
     };
+    
+    // สั่งรัน AI ทุกครั้งที่หน้าเว็บรีเฟรชข้อมูลสำเร็จ
     runMLAnalysis();
-  }, [changeHistoryData, parts]);
+  }, [parts]); // เปลี่ยนจากที่ผูกกับ changeHistoryData มาผูกกับ parts แทน
   
   const fetchHistoryData = async (dept: string) => {
     const [year, month] = historyMonthFilter.split('-');
