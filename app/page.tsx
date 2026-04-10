@@ -235,6 +235,20 @@ export default function MaintenanceDashboard() {
 
               const partDetails = parts.find(p => p.PartID === partId);
               
+              // 🌟 ดึงชื่อเครื่องจักรที่เคยมีประวัติเปลี่ยนอะไหล่ชิ้นนี้ (ตัดชื่อที่ซ้ำกันออก)
+              const uniqueMachines = Array.from(new Set(records.map((r: any) => r.MachineID))).filter(m => m && m !== '-');
+              const machineText = uniqueMachines.length > 0 ? uniqueMachines.join(', ') : 'Multiple Machines';
+
+              insights.push({
+                partId,
+                partName: partDetails?.PartName || partId,
+                image: partDetails?.ImageURL || null,
+                mtbf: Math.round(mtbf),
+                mlPrediction: Math.round(mlPrediction),
+                trend: mlPrediction < mtbf ? 'Degrading' : 'Stable',
+                machines: machineText // 👈 ส่งชื่อเครื่องจักรไปให้หน้าเว็บ
+              });
+              
               insights.push({
                 partId,
                 partName: partDetails?.PartName || partId,
@@ -1407,6 +1421,11 @@ export default function MaintenanceDashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-slate-200 text-sm truncate">{insight.partName}</p>
+                          {/* 🌟 แสดงชื่อเครื่องจักรใต้ชื่ออะไหล่ 🌟 */}
+                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                            <i className="bi bi-geo-alt-fill text-cyan-500/70 mr-1"></i> 
+                            เครื่อง: {insight.machines}
+                          </p>
                           <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
                             <span className="text-slate-400" title="ค่าเฉลี่ยแบบเก่า">MTBF: {insight.mtbf}d</span>
                             <span className="text-slate-600">|</span>
