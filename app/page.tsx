@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
+import Image from 'next/image';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -179,6 +180,106 @@ export default function MaintenanceDashboard() {
     } catch (error) { showToast('Error loading data', 'warning'); } finally { setIsLoading(false); }
   };
 
+  // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
+  const [mlInsights, setMlInsights] = useState<any[]>([]);
+  // 🌟 State ควบคุมการพับ/กาง ของกล่อง AI (ค่าเริ่มต้นให้กางไว้ก่อน) 🌟
+  const [isMlExpanded, setIsMlExpanded] = useState(false);
+
+  // 🌟 ฟังก์ชัน AI: พยากรณ์อายุการใช้งานด้วย Linear Regression 🌟
+  useEffect(() => {
+    const runMLAnalysis = async () => {
+      const activeDept = localStorage.getItem('activeDepartment');
+      // เช็คว่าโหลดข้อมูล Parts เสร็จหรือยัง
+      if (!activeDept || parts.length === 0) return;
+
+      try {
+        // 🚨 สั่งให้ AI ทะลวงไปหลังบ้าน ดึงประวัติ "ทั้งหมด" มาวิเคราะห์ (ไม่สนเดือน!)
+        const { data: fullHistory } = await supabase
+          .from('ChangeHistory')
+          .select('*')
+          .eq('DepartmentID', activeDept)
+          .order('ChangeDate', { ascending: true }); // เรียงจากเก่าไปใหม่
+
+        if (!fullHistory || fullHistory.length === 0) return;
+
+        // @ts-ignore
+        const { SimpleLinearRegression } = await import('ml-regression');
+        
+        // จัดกลุ่มประวัติการซ่อม แยกตาม ID อะไหล่
+        const grouped = fullHistory.reduce((acc: any, curr: any) => {
+          if (!acc[curr.PartID]) acc[curr.PartID] = [];
+          acc[curr.PartID].push(curr);
+          return acc;
+        }, {});
+
+        const insights: any[] = [];
+
+        // เริ่มสอน AI ทีละอะไหล่
+        Object.keys(grouped).forEach(partId => {
+          const records = grouped[partId];
+          
+          if (records.length >= 3) { 
+            const cycles = [];
+            // คำนวณหาระยะห่างของวัน
+            for (let i = 1; i < records.length; i++) {
+              const days = (new Date(records[i].ChangeDate).getTime() - new Date(records[i-1].ChangeDate).getTime()) / (1000 * 3600 * 24);
+              if (days > 0) cycles.push(days);
+            }
+
+            if (cycles.length >= 2) {
+              const x = cycles.map((_, i) => i + 1); 
+              const y = cycles; 
+
+              const mtbf = y.reduce((a, b) => a + b, 0) / y.length;
+              const regression = new SimpleLinearRegression(x, y);
+              const nextCycleX = x.length + 1; 
+              const mlPrediction = regression.predict(nextCycleX);
+
+              const partDetails = parts.find(p => p.PartID === partId);
+              
+              // 🌟 ดึงชื่อเครื่องจักรที่เคยมีประวัติเปลี่ยนอะไหล่ชิ้นนี้ (ตัดชื่อที่ซ้ำกันออก)
+              const uniqueMachines = Array.from(new Set(records.map((r: any) => r.MachineID))).filter(m => m && m !== '-');
+              const machineText = uniqueMachines.length > 0 ? uniqueMachines.join(', ') : 'Multiple Machines';
+
+              insights.push({
+                partId,
+                partName: partDetails?.PartName || partId,
+                image: partDetails?.ImageURL || null,
+                mtbf: Math.round(mtbf),
+                mlPrediction: Math.round(mlPrediction),
+                trend: mlPrediction < mtbf ? 'Degrading' : 'Stable',
+                machines: machineText // 👈 ส่งชื่อเครื่องจักรไปให้หน้าเว็บ
+              });
+              
+              insights.push({
+                partId,
+                partName: partDetails?.PartName || partId,
+                image: partDetails?.ImageURL || null,
+                mtbf: Math.round(mtbf),
+                mlPrediction: Math.round(mlPrediction),
+                trend: mlPrediction < mtbf ? 'Degrading' : 'Stable'
+              });
+            }
+          }
+        });
+
+        // 🌟 เรียงลำดับ: เอาตัวที่ 'Degrading' (ใกล้พัง) ขึ้นก่อน และเรียงตามวันที่เหลือน้อยสุด
+        const sortedInsights = insights.sort((a, b) => {
+          if (a.trend === 'Degrading' && b.trend !== 'Degrading') return -1;
+          if (a.trend !== 'Degrading' && b.trend === 'Degrading') return 1;
+          return a.mlPrediction - b.mlPrediction;
+        });
+
+        setMlInsights(sortedInsights);
+      } catch (error) {
+        console.error("ML Training Error:", error);
+      }
+    };
+    
+    // สั่งรัน AI ทุกครั้งที่หน้าเว็บรีเฟรชข้อมูลสำเร็จ
+    runMLAnalysis();
+  }, [parts]); // เปลี่ยนจากที่ผูกกับ changeHistoryData มาผูกกับ parts แทน
+  
   const fetchHistoryData = async (dept: string) => {
     const [year, month] = historyMonthFilter.split('-');
     const startDate = `${year}-${month}-01`;
@@ -630,6 +731,28 @@ export default function MaintenanceDashboard() {
             const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); 
             if (reqErr) throw reqErr;
           }
+          
+          // 🌟 โค้ดส่ง Line แจ้งเตือนตอนอนุมัติ (ของจริง ไม่ใช่คอมเมนต์แล้ววว!) 🌟
+          try {
+            const itemNames = group.items.map((req: any) => {
+              const isConsumable = req.PartID.startsWith('CSM-');
+              const pName = isConsumable 
+                ? (consumables.find(c => c.ItemID === req.PartID)?.ItemName || req.PartID) 
+                : (parts.find(p => p.PartID === req.PartID)?.PartName || req.PartID);
+              return `- ${pName} (${req.Qty} ชิ้น)`;
+            }).join('\n');
+
+            const msg = `✅ แอดมินอนุมัติจ่ายของแล้ว!\nผู้เบิก: ${group.pickerName}\nรายการ:\n${itemNames}`;
+            
+            await fetch('/api/send-line', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: msg }),
+            });
+          } catch (lineError) {
+            console.error("Line Notify Failed:", lineError);
+          }
+
           showToast('อนุมัติจ่ายของและตัดสต๊อกสำเร็จ!', 'success'); fetchAllData(); 
         } catch (error: any) { 
           showToast(`Error: ${error.message}`, 'error'); 
@@ -1308,7 +1431,68 @@ export default function MaintenanceDashboard() {
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500"> 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-6 flex-shrink-0"> 
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-robot"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Machines</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.machines}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-gear-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Active Parts</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.parts}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-exclamation-triangle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Out of Stock</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.outOfStock}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-x-circle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Overdue Jobs</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.overdue}</p></div></div> 
-              </div> 
+              </div>
+              {/* 🌟 AI PREDICTIVE INSIGHTS WIDGET (พับได้) 🌟 */}
+              {mlInsights.length > 0 && (
+                <div className="bg-gradient-to-br from-slate-900 to-[#0f172a] rounded-2xl shadow-xl mb-6 border border-cyan-500/30 flex-shrink-0 relative overflow-hidden transition-all duration-300">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[50px] rounded-full pointer-events-none"></div>
+                  
+                  {/* แถบหัวข้อ (คลิกเพื่อพับ/กาง) */}
+                  <div 
+                    className="flex items-center justify-between p-5 relative z-10 cursor-pointer hover:bg-white/5 transition-colors"
+                    onClick={() => setIsMlExpanded(!isMlExpanded)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-black text-xl text-white flex items-center gap-3">
+                        <i className={`bi bi-cpu-fill text-cyan-400 ${isMlExpanded ? 'animate-pulse' : ''}`}></i> 
+                        ML Predictive Insights
+                      </h3>
+                      {/* แจ้งเตือนเล็กๆ เวลาพับกล่อง แล้วมีอะไหล่สีแดง */}
+                      {!isMlExpanded && mlInsights.some(i => i.trend === 'Degrading') && (
+                        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-2 py-1 rounded-md font-bold border border-rose-500/30 animate-pulse">
+                          ⚠️ พบอะไหล่เสี่ยงสูง
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] font-bold bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30 uppercase tracking-widest hidden sm:block">AI Active</span>
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
+                        <i className={`bi bi-chevron-${isMlExpanded ? 'up' : 'down'} text-slate-400`}></i>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* เนื้อหาการ์ด (จะโชว์ก็ต่อเมื่อ isMlExpanded เป็น true) */}
+                  {isMlExpanded && (
+                    <div className="px-5 pb-5 pt-1 relative z-10">
+                      <div className="flex overflow-x-auto gap-4 pb-2 snap-x" style={{ scrollbarWidth: 'thin' }}>
+                        {mlInsights.map((insight, idx) => (
+                          <div key={idx} className="bg-slate-800/50 backdrop-blur-md border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:border-cyan-400/50 transition-colors min-w-[320px] shrink-0 snap-start">
+                            <div className="w-12 h-12 rounded-lg bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+                              {insight.image ? <img src={insight.image} className="w-full h-full object-contain" /> : <i className="bi bi-gear text-slate-400 text-xl"></i>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-slate-200 text-sm truncate">{insight.partName}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                                <i className="bi bi-geo-alt-fill text-cyan-500/70 mr-1"></i> เครื่อง: {insight.machines}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
+                                <span className="text-slate-400" title="ค่าเฉลี่ยแบบเก่า">MTBF: {insight.mtbf}d</span>
+                                <span className="text-slate-600">|</span>
+                                <span className={`${insight.trend === 'Degrading' ? 'text-rose-400' : 'text-emerald-400'}`} title="AI ทำนายล่วงหน้า">
+                                  <i className={`bi ${insight.trend === 'Degrading' ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow'} mr-1`}></i> 
+                                  Predict: {insight.mlPrediction}d
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0"> 
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center p-6 border-b border-slate-100 bg-white gap-4 flex-shrink-0">
                   <h2 className="font-bold text-slate-800 text-lg tracking-tight">Maintenance Schedule</h2>
