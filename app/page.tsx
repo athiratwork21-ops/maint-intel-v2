@@ -261,7 +261,14 @@ export default function MaintenanceDashboard() {
           }
         });
 
-        setMlInsights(insights);
+        // 🌟 เรียงลำดับ: เอาตัวที่ 'Degrading' (ใกล้พัง) ขึ้นก่อน และเรียงตามวันที่เหลือน้อยสุด
+        const sortedInsights = insights.sort((a, b) => {
+          if (a.trend === 'Degrading' && b.trend !== 'Degrading') return -1;
+          if (a.trend !== 'Degrading' && b.trend === 'Degrading') return 1;
+          return a.mlPrediction - b.mlPrediction;
+        });
+
+        setMlInsights(sortedInsights);
       } catch (error) {
         console.error("ML Training Error:", error);
       }
@@ -1413,9 +1420,9 @@ export default function MaintenanceDashboard() {
                     <span className="text-[10px] font-bold bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30 uppercase tracking-widest">AI Active</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+                  <div className="flex overflow-x-auto gap-4 pb-4 relative z-10 snap-x" style={{ scrollbarWidth: 'thin' }}>
                     {mlInsights.map((insight, idx) => (
-                      <div key={idx} className="bg-slate-800/50 backdrop-blur-md border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:border-cyan-400/50 transition-colors">
+                      <div key={idx} className="bg-slate-800/50 backdrop-blur-md border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:border-cyan-400/50 transition-colors min-w-[320px] shrink-0 snap-start">
                         <div className="w-12 h-12 rounded-lg bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
                           {insight.image ? <img src={insight.image} className="w-full h-full object-contain" /> : <i className="bi bi-gear text-slate-400 text-xl"></i>}
                         </div>
