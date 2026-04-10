@@ -731,6 +731,14 @@ export default function MaintenanceDashboard() {
             const { error: reqErr } = await supabase.from('PartRequests').update({ Status: 'Approved' }).eq('RequestID', reqIdText); 
             if (reqErr) throw reqErr;
           }
+          
+          // 🌟 โค้ดสะกิด API ส่ง Line แจ้งเตือนตอนอนุมัติ 🌟
+          try {
+             // ... (โค้ดดึงชื่ออะไหล่และเรียก fetch api/send-line) ...
+          } catch (lineError) {
+             console.error("Line Notify Failed:", lineError);
+          }
+
           showToast('อนุมัติจ่ายของและตัดสต๊อกสำเร็จ!', 'success'); fetchAllData(); 
         } catch (error: any) { 
           showToast(`Error: ${error.message}`, 'error'); 
