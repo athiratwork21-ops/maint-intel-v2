@@ -47,6 +47,8 @@ export async function POST(request: Request) {
         if (cleanMessage.includes('ขอไอดีกลุ่ม')) {
           const groupId = event.source?.groupId || event.source?.roomId || 'ไม่พบไอดีกลุ่ม (คุณอาจจะทักแชทส่วนตัวอยู่)';
           
+          console.log("🚨🚨🚨 เจอแล้วเว้ย! รหัสกลุ่มคือ:", groupId, "🚨🚨🚨");
+          
           await fetch('https://api.line.me/v2/bot/message/reply', {
             method: 'POST',
             headers: {
