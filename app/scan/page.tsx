@@ -214,7 +214,6 @@ export default function RequestPartShoppingPage() {
     const processCheckout = async () => {
       setIsSubmitting(true);
       try {
-        // 🌟 1. ดึง Location มาด้วย (เพิ่ม , Location ในคำสั่ง select)
         const { data: freshReqs } = await supabase.from('PartRequests').select('PartID, Qty').eq('Status', 'Pending').eq('DepartmentID', activeDept);
         const { data: freshStocks } = await supabase.from('Stock').select('PartID, Balance, Location').eq('DepartmentID', activeDept);
         const { data: freshCons } = await supabase.from('Consumable').select('ItemID, Balance, Location').eq('DepartmentID', activeDept);
@@ -251,28 +250,26 @@ export default function RequestPartShoppingPage() {
         const { error } = await supabase.from('PartRequests').insert(insertData);
         if (error) throw error;
 
-        // 🌟 2. อัปเกรดท่อส่งไลน์ (แนบชื่อแผนก + ดึงโลเคชั่นตู้ออกมา) 🌟
         try {
           const itemNames: string[] = [];
-          const locations = new Set<string>(); // ใช้ Set เพื่อตัดโลเคชั่นที่ซ้ำกันทิ้ง
+          const locations = new Set<string>();
 
           Object.keys(cart).forEach(itemId => {
             if(cart[itemId].type === 'part') {
-                itemNames.push(parts.find(p => p.PartID === itemId)?.PartName);
+                itemNames.push(parts.find(p => p.PartID === itemId)?.PartName || itemId);
                 const loc = freshStocks?.find(s => s.PartID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else if(cart[itemId].type === 'consumable') {
-                itemNames.push(consumables.find(c => c.ItemID === itemId)?.ItemName);
+                itemNames.push(consumables.find(c => c.ItemID === itemId)?.ItemName || itemId);
                 const loc = freshCons?.find(c => c.ItemID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else {
-                itemNames.push(fixtures.find(f => f.FixtureNo === itemId)?.ModelName);
+                itemNames.push(fixtures.find(f => f.FixtureNo === itemId)?.ModelName || itemId);
             }
           });
 
-          // รวมพิกัดตู้ทั้งหมดเป็นข้อความเดียว (เช่น "A-01, B-02")
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
           const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames.join(', ')}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
@@ -281,8 +278,8 @@ export default function RequestPartShoppingPage() {
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ 
                 message: lineMsg,
-                department: activeDept, // 👉 ส่งแผนกไปสับราง
-                location: locationText  // 👉 ส่งพิกัดไปให้ระบบเช็กเวลา
+                department: activeDept,
+                location: locationText
             }) 
           });
         } catch (err) { console.error('Line Notify Error:', err); }
@@ -295,6 +292,16 @@ export default function RequestPartShoppingPage() {
       }
     };
 
+    if (hasReservationWarning) {
+      setConfirmDialog({
+        isOpen: true, title: 'ยืนยันการเบิกอะไหล่ติดจอง', isDanger: true,
+        message: warningMessage + 'คุณแน่ใจหรือไม่ที่จะยืนยันเบิกอะไหล่เหล่านี้?\n(อาจเป็นการดึงอะไหล่ตัดหน้าคิวอื่น)',
+        onConfirm: () => { setConfirmDialog(null); processCheckout(); }
+      });
+    } else {
+      processCheckout();
+    }
+  };
   const handleToggleGroupSelect = (group: any) => {
     setBatchReturnState(prev => {
       const isSelected = !prev[group.baseId]?.selected;
