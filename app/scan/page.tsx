@@ -271,7 +271,7 @@ export default function RequestPartShoppingPage() {
           });
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
-          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames.join(', ')}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
+          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการ: ${itemNames.join(', ')}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
 // 🚨 เปลี่ยนมารับค่าใส่ตัวแปร lineRes 🚨
           const lineRes = await fetch('/api/send-line', { 
@@ -444,7 +444,7 @@ export default function RequestPartShoppingPage() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">2. ชื่อช่างผู้เบิก (Your Name)</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">2. ชื่อผู้เบิก (Your Name)</label>
               <div className="relative">
                 <i className="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
                 <input type="text" value={pickerName} onChange={e => setPickerName(e.target.value)} required placeholder="เช่น ช่างสมชาย" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm" />
@@ -624,7 +624,7 @@ export default function RequestPartShoppingPage() {
                   <p className={`text-[10px] font-medium text-slate-500 mb-2 truncate ${isOutOfStock && 'opacity-60'}`}>{part.PartModel || '-'}</p>
                   <div className="mt-auto pt-2 border-t border-slate-50 flex flex-col gap-1">
                     <span className={`text-[10px] font-bold ${isOutOfStock ? 'text-red-400' : isEatingReserved ? 'text-amber-500' : 'text-emerald-600'}`}>เหลือ {realPhysicalQty} ชิ้น {isEatingReserved && '(มียอดจอง)'}</span>
-                    {otherPendingQty > 0 && <span className="text-[9px] font-bold text-amber-500 leading-tight">(มีช่างรอเบิก {otherPendingQty} ชิ้น)</span>}
+                    {otherPendingQty > 0 && <span className="text-[9px] font-bold text-amber-500 leading-tight">(มีผู้รอเบิก {otherPendingQty} ชิ้น)</span>}
                   </div>
                 </div>
                 <div className="mt-3">
