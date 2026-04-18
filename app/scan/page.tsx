@@ -214,9 +214,10 @@ export default function RequestPartShoppingPage() {
     const processCheckout = async () => {
       setIsSubmitting(true);
       try {
+        // 🌟 1. ดึง Location มาด้วย (เพิ่ม , Location ในคำสั่ง select)
         const { data: freshReqs } = await supabase.from('PartRequests').select('PartID, Qty').eq('Status', 'Pending').eq('DepartmentID', activeDept);
-        const { data: freshStocks } = await supabase.from('Stock').select('PartID, Balance').eq('DepartmentID', activeDept);
-        const { data: freshCons } = await supabase.from('Consumable').select('ItemID, Balance').eq('DepartmentID', activeDept);
+        const { data: freshStocks } = await supabase.from('Stock').select('PartID, Balance, Location').eq('DepartmentID', activeDept);
+        const { data: freshCons } = await supabase.from('Consumable').select('ItemID, Balance, Location').eq('DepartmentID', activeDept);
         const { data: freshFixs } = await supabase.from('Fixtures').select('*').eq('DepartmentID', activeDept);
 
         for (const itemId of Object.keys(cart)) {
@@ -224,15 +225,15 @@ export default function RequestPartShoppingPage() {
           const pendingQty = freshReqs?.filter(r => r.PartID === itemId).reduce((sum, r) => sum + (r.Qty || 0), 0) || 0;
           let available = 0; let name = '';
           if (item.type === 'part') {
-             available = (freshStocks?.filter(s => s.PartID === itemId).reduce((sum, s) => sum + (s.Balance || 0), 0) || 0) - pendingQty;
-             name = parts.find(p=>p.PartID === itemId)?.PartName || itemId;
+              available = (freshStocks?.filter(s => s.PartID === itemId).reduce((sum, s) => sum + (s.Balance || 0), 0) || 0) - pendingQty;
+              name = parts.find(p=>p.PartID === itemId)?.PartName || itemId;
           } else if (item.type === 'consumable') {
-             available = (freshCons?.find(c => c.ItemID === itemId)?.Balance || 0) - pendingQty;
-             name = consumables.find(c=>c.ItemID === itemId)?.ItemName || itemId;
+              available = (freshCons?.find(c => c.ItemID === itemId)?.Balance || 0) - pendingQty;
+              name = consumables.find(c=>c.ItemID === itemId)?.ItemName || itemId;
           } else {
-             const fix = freshFixs?.find(f => f.FixtureNo === itemId);
-             available = (fix?.TotalQty || 0) - (fix?.BrokenQty || 0) - (fix?.BorrowedQty || 0) - pendingQty;
-             name = fix?.ModelName || itemId;
+              const fix = freshFixs?.find(f => f.FixtureNo === itemId);
+              available = (fix?.TotalQty || 0) - (fix?.BrokenQty || 0) - (fix?.BorrowedQty || 0) - pendingQty;
+              name = fix?.ModelName || itemId;
           }
           if (available < item.qty) throw new Error(`ของไม่พอ! มีคนเบิก/ยืม "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
         }
@@ -250,31 +251,49 @@ export default function RequestPartShoppingPage() {
         const { error } = await supabase.from('PartRequests').insert(insertData);
         if (error) throw error;
 
+        // 🌟 2. อัปเกรดท่อส่งไลน์ (แนบชื่อแผนก + ดึงโลเคชั่นตู้ออกมา) 🌟
         try {
-          const itemNames = Object.keys(cart).map(itemId => {
-            if(cart[itemId].type === 'part') return parts.find(p => p.PartID === itemId)?.PartName;
-            if(cart[itemId].type === 'consumable') return consumables.find(c => c.ItemID === itemId)?.ItemName;
-            return fixtures.find(f => f.FixtureNo === itemId)?.ModelName;
-          }).join(', ');
-          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
-          await fetch('/api/send-line', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: lineMsg }) });
+          const itemNames: string[] = [];
+          const locations = new Set<string>(); // ใช้ Set เพื่อตัดโลเคชั่นที่ซ้ำกันทิ้ง
+
+          Object.keys(cart).forEach(itemId => {
+            if(cart[itemId].type === 'part') {
+                itemNames.push(parts.find(p => p.PartID === itemId)?.PartName);
+                const loc = freshStocks?.find(s => s.PartID === itemId)?.Location;
+                if (loc && loc !== '-') locations.add(loc);
+            }
+            else if(cart[itemId].type === 'consumable') {
+                itemNames.push(consumables.find(c => c.ItemID === itemId)?.ItemName);
+                const loc = freshCons?.find(c => c.ItemID === itemId)?.Location;
+                if (loc && loc !== '-') locations.add(loc);
+            }
+            else {
+                itemNames.push(fixtures.find(f => f.FixtureNo === itemId)?.ModelName);
+            }
+          });
+
+          // รวมพิกัดตู้ทั้งหมดเป็นข้อความเดียว (เช่น "A-01, B-02")
+          const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
+          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames.join(', ')}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
+          
+          await fetch('/api/send-line', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+                message: lineMsg,
+                department: activeDept, // 👉 ส่งแผนกไปสับราง
+                location: locationText  // 👉 ส่งพิกัดไปให้ระบบเช็กเวลา
+            }) 
+          });
         } catch (err) { console.error('Line Notify Error:', err); }
 
         showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success'); setCart({}); setIsCheckoutOpen(false); setSelectedLine(''); setSelectedMachine(''); fetchInitialData(activeDept); 
-      } catch (error: any) { showToast(error.message, 'error'); fetchInitialData(activeDept); 
-      } finally { setIsSubmitting(false); }
+      } catch (error: any) { 
+        showToast(error.message, 'error'); fetchInitialData(activeDept); 
+      } finally { 
+        setIsSubmitting(false); 
+      }
     };
-
-    if (hasReservationWarning) {
-      setConfirmDialog({
-        isOpen: true, title: 'ยืนยันการเบิกอะไหล่ติดจอง', isDanger: true,
-        message: warningMessage + 'คุณแน่ใจหรือไม่ที่จะยืนยันเบิกอะไหล่เหล่านี้?\n(อาจเป็นการดึงอะไหล่ตัดหน้าคิวอื่น)',
-        onConfirm: () => { setConfirmDialog(null); processCheckout(); }
-      });
-    } else {
-      processCheckout();
-    }
-  };
 
   const handleToggleGroupSelect = (group: any) => {
     setBatchReturnState(prev => {
