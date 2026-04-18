@@ -732,7 +732,7 @@ export default function MaintenanceDashboard() {
             if (reqErr) throw reqErr;
           }
           
-          // 🌟 โค้ดส่ง Line แจ้งเตือนตอนอนุมัติ (ของจริง ไม่ใช่คอมเมนต์แล้ววว!) 🌟
+          // 🌟 โค้ดส่ง Line แจ้งเตือนตอนอนุมัติ 🌟
           try {
             const itemNames = group.items.map((req: any) => {
               const isConsumable = req.PartID.startsWith('CSM-');
@@ -742,13 +742,23 @@ export default function MaintenanceDashboard() {
               return `- ${pName} (${req.Qty} ชิ้น)`;
             }).join('\n');
 
-            const msg = `✅ อนุมัติจ่ายของแล้ว!\nผู้เบิก: ${group.pickerName}\nรายการ:\n${itemNames}`;
+            const msg = `✅ แอดมินอนุมัติจ่ายของแล้ว!\nผู้เบิก: ${group.pickerName}\nรายการ:\n${itemNames}`;
             
-            await fetch('/api/send-line', {
+            const lineRes = await fetch('/api/send-line', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ message: msg, department: activeDept }),
             });
+            
+            const lineData = await lineRes.json();
+            
+            // 🚨 หูตาสว่าง: ถ้า API ด่ากลับมา ให้โชว์ Error สีแดง และหยุดการทำงาน! 🚨
+            if (!lineRes.ok) {
+              showToast(lineData.error || "เกิดข้อผิดพลาดในการส่ง LINE", 'error');
+              setIsProcessing(false);
+              return; // หยุดเลย ไม่ไปบรรทัด showToast สีเขียวข้างล่าง!
+            }
+
           } catch (lineError) {
             console.error("Line Notify Failed:", lineError);
           }
