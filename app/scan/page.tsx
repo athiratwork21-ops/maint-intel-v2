@@ -273,7 +273,8 @@ export default function RequestPartShoppingPage() {
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
           const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการ: ${itemNames.join(', ')}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
-          await fetch('/api/send-line', { 
+// 🚨 เปลี่ยนมารับค่าใส่ตัวแปร lineRes 🚨
+          const lineRes = await fetch('/api/send-line', { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ 
@@ -282,8 +283,20 @@ export default function RequestPartShoppingPage() {
                 location: locationText
             }) 
           });
-        } catch (err) { console.error('Line Notify Error:', err); }
 
+          // 🚨 อุดรอยรั่ว 1: เช็กว่า API ด่ากลับมาไหม ถ้าด่าให้โยน Error! 🚨
+          const lineData = await lineRes.json();
+          if (!lineRes.ok) {
+             throw new Error(lineData.error || "เกิดข้อผิดพลาดในการส่ง LINE");
+          }
+
+        } catch (err: any) { 
+          console.error('Line Notify Error:', err); 
+          // 🚨 อุดรอยรั่ว 2: โยน Error ออกไปเตะตัดขา ไม่ให้มันไหลไปรันกล่องสีเขียว 🚨
+          throw new Error(err.message || "ส่งไลน์ไม่สำเร็จ!"); 
+        }
+
+        // ถ้ารอดจากด่านส่งไลน์มาได้ ค่อยขึ้นสีเขียว!
         showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success'); setCart({}); setIsCheckoutOpen(false); setSelectedLine(''); setSelectedMachine(''); fetchInitialData(activeDept); 
       } catch (error: any) { 
         showToast(error.message, 'error'); fetchInitialData(activeDept); 
