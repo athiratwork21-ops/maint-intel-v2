@@ -11,10 +11,10 @@ export async function POST(request: Request) {
 
     const cleanDeptName = department.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
 
-    // 🚨 ทางแก้จุดตาย Next.js: ต้องระบุชื่อตัวแปรตรงๆ ห้ามใช้การประกอบร่างคำ 🚨
     let specificToken = '';
     let specificTargetId = '';
 
+    // เช็คกุญแจทีละแผนกแบบ Hardcode (แก้ปัญหา Next.js มองไม่เห็นตัวแปร)
     if (cleanDeptName === 'ECBUPD18326') {
       specificToken = process.env.LINE_TOKEN_ECBUPD18326 || '';
       specificTargetId = process.env.LINE_TARGET_ECBUPD18326 || '';
@@ -24,20 +24,18 @@ export async function POST(request: Request) {
       specificTargetId = process.env.LINE_TARGET_ECBUME18326 || '';
     } 
     else {
-      // แผนก Default หรืออื่นๆ
       specificToken = process.env.LINE_ACCESS_TOKEN || '';
       specificTargetId = process.env.LINE_TARGET_ID || '';
     }
 
-    // เช็กความปลอดภัยรอบสุดท้าย
     if (!specificToken || !specificTargetId) {
       return NextResponse.json({ 
         success: false, 
-        error: `[X-RAY Debug]\nได้ชื่อแผนก: "${cleanDeptName}"\nแต่ Next.js ดึงกุญแจไม่ได้!` 
+        error: `[X-RAY] ได้ชื่อแผนก: "${cleanDeptName}" แต่ Next.js ดึงกุญแจไม่ได้!` 
       }, { status: 400 });
     }
 
-    // --- 🕒 ส่วนเช็คเวลาสำหรับแจ้งพิกัดตู้ ---
+    // --- ส่วนเช็คเวลาส่งพิกัดตู้ ---
     const now = new Date();
     const formatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: 'numeric', minute: 'numeric', hour12: false });
     const [hour, minute] = formatter.format(now).split(':').map(Number);
@@ -45,11 +43,11 @@ export async function POST(request: Request) {
 
     let finalMessage = message;
     if (isAfterHours && location && location !== '-') {
-      finalMessage += `\n📍 พิกัดตู้: ${location}\n(ช่วง Admin เลิกงาน ช่างสามารถไปหยิบเองได้เลยครับ)`;
+      finalMessage += `\n📍 พิกัดตู้: ${location}\n(Admin เลิกงานแล้ว ช่างหยิบเองได้เลยครับ)`;
     }
 
-    // 🌟 ยิงข้อความเข้า LINE
-    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+    // 🌟 1. ยิงไปหา LINE
+    const lineResponse = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -61,10 +59,23 @@ export async function POST(request: Request) {
       })
     });
 
-    const data = await response.json();
-    return NextResponse.json({ success: true, data });
+    const lineData = await lineResponse.json();
+
+    // 🚨 2. ตรวจสอบว่า LINE ยอมรับข้อความไหม? 🚨
+    if (!lineResponse.ok) {
+      // ถ้า LINE ด่ากลับมา (เช่น 401 Unauthorized หรือ 400 Bad Request)
+      // ให้ API ของเราพ่น Error นั้นกลับไปหาหน้าเว็บด้วยสถานะเดียวกัน!
+      return NextResponse.json({ 
+        success: false, 
+        error: `[LINE API Error] ${lineData.message || 'ส่งไม่สำเร็จ'} (Code: ${lineResponse.status})` 
+      }, { status: lineResponse.status });
+    }
+
+    // ถ้าผ่านฉลุย ค่อยส่ง 200 กลับไป
+    return NextResponse.json({ success: true, data: lineData });
+
   } catch (error) {
     console.error("Send Line Error:", error);
-    return NextResponse.json({ success: false, error: 'Failed to send message' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
   }
 }
