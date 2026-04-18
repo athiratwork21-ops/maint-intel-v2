@@ -5,29 +5,33 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { message, department } = body; 
 
-    // 🌟 1. ตั้งค่า Default (ใช้ของเดิมเป็นหลักไว้ก่อน กันเหนียว)
+    // 🌟 1. ตั้งค่า Default
     let lineToken = process.env.LINE_ACCESS_TOKEN;
     let lineTargetId = process.env.LINE_TARGET_ID;
 
-    // 🌟 2. ถ้าระบบส่งชื่อแผนกมาด้วย ให้ลองไปหาห้องเฉพาะของแผนกนั้น
+    // 🌟 2. ถ้าระบบส่งชื่อแผนกมาด้วย
     if (department) {
-      // แปลงชื่อแผนกให้เป็นชื่อตัวแปร (เช่น QC-DEPT -> QC_DEPT)
+      // แปลงชื่อแผนกให้เป็นชื่อตัวแปร
       const cleanDeptName = department.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
 
       // ประกอบร่างชื่อตัวแปรที่จะไปหาใน Vercel
       const specificToken = process.env[`LINE_TOKEN_${cleanDeptName}`];
       const specificTargetId = process.env[`LINE_TARGET_${cleanDeptName}`];
 
-      // ถ้าใน Vercel มีการสร้างตัวแปรของแผนกนี้ไว้ ให้เอามาทับของเดิม!
+      // ถ้าเจอครบ เอามาทับของเดิม
       if (specificToken && specificTargetId) {
         lineToken = specificToken;
         lineTargetId = specificTargetId;
       } else {
-        console.warn(`[LINE Warning] ไม่พบ Token/Target ของแผนก ${department} -> ระบบจะส่งเข้าห้อง Default แทน`);
+        // 🚨 สับสวิตช์ X-RAY: บังคับให้มันแจ้ง Error ออกหน้าเว็บเลย ห้ามแอบใช้ของ Default! 🚨
+        return NextResponse.json({ 
+          success: false, 
+          error: `[X-RAY Debug]\nระบบพยายามหาตัวแปรชื่อ:\n1. LINE_TOKEN_${cleanDeptName}\n2. LINE_TARGET_${cleanDeptName}\n\nสรุปผล: Token=${specificToken ? '✅เจอ' : '❌ไม่เจอ'} | Target=${specificTargetId ? '✅เจอ' : '❌ไม่เจอ'}` 
+        }, { status: 400 });
       }
     }
 
-    // เช็คความปลอดภัยรอบสุดท้าย ถ้าไม่มีกุญแจเลยให้หยุดการทำงาน
+    // เช็คความปลอดภัยรอบสุดท้าย
     if (!lineToken || !lineTargetId) {
       return NextResponse.json({ success: false, error: 'Missing LINE Credentials' }, { status: 500 });
     }
