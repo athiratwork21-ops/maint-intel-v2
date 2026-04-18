@@ -747,7 +747,7 @@ export default function MaintenanceDashboard() {
             await fetch('/api/send-line', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: msg }),
+              body: JSON.stringify({ message: msg, department: activeDept }),
             });
           } catch (lineError) {
             console.error("Line Notify Failed:", lineError);
