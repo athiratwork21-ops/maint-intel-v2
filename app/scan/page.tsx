@@ -280,7 +280,7 @@ export default function RequestPartShoppingPage() {
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
           
           // 🚨 เปลี่ยน .join(', ') เป็น .join('\n') เพื่อให้มันขึ้นบรรทัดใหม่
-          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
+          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
           const lineRes = await fetch('/api/send-line', { 
             method: 'POST', 
@@ -429,7 +429,7 @@ export default function RequestPartShoppingPage() {
       // =================================================================
       try {
         const fixtureName = fix.ModelName || fix.FixtureName || selectedReturnReq.PartID;
-        const pickerName = selectedReturnReq.PickerName || 'ช่าง (ไม่ระบุชื่อ)';
+        const pickerName = selectedReturnReq.PickerName || 'ผู้เบิก (ไม่ระบุชื่อ)';
         
         // จัดฟอร์แมตข้อความ
         let lineMsg = `🔄 มีการคืนอุปกรณ์ Fixture!\n👨‍🔧 ผู้คืน: ${pickerName}\n📦 รายการ: ${fixtureName} (${returnQty} ชิ้น)\n✅ อัปเดตยอดเข้าสต๊อกเรียบร้อย`;
@@ -483,7 +483,7 @@ export default function RequestPartShoppingPage() {
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">2. ชื่อผู้เบิก (Your Name)</label>
               <div className="relative">
                 <i className="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                <input type="text" value={pickerName} onChange={e => setPickerName(e.target.value)} required placeholder="เช่น ช่างสมชาย" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm" />
+                <input type="text" value={pickerName} onChange={e => setPickerName(e.target.value)} required placeholder="เช่น ผู้เบิกสมชาย" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm" />
               </div>
             </div>
             <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px] mt-4">เข้าสู่ระบบเบิกของ <i className="bi bi-arrow-right ml-1"></i></button>
