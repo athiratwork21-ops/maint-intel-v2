@@ -424,11 +424,41 @@ export default function RequestPartShoppingPage() {
       if (returnQty >= selectedReturnReq.Qty) { await supabase.from('PartRequests').update({ Status: 'Returned' }).eq('RequestID', selectedReturnReq.RequestID); } 
       else { await supabase.from('PartRequests').update({ Qty: selectedReturnReq.Qty - returnQty }).eq('RequestID', selectedReturnReq.RequestID); }
 
+      // =================================================================
+      // 🌟 เพิ่มโค้ดแจ้งเตือน LINE คืน Fixture ตรงนี้ 🌟
+      // =================================================================
+      try {
+        const fixtureName = fix.ModelName || fix.FixtureName || selectedReturnReq.PartID;
+        const pickerName = selectedReturnReq.PickerName || 'ช่าง (ไม่ระบุชื่อ)';
+        
+        // จัดฟอร์แมตข้อความ
+        let lineMsg = `🔄 มีการคืนอุปกรณ์ Fixture!\n👨‍🔧 ผู้คืน: ${pickerName}\n📦 รายการ: ${fixtureName} (${returnQty} ชิ้น)\n✅ อัปเดตยอดเข้าสต๊อกเรียบร้อย`;
+        
+        // ถ้ามีของพัง ให้เติมข้อความแจ้งเตือนต่อท้าย
+        if (brokenQty > 0) {
+            lineMsg += `\n⚠️ ระบุว่าชำรุด/เสีย: ${brokenQty} ชิ้น!`;
+        }
+
+        // ยิงเข้า API ส่งไลน์
+        await fetch('/api/send-line', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              message: lineMsg,
+              department: activeDept // ส่งแผนกไป เพื่อให้ส่งถูกกลุ่ม
+          })
+        });
+      } catch (lineErr) {
+        console.error("Line Notify Return Failed:", lineErr);
+        // กรณีไลน์พังตอนคืนของ เราจะไม่ throw error เพราะถือว่าคืนในฐานข้อมูลสำเร็จแล้ว
+      }
+      // =================================================================
+
       showToast('ทำรายการคืน Fixture สำเร็จ!', 'success'); setReturnModalOpen(false); fetchInitialData(activeDept);
     } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } 
     finally { setIsSubmitting(false); }
   };
-
+  
   const filteredMachines = machines.filter(m => m.LineName === selectedLine);
 
   if (!isSetupComplete && !isLoading) {
