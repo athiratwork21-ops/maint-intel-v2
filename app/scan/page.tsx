@@ -250,30 +250,38 @@ export default function RequestPartShoppingPage() {
         const { error } = await supabase.from('PartRequests').insert(insertData);
         if (error) throw error;
 
+        // 🌟 อัปเกรดข้อความแจ้งเตือนเบิกของ ให้อ่านง่ายเป็นข้อๆ 🌟
         try {
           const itemNames: string[] = [];
           const locations = new Set<string>();
 
           Object.keys(cart).forEach(itemId => {
+            // ดึงจำนวนของแต่ละชิ้นในตะกร้าออกมา
+            const itemQty = cart[itemId].qty; 
+
             if(cart[itemId].type === 'part') {
-                itemNames.push(parts.find(p => p.PartID === itemId)?.PartName || itemId);
+                const name = parts.find(p => p.PartID === itemId)?.PartName || itemId;
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
                 const loc = freshStocks?.find(s => s.PartID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else if(cart[itemId].type === 'consumable') {
-                itemNames.push(consumables.find(c => c.ItemID === itemId)?.ItemName || itemId);
+                const name = consumables.find(c => c.ItemID === itemId)?.ItemName || itemId;
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
                 const loc = freshCons?.find(c => c.ItemID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else {
-                itemNames.push(fixtures.find(f => f.FixtureNo === itemId)?.ModelName || itemId);
+                const name = fixtures.find(f => f.FixtureNo === itemId)?.ModelName || itemId;
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
             }
           });
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
-          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการ: ${itemNames.join(', ')}\n🔢 จำนวนรวม: ${Object.keys(cart).length} รายการ\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
-// 🚨 เปลี่ยนมารับค่าใส่ตัวแปร lineRes 🚨
+          // 🚨 เปลี่ยน .join(', ') เป็น .join('\n') เพื่อให้มันขึ้นบรรทัดใหม่
+          const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ช่าง: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
+          
           const lineRes = await fetch('/api/send-line', { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
@@ -284,7 +292,6 @@ export default function RequestPartShoppingPage() {
             }) 
           });
 
-          // 🚨 อุดรอยรั่ว 1: เช็กว่า API ด่ากลับมาไหม ถ้าด่าให้โยน Error! 🚨
           const lineData = await lineRes.json();
           if (!lineRes.ok) {
              throw new Error(lineData.error || "เกิดข้อผิดพลาดในการส่ง LINE");
@@ -292,7 +299,6 @@ export default function RequestPartShoppingPage() {
 
         } catch (err: any) { 
           console.error('Line Notify Error:', err); 
-          // 🚨 อุดรอยรั่ว 2: โยน Error ออกไปเตะตัดขา ไม่ให้มันไหลไปรันกล่องสีเขียว 🚨
           throw new Error(err.message || "ส่งไลน์ไม่สำเร็จ!"); 
         }
 
