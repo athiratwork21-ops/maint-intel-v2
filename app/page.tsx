@@ -619,7 +619,7 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const { error } = await supabase.from('Fixtures').insert({ FixtureNo: fNo, ModelName: formData.get('modelName'), ImageURL: finalImageUrl, TotalQty: parseInt(formData.get('totalQty') as string) || 0, BrokenQty: 0, BorrowedQty: 0, DepartmentID: activeDept });
+    const { error } = await supabase.from('Fixtures').insert({ FixtureNo: fNo, ModelName: formData.get('modelName'), ImageURL: finalImageUrl, TotalQty: parseInt(formData.get('totalQty') as string) || 0, BrokenQty: 0, BorrowedQty: 0, DepartmentID: activeDept, Location: formData.get('location') || '-' });
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Added new fixture successfully!', 'success'); setNewFixtureModalOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
@@ -633,7 +633,7 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const { error } = await supabase.from('Fixtures').update({ ModelName: formData.get('modelName'), ImageURL: finalImageUrl }).eq('FixtureNo', selectedFixture.FixtureNo);
+    const { error } = await supabase.from('Fixtures').update({ ModelName: formData.get('modelName'), ImageURL: finalImageUrl, Location: formData.get('location') || '-' }).eq('FixtureNo', selectedFixture.FixtureNo);
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Fixture info updated!', 'success'); setEditFixtureInfoOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
@@ -1224,6 +1224,16 @@ export default function MaintenanceDashboard() {
               <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required placeholder="e.g. FIX-001" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required placeholder="Model name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
+                <div>
+  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label>
+  <div className="relative">
+    <select name="location" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white appearance-none uppercase">
+      <option value="">-- Not specified --</option>
+      {locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}
+    </select>
+    <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+  </div>
+</div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
                 <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-check-lg mr-2"></i>Create Fixture</button>
               </div>
@@ -1255,6 +1265,16 @@ export default function MaintenanceDashboard() {
                   <p className="text-[10px] text-slate-400 mt-1">Fixture ID cannot be changed.</p>
                 </div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required defaultValue={selectedFixture.ModelName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
+                <div>
+  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label>
+  <div className="relative">
+    <select name="location" defaultValue={selectedFixture.Location} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white appearance-none uppercase">
+      <option value="">-- Not specified --</option>
+      {locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}
+    </select>
+    <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+  </div>
+</div>
                 <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-save mr-2"></i>Save Changes</button>
               </div>
             </form>
