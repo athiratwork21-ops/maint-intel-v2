@@ -1829,16 +1829,16 @@ export default function MaintenanceDashboard() {
                 <div className="overflow-auto flex-1 relative pb-12 rounded-b-2xl"> 
                   <table className="w-full text-left border-collapse whitespace-nowrap"> 
                     <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-                        <th className="py-4 px-4 text-center w-16">Action</th>
-                        <th className="py-4 px-6 text-center w-20">Image</th>
-                        <th className="py-4 px-6 text-purple-600 w-48">Fixture No.</th>
-                        <th className="py-4 px-6 w-[40%]">Model Name & Location</th>
-                        <th className="py-4 px-4 text-center border-l border-slate-200 bg-slate-100/50">Total</th>
-                        <th className="py-4 px-4 text-center bg-red-50/30 text-red-700">Broken</th>
-                        <th className="py-4 px-4 text-center bg-blue-50/30 text-blue-700">Borrowed</th>
-                        <th className="py-4 px-4 text-center bg-emerald-50/30 text-emerald-700">Available</th>
-                        <th className="py-4 px-6 text-center w-32">Status</th>
+                      <tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider">
+                        <th className="py-5 px-4 text-center w-16">Action</th>
+                        <th className="py-5 px-6">Location</th>
+                        <th className="py-5 px-6 text-center w-24">Image</th>
+                        <th className="py-5 px-6 w-[30%]">Fixture Details</th>
+                        <th className="py-5 px-6 border-l border-slate-200/50 bg-slate-100/50 text-center">Total</th>
+                        <th className="py-5 px-6 bg-red-50/30 text-red-700 text-center">Broken</th>
+                        <th className="py-5 px-6 bg-blue-50/30 text-blue-700 text-center">Borrowed</th>
+                        <th className="py-5 px-6 bg-emerald-50/30 text-emerald-700 text-center">Available</th>
+                        <th className="py-5 px-6 text-center w-32">Status</th>
                       </tr>
                     </thead> 
                     <tbody className="text-sm"> 
@@ -1851,12 +1851,11 @@ export default function MaintenanceDashboard() {
                         else if (availableQty <= 0 && (item.BrokenQty || 0) > 0) fixStatus = 'Needs Repair';
                         else if (borrowedQty > 0) fixStatus = 'In Use';
 
-                        // ดึงข้อมูล Location มาแสดง (ถ้าไม่มีให้ขึ้น N/A)
-                        const itemLocation = item.Location || 'N/A';
+                        const itemLocation = item.Location || '-';
 
                         return ( 
                           <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
-                            <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
+                            <td className="py-4 px-4 text-center align-middle relative border-r border-slate-50">
                               <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.FixtureNo ? null : item.FixtureNo); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-purple-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
                               {openDropdownId === item.FixtureNo && (
                                 <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
@@ -1868,29 +1867,35 @@ export default function MaintenanceDashboard() {
                                 </div>
                               )}
                             </td>
-                            <td className="py-3 px-6 text-center align-middle">
+                            
+                            {/* 🌟 ย้าย Location มาไว้คอลัมน์ที่ 2 🌟 */}
+                            <td className="py-4 px-6 font-bold text-slate-800 align-middle">
+                              <i className="bi bi-geo-alt-fill text-purple-500 mr-2 opacity-80"></i>{itemLocation}
+                            </td> 
+
+                            {/* 🌟 ปรับขนาด Image ให้เท่ากับหน้าอะไหล่ 🌟 */}
+                            <td className="py-4 px-6 text-center align-middle">
                               {item.ImageURL ? ( 
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
+                                <div className="w-16 h-12 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
                                   <img src={item.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> 
                                 </div>
                               ) : ( 
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
+                                <div className="w-16 h-12 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
                               )}
                             </td>
-                            <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
                             
-                            {/* ปรับส่วนนี้ให้แสดง Model Name คู่กับ Location */}
-                            <td className="py-3 px-6 align-middle">
+                            {/* 🌟 รวบชื่อ Model Name กับ รหัส FIX NO ไว้ด้วยกัน 🌟 */}
+                            <td className="py-4 px-6 align-middle">
                               <div className="font-bold text-slate-800 text-[14px] truncate">{item.ModelName || '-'}</div>
-                              <div className="text-[11px] font-bold text-slate-500 mt-0.5"><i className="bi bi-geo-alt-fill text-purple-400 mr-1"></i>Loc: <span className="text-purple-600">{itemLocation}</span></div>
+                              <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">FIX NO:</span> <span className="text-purple-600 font-bold">{item.FixtureNo}</span></div>
                             </td> 
                             
-                            <td className="py-3 px-4 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-base align-middle text-center">{item.TotalQty}</td> 
-                            <td className="py-3 px-4 bg-red-50/10 font-bold text-red-600 text-base align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
-                            <td className="py-3 px-4 bg-blue-50/10 font-bold text-blue-600 text-base align-middle text-center">{borrowedQty > 0 ? borrowedQty : '-'}</td> 
-                            <td className="py-3 px-4 bg-emerald-50/10 font-black text-emerald-600 text-lg align-middle text-center">{availableQty}</td> 
+                            <td className="py-4 px-6 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-[15px] align-middle text-center">{item.TotalQty}</td> 
+                            <td className="py-4 px-6 bg-red-50/10 font-bold text-red-600 text-[15px] align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
+                            <td className="py-4 px-6 bg-blue-50/10 font-bold text-blue-600 text-[15px] align-middle text-center">{borrowedQty > 0 ? borrowedQty : '-'}</td> 
+                            <td className="py-4 px-6 bg-emerald-50/10 font-black text-emerald-600 text-[15px] align-middle text-center">{availableQty}</td> 
                             
-                            <td className="py-3 px-6 align-middle text-center">
+                            <td className="py-4 px-6 align-middle text-center">
                               {fixStatus === 'Fully Borrowed' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-person-fill-check"></i> FULLY BORROWED</span> :
                                fixStatus === 'Needs Repair' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> NEEDS REPAIR</span> :
                                fixStatus === 'In Use' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-blue-50 text-blue-700 border border-blue-200"><i className="bi bi-people-fill"></i> IN USE ({borrowedQty})</span> :
