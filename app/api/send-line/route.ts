@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     let finalMessage = message;
     if (isAfterHours && location && location !== '-') {
-      finalMessage += `\n📍 พิกัดตู้: ${location}\n(Admin เลิกงานแล้ว ช่างหยิบเองได้เลยครับ)`;
+      finalMessage += `\n📍 พิกัดตู้: ${location}\n(ผู้ดูแลเลิกงานแล้ว ผู้เบิกหยิบเองได้เลยครับ)`;
     }
 
     // 🌟 1. ยิงไปหา LINE
