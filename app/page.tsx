@@ -1812,8 +1812,8 @@ export default function MaintenanceDashboard() {
                       <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
                         <th className="py-4 px-4 text-center w-16">Action</th>
                         <th className="py-4 px-6 text-center w-20">Image</th>
-                        <th className="py-4 px-6 text-purple-600">Fixture No.</th>
-                        <th className="py-4 px-6 w-[25%]">Model Name</th>
+                        <th className="py-4 px-6 text-purple-600 w-48">Fixture No.</th>
+                        <th className="py-4 px-6 w-[40%]">Model Name & Location</th>
                         <th className="py-4 px-4 text-center border-l border-slate-200 bg-slate-100/50">Total</th>
                         <th className="py-4 px-4 text-center bg-red-50/30 text-red-700">Broken</th>
                         <th className="py-4 px-4 text-center bg-blue-50/30 text-blue-700">Borrowed</th>
@@ -1830,6 +1830,9 @@ export default function MaintenanceDashboard() {
                         if (availableQty <= 0 && borrowedQty > 0) fixStatus = 'Fully Borrowed';
                         else if (availableQty <= 0 && (item.BrokenQty || 0) > 0) fixStatus = 'Needs Repair';
                         else if (borrowedQty > 0) fixStatus = 'In Use';
+
+                        // ดึงข้อมูล Location มาแสดง (ถ้าไม่มีให้ขึ้น N/A)
+                        const itemLocation = item.Location || 'N/A';
 
                         return ( 
                           <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group"> 
@@ -1855,7 +1858,12 @@ export default function MaintenanceDashboard() {
                               )}
                             </td>
                             <td className="py-3 px-6 text-[14px] font-black text-purple-600 align-middle tracking-wider">{item.FixtureNo}</td>
-                            <td className="py-3 px-6 font-bold text-slate-800 text-[14px] align-middle">{item.ModelName || '-'}</td> 
+                            
+                            {/* ปรับส่วนนี้ให้แสดง Model Name คู่กับ Location */}
+                            <td className="py-3 px-6 align-middle">
+                              <div className="font-bold text-slate-800 text-[14px] truncate">{item.ModelName || '-'}</div>
+                              <div className="text-[11px] font-bold text-slate-500 mt-0.5"><i className="bi bi-geo-alt-fill text-purple-400 mr-1"></i>Loc: <span className="text-purple-600">{itemLocation}</span></div>
+                            </td> 
                             
                             <td className="py-3 px-4 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-base align-middle text-center">{item.TotalQty}</td> 
                             <td className="py-3 px-4 bg-red-50/10 font-bold text-red-600 text-base align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td> 
@@ -1875,7 +1883,7 @@ export default function MaintenanceDashboard() {
                       {filteredFixtures.length === 0 && (<tr><td colSpan={9} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
                     </tbody> 
                   </table> 
-                </div> 
+                </div>
               </div> 
             </div> 
           )}
