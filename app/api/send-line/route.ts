@@ -11,22 +11,30 @@ export async function POST(request: Request) {
 
     const cleanDeptName = department.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
 
+    // =================================================================
+    // 🚨 โซนเบิกกุญแจ (แยกดักทั้ง ID และ ชื่อแผนก ปิดตายบอทตัวเก่า 100%)
+    // =================================================================
     let specificToken = '';
     let specificTargetId = '';
 
-    // เช็คกุญแจทีละแผนกแบบ Hardcode (แก้ปัญหา Next.js มองไม่เห็นตัวแปร)
-    if (cleanDeptName === 'ECBUPD18326') {
+    // 1. ดักแผนก PD (เช็กทั้งจาก ID และ ชื่อแผนก)
+    if (cleanDeptName === 'ECBUPD18326' || cleanDeptName === 'ECBU_PD') {
       specificToken = process.env.LINE_TOKEN_ECBUPD18326 || '';
       specificTargetId = process.env.LINE_TARGET_ECBUPD18326 || '';
     } 
-    else if (cleanDeptName === 'ECBUME18326') {
+    // 2. ดักแผนก ME (เช็กทั้งจาก ID และ ชื่อแผนก)
+    else if (cleanDeptName === 'ECBUME18326' || cleanDeptName === 'ECBU_ME') {
       specificToken = process.env.LINE_TOKEN_ECBUME18326 || '';
       specificTargetId = process.env.LINE_TARGET_ECBUME18326 || '';
     } 
+    // 3. 🛡️ จุดกันตาย (Fail-Safe): ถ้าข้อมูลที่ส่งมาไม่ตรงกับข้างบนเลย!
     else {
-      specificToken = process.env.LINE_ACCESS_TOKEN || '';
-      specificTargetId = process.env.LINE_TARGET_ID || '';
+      console.warn(`[X-RAY] ข้อมูลที่ส่งมาหลุดเงื่อนไข: "${cleanDeptName}" -> บังคับใช้บอท ME ตัวใหม่!`);
+      // ⚠️ บังคับใช้กุญแจ "บอทตัวใหม่" เสมอ! ห้ามกลับไปใช้ LINE_ACCESS_TOKEN ตัวเก่าเด็ดขาด
+      specificToken = process.env.LINE_TOKEN_ECBUME18326 || '';
+      specificTargetId = process.env.LINE_TARGET_ECBUME18326 || '';
     }
+    // =================================================================
 
     if (!specificToken || !specificTargetId) {
       return NextResponse.json({ 
