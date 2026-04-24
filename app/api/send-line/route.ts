@@ -6,44 +6,28 @@ export async function POST(request: Request) {
     const { message, department, location } = body; 
 
     if (!department) {
-      return NextResponse.json({ success: false, error: '[X-RAY] ระบบไม่ได้รับชื่อแผนก!' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ระบบไม่ได้รับชื่อแผนก!' }, { status: 400 });
     }
 
     const cleanDeptName = department.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+    let teamsWebhookUrl = '';
 
-    // =================================================================
-    // 🚨 โซนเบิกกุญแจ (แยกดักทั้ง ID และ ชื่อแผนก ปิดตายบอทตัวเก่า 100%)
-    // =================================================================
-    let specificToken = '';
-    let specificTargetId = '';
-
-    // 1. ดักแผนก PD (เช็กทั้งจาก ID และ ชื่อแผนก)
+    // 🚨 ดักแผนก เลือก URL ของ Teams ให้ถูกต้อง
     if (cleanDeptName === 'ECBUPD18326' || cleanDeptName === 'ECBU_PD') {
-      specificToken = process.env.LINE_TOKEN_ECBUPD18326 || '';
-      specificTargetId = process.env.LINE_TARGET_ECBUPD18326 || '';
+      teamsWebhookUrl = process.env.TEAMS_WEBHOOK_URL_PD || '';
     } 
-    // 2. ดักแผนก ME (เช็กทั้งจาก ID และ ชื่อแผนก)
     else if (cleanDeptName === 'ECBUME18326' || cleanDeptName === 'ECBU_ME') {
-      specificToken = process.env.LINE_TOKEN_ECBUME18326 || '';
-      specificTargetId = process.env.LINE_TARGET_ECBUME18326 || '';
-    } 
-    // 3. 🛡️ จุดกันตาย (Fail-Safe): ถ้าข้อมูลที่ส่งมาไม่ตรงกับข้างบนเลย!
-    else {
-      console.warn(`[X-RAY] ข้อมูลที่ส่งมาหลุดเงื่อนไข: "${cleanDeptName}" -> บังคับใช้บอท ME ตัวใหม่!`);
-      // ⚠️ บังคับใช้กุญแจ "บอทตัวใหม่" เสมอ! ห้ามกลับไปใช้ LINE_ACCESS_TOKEN ตัวเก่าเด็ดขาด
-      specificToken = process.env.LINE_TOKEN_ECBUME18326 || '';
-      specificTargetId = process.env.LINE_TARGET_ECBUME18326 || '';
+      teamsWebhookUrl = process.env.TEAMS_WEBHOOK_URL_ME || '';
     }
-    // =================================================================
 
-    if (!specificToken || !specificTargetId) {
+    if (!teamsWebhookUrl) {
       return NextResponse.json({ 
         success: false, 
-        error: `[X-RAY] ได้ชื่อแผนก: "${cleanDeptName}" แต่ Next.js ดึงกุญแจไม่ได้!` 
+        error: `ไม่ได้ตั้งค่า URL สำหรับส่งเข้า Teams แผนก: "${cleanDeptName}"` 
       }, { status: 400 });
     }
 
-    // --- ส่วนเช็คเวลาส่งพิกัดตู้ ---
+    // --- เช็คเวลา ---
     const now = new Date();
     const formatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: 'numeric', minute: 'numeric', hour12: false });
     const [hour, minute] = formatter.format(now).split(':').map(Number);
@@ -54,36 +38,29 @@ export async function POST(request: Request) {
       finalMessage += `\n📍 พิกัดตู้: ${location}\n(ผู้ดูแลเลิกงานแล้ว ผู้เบิกหยิบเองได้เลยครับ)`;
     }
 
-    // 🌟 1. ยิงไปหา LINE
-    const lineResponse = await fetch('https://api.line.me/v2/bot/message/push', {
+    // 🌟 ยิงไปหา MS Teams (ง่ายกว่า LINE เยอะ!)
+    const teamsResponse = await fetch(teamsWebhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${specificToken}`
       },
       body: JSON.stringify({
-        to: specificTargetId,
-        messages: [{ type: 'text', text: finalMessage }]
+        // ฟอร์แมตเบสิกของ Teams ใช้ตัวแปร text
+        text: finalMessage.replace(/\n/g, '<br>') // Teams ต้องใช้ <br> ขึ้นบรรทัดใหม่
       })
     });
 
-    const lineData = await lineResponse.json();
-
-    // 🚨 2. ตรวจสอบว่า LINE ยอมรับข้อความไหม? 🚨
-    if (!lineResponse.ok) {
-      // ถ้า LINE ด่ากลับมา (เช่น 401 Unauthorized หรือ 400 Bad Request)
-      // ให้ API ของเราพ่น Error นั้นกลับไปหาหน้าเว็บด้วยสถานะเดียวกัน!
+    if (!teamsResponse.ok) {
       return NextResponse.json({ 
         success: false, 
-        error: `[LINE API Error] ${lineData.message || 'ส่งไม่สำเร็จ'} (Code: ${lineResponse.status})` 
-      }, { status: lineResponse.status });
+        error: `[Teams API Error] ส่งไม่สำเร็จ (Code: ${teamsResponse.status})` 
+      }, { status: teamsResponse.status });
     }
 
-    // ถ้าผ่านฉลุย ค่อยส่ง 200 กลับไป
-    return NextResponse.json({ success: true, data: lineData });
+    return NextResponse.json({ success: true, message: 'ส่ง Teams สำเร็จ!' });
 
   } catch (error) {
-    console.error("Send Line Error:", error);
+    console.error("Send Teams Error:", error);
     return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
   }
 }
