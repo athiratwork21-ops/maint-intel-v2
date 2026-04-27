@@ -2323,10 +2323,8 @@ export default function MaintenanceDashboard() {
             <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
               <th className="py-4 px-6 w-36">PR Number</th>
               <th className="py-4 px-6 w-48">Requester</th>
-              <th className="py-4 px-6 w-auto">Item Description</th> {/* ปล่อยให้ช่องนี้ยืดหยุ่น */}
+              <th className="py-4 px-6 w-auto">Item Description</th>
               <th className="py-4 px-4 text-center w-24">Qty</th>
-              
-              {/* ขยับ Status และ Delivery Date ให้บาลานซ์กัน */}
               <th className="py-4 px-4 w-56">Status</th>
               <th className="py-4 px-6 w-40">Delivery Date</th>
             </tr>
@@ -2358,16 +2356,14 @@ export default function MaintenanceDashboard() {
                     {pr.FinalDeliveryDate || 'TBD'}
                   </div>
                 </td>
+              </tr> {/* 🚨 พระเอกของเราอยู่ตรงนี้ครับ! ปิดแท็กครบแล้ว! 🚨 */}
             ))}
-            {prTrackingData.length === 0 && (
-              <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ยังไม่มีข้อมูลการสั่งซื้อ กรุณา Import ไฟล์ CSV เพื่อเริ่มใช้งาน</td></tr>
+            {filteredPrData.length === 0 && (
+              <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ไม่พบข้อมูลการสั่งซื้อ</td></tr>
             )}
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
-)}
           
           {/* TAB: BASIC INFO */}
           {activeTab === 'basic-info' && ( 
