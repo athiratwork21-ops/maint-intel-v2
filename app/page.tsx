@@ -813,51 +813,51 @@ export default function MaintenanceDashboard() {
       try {
         const rawData = results.data;
 
-        // 1. กรองและตัดแต่งข้อมูล (ที่ลูกพี่ทำไว้)
-        const cleanData = rawData
-          .filter((row: any) => row.PRNo)
-          .map((row: any) => ({
-             PRNo: row.PRNo,
-             IniEmpName: row.IniEmpName || null,
-             PRContent: (row.PRContent || '').split('/')[0].trim(),
-             PRQty: parseFloat(row.PRQty) || 0,
-             UnitName: row.UnitName || null,
-             PRItemStatus: row.PRItemStatus || null,
-             PONo: row.PONo || null,
-             FinalDeliveryDate: row.FinalDeliveryDate || null,
-          }));
+        // ✂️ 1. กรองและชำแหละข้อมูล (โค้ดเดิมของลูกพี่)
+          const cleanData = rawData
+            .filter((row: any) => row.PRNo && row.PRNo.trim() !== '')
+            .map((row: any) => {
+              const rawContent = row.PRContent || '';
+              const cutContent = rawContent.split('/')[0].trim();
 
-        if (cleanData.length === 0) {
-          showToast('ไม่พบข้อมูล PR ในไฟล์!', 'error');
-          setIsProcessing(false);
-          return;
-        }
+              return {
+                PRNo: row.PRNo,
+                IniEmpName: row.IniEmpName || null,
+                PRContent: cutContent, 
+                PRQty: parseFloat(row.PRQty) || 0, 
+                UnitName: row.UnitName || null,
+                PRItemStatus: row.PRItemStatus || null,
+                PONo: row.PONo || null,
+                FinalDeliveryDate: row.FinalDeliveryDate || null,
+              };
+            });
 
-        // 2. ส่งเข้า Supabase (Upsert)
-        const { error } = await supabase
-          .from('PurchaseTracking')
-          .upsert(cleanData, { onConflict: 'PRNo' });
+          if (cleanData.length === 0) {
+            showToast('ไม่พบข้อมูล! โปรดเช็กว่าไฟล์มีข้อมูลและชื่อคอลัมน์ตรงเป๊ะ', 'error');
+            setIsProcessing(false);
+            return;
+          }
 
-        // 🌟 >>> จุดที่ลูกพี่ถาม อยู่ตรงนี้ครับ <<< 🌟
-        if (!error) {
-          showToast(`อัปเดตสถานะสำเร็จ ${cleanData.length} รายการ!`, 'success');
-          
-          // 🚀 คำสั่งสำคัญ: สั่งดึงข้อมูลใหม่มาโชว์ในตารางทันที!
-          fetchPrTrackingData(); 
-        } else {
-          throw error;
-        }
+          // 🌟🌟🌟 เพิ่มโค้ดส่วนนี้เข้าไปครับ: กรอง PRNo ที่ซ้ำกันออก! 🌟🌟🌟
+          const uniqueData = Array.from(
+            cleanData.reduce((map, item) => {
+              // ถ้าเจอ PRNo ซ้ำ มันจะเอาข้อมูลบรรทัดใหม่มาเขียนทับตัวเก่าให้อัตโนมัติ
+              map.set(item.PRNo, item); 
+              return map;
+            }, new Map()).values()
+          );
 
-      } catch (error: any) {
-        console.error("Import Error:", error);
-        showToast(`ผิดพลาด: ${error.message}`, 'error');
-      } finally {
-        setIsProcessing(false);
-        e.target.value = ''; // ล้างค่าให้ช่อง Input เพื่อให้เลือกไฟล์เดิมซ้ำได้
-      }
-    },
-  });
-};
+          // 🚀 2. โยนขึ้น Supabase (เปลี่ยนจาก cleanData เป็น uniqueData)
+          const { error } = await supabase
+            .from('PurchaseTracking')
+            .upsert(uniqueData, { onConflict: 'PRNo' }); // 👈 เปลี่ยนชื่อตัวแปรตรงนี้ด้วยนะครับ
+
+          if (!error) {
+            showToast(`อัปเดตสถานะสำเร็จ ${uniqueData.length} รายการ!`, 'success');
+            fetchPrTrackingData(); 
+          } else {
+            throw error;
+          }
   
   const filteredScheduleData = scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
   const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
