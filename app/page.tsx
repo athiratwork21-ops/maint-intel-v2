@@ -797,23 +797,23 @@ export default function MaintenanceDashboard() {
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
   // =================================================================
-  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (Upsert)
+  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (ฉบับสมบูรณ์ ปีกกาครบ!)
   // =================================================================
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  setIsProcessing(true); 
-  showToast('กำลังอ่านไฟล์ CSV...', 'info');
+    setIsProcessing(true); 
+    showToast('กำลังอ่านไฟล์ CSV...', 'info');
 
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: async (results) => {
-      try {
-        const rawData = results.data;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const rawData = results.data;
 
-        // ✂️ 1. กรองและชำแหละข้อมูล (โค้ดเดิมของลูกพี่)
+          // ✂️ 1. กรองและชำแหละข้อมูล
           const cleanData = rawData
             .filter((row: any) => row.PRNo && row.PRNo.trim() !== '')
             .map((row: any) => {
@@ -838,19 +838,18 @@ export default function MaintenanceDashboard() {
             return;
           }
 
-          // 🌟🌟🌟 เพิ่มโค้ดส่วนนี้เข้าไปครับ: กรอง PRNo ที่ซ้ำกันออก! 🌟🌟🌟
+          // 🌟🌟🌟 2. กรอง PRNo ที่ซ้ำกันออก
           const uniqueData = Array.from(
-            cleanData.reduce((map, item) => {
-              // ถ้าเจอ PRNo ซ้ำ มันจะเอาข้อมูลบรรทัดใหม่มาเขียนทับตัวเก่าให้อัตโนมัติ
+            cleanData.reduce((map: Map<string, any>, item: any) => {
               map.set(item.PRNo, item); 
               return map;
             }, new Map()).values()
           );
 
-          // 🚀 2. โยนขึ้น Supabase (เปลี่ยนจาก cleanData เป็น uniqueData)
+          // 🚀 3. โยนขึ้น Supabase (Upsert)
           const { error } = await supabase
             .from('PurchaseTracking')
-            .upsert(uniqueData, { onConflict: 'PRNo' }); // 👈 เปลี่ยนชื่อตัวแปรตรงนี้ด้วยนะครับ
+            .upsert(uniqueData, { onConflict: 'PRNo' });
 
           if (!error) {
             showToast(`อัปเดตสถานะสำเร็จ ${uniqueData.length} รายการ!`, 'success');
@@ -858,6 +857,17 @@ export default function MaintenanceDashboard() {
           } else {
             throw error;
           }
+
+        } catch (error: any) {
+          console.error("Import Error:", error);
+          showToast(`เกิดข้อผิดพลาด: ${error.message}`, 'error');
+        } finally {
+          setIsProcessing(false);
+          e.target.value = ''; // ล้างค่า input
+        }
+      },
+    });
+  };
   
   const filteredScheduleData = scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
   const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
