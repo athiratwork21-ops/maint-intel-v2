@@ -800,72 +800,64 @@ export default function MaintenanceDashboard() {
   // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (Upsert)
   // =================================================================
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    setIsProcessing(true); // เปิดหน้าจอโหลดหมุนๆ (มีในโค้ดลูกพี่อยู่แล้ว)
-    showToast('กำลังอ่านไฟล์ CSV...', 'info');
-    // ในบรรทัดที่อัปเดต Supabase สำเร็จ
-  if (!error) {
-    showToast(`อัปเดตสถานะสำเร็จ ${cleanData.length} รายการ!`, 'success');
-    fetchPrTrackingData(); // 🌟 เพิ่มบรรทัดนี้ ข้อมูลจะเด้งขึ้นตารางทันทีไม่ต้องรีเฟรชหน้า!
-  }
+  setIsProcessing(true); 
+  showToast('กำลังอ่านไฟล์ CSV...', 'info');
 
-    Papa.parse(file, {
-      header: true, // ให้แถวแรกเป็นชื่อคอลัมน์
-      skipEmptyLines: true, // ข้ามบรรทัดที่ว่างเปล่า
-      complete: async (results) => {
-        try {
-          const rawData = results.data;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: async (results) => {
+      try {
+        const rawData = results.data;
 
-          // ✂️ 1. กรองและชำแหละข้อมูล
-          const cleanData = rawData
-            .filter((row: any) => row.PRNo && row.PRNo.trim() !== '') // กรองเอาเฉพาะบรรทัดที่มีเลข PRNo
-            .map((row: any) => {
-              
-              // ชำแหละข้อความ เอาเฉพาะส่วนก่อนเครื่องหมาย / แรก
-              const rawContent = row.PRContent || '';
-              const cutContent = rawContent.split('/')[0].trim();
+        // 1. กรองและตัดแต่งข้อมูล (ที่ลูกพี่ทำไว้)
+        const cleanData = rawData
+          .filter((row: any) => row.PRNo)
+          .map((row: any) => ({
+             PRNo: row.PRNo,
+             IniEmpName: row.IniEmpName || null,
+             PRContent: (row.PRContent || '').split('/')[0].trim(),
+             PRQty: parseFloat(row.PRQty) || 0,
+             UnitName: row.UnitName || null,
+             PRItemStatus: row.PRItemStatus || null,
+             PONo: row.PONo || null,
+             FinalDeliveryDate: row.FinalDeliveryDate || null,
+          }));
 
-              return {
-                PRNo: row.PRNo,
-                IniEmpName: row.IniEmpName || null,
-                PRContent: cutContent, 
-                PRQty: parseFloat(row.PRQty) || 0, 
-                UnitName: row.UnitName || null,
-                PRItemStatus: row.PRItemStatus || null,
-                PONo: row.PONo || null,
-                FinalDeliveryDate: row.FinalDeliveryDate || null,
-              };
-            });
-
-          // ถ้าไม่มีข้อมูลเลย หรือชื่อคอลัมน์ในไฟล์ไม่ตรงกับในโค้ด
-          if (cleanData.length === 0) {
-            showToast('ไม่พบข้อมูล! โปรดเช็กว่าไฟล์มีข้อมูลและชื่อคอลัมน์ตรงเป๊ะ (เช่น PRNo)', 'error');
-            setIsProcessing(false);
-            return;
-          }
-
-          // 🚀 2. โยนขึ้น Supabase (ถ้า PRNo ซ้ำ=ทับ, ไม่ซ้ำ=สร้างใหม่)
-          const { error } = await supabase
-            .from('PurchaseTracking') // 🚨 อย่าลืมไปสร้างตารางชื่อนี้ใน Supabase นะครับ!
-            .upsert(cleanData, { onConflict: 'PRNo' });
-
-          if (error) throw error;
-
-          showToast(`อัปเดตสถานะสำเร็จ ${cleanData.length} รายการ!`, 'success');
-          // fetchAllData(); // <--- ถ้าลูกพี่ทำหน้าแสดงผล PR แล้ว ค่อยเปิดใช้คำสั่งนี้นะครับ
-          
-        } catch (error: any) {
-          console.error("Import Error:", error);
-          showToast(`เกิดข้อผิดพลาด: ${error.message}`, 'error');
-        } finally {
-          setIsProcessing(false); // ปิดหน้าจอโหลด
-          e.target.value = ''; // ล้างค่า input เพื่อให้โยนไฟล์เดิมซ้ำได้
+        if (cleanData.length === 0) {
+          showToast('ไม่พบข้อมูล PR ในไฟล์!', 'error');
+          setIsProcessing(false);
+          return;
         }
-      },
-    });
-  };
+
+        // 2. ส่งเข้า Supabase (Upsert)
+        const { error } = await supabase
+          .from('PurchaseTracking')
+          .upsert(cleanData, { onConflict: 'PRNo' });
+
+        // 🌟 >>> จุดที่ลูกพี่ถาม อยู่ตรงนี้ครับ <<< 🌟
+        if (!error) {
+          showToast(`อัปเดตสถานะสำเร็จ ${cleanData.length} รายการ!`, 'success');
+          
+          // 🚀 คำสั่งสำคัญ: สั่งดึงข้อมูลใหม่มาโชว์ในตารางทันที!
+          fetchPrTrackingData(); 
+        } else {
+          throw error;
+        }
+
+      } catch (error: any) {
+        console.error("Import Error:", error);
+        showToast(`ผิดพลาด: ${error.message}`, 'error');
+      } finally {
+        setIsProcessing(false);
+        e.target.value = ''; // ล้างค่าให้ช่อง Input เพื่อให้เลือกไฟล์เดิมซ้ำได้
+      }
+    },
+  });
+};
   
   const filteredScheduleData = scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
   const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
