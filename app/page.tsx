@@ -927,7 +927,7 @@ export default function MaintenanceDashboard() {
 
   const activeActionPartDetails = parts.find(p => p.PartID === selectedActionPart?.id) || {};
 
-  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking 
+  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking
   const filteredPrData = prTrackingData.filter(pr => {
     if (!prSearchQuery) return true;
     const q = prSearchQuery.toLowerCase();
@@ -939,13 +939,13 @@ export default function MaintenanceDashboard() {
     );
   });
 
-  if (!session) { 
-    return ( 
+  if (!session) {
+    return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-[#e0e7ff] to-blue-50 relative overflow-hidden font-sans">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-400/30 rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-pulse"></div><div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-400/20 rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-pulse"></div>
-        <form onSubmit={handleLogin} className="bg-white/80 backdrop-blur-2xl p-10 rounded-[2rem] shadow-2xl border border-white/50 w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-500 ease-out"> 
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-xl shadow-blue-500/30 transform hover:rotate-12 transition-transform duration-300"><i className="bi bi-tools"></i></div> 
-          <h1 className="text-3xl font-extrabold mb-2 text-center text-slate-800 tracking-tight">Maint. Intel</h1> 
+        <form onSubmit={handleLogin} className="bg-white/80 backdrop-blur-2xl p-10 rounded-[2rem] shadow-2xl border border-white/50 w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-500 ease-out">
+          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-xl shadow-blue-500/30 transform hover:rotate-12 transition-transform duration-300"><i className="bi bi-tools"></i></div>
+          <h1 className="text-3xl font-extrabold mb-2 text-center text-slate-800 tracking-tight">Maint. Intel</h1>
           <p className="text-center text-slate-500 text-sm mb-8 font-medium">Sign in to manage inventory and maintenance</p>
           <div className="space-y-4">
             <div>
@@ -963,15 +963,15 @@ export default function MaintenanceDashboard() {
               <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Username or Email</label>
               <div className="relative">
                 <i className="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                <input type="text" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="e.g. athmaras" /> 
+                <input type="text" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="e.g. athmaras" />
               </div>
             </div>
             <div><label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Password</label><div className="relative"><i className="bi bi-lock-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="••••••••" /> </div></div>
           </div>
-          <button type="submit" disabled={isLoggingIn} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 shadow-lg shadow-blue-500/30 mt-8 flex justify-center items-center gap-2 text-[15px]">{isLoggingIn ? <><i className="bi bi-arrow-repeat animate-spin text-xl"></i> Authenticating...</> : 'Sign In'}</button> 
-        </form> 
-      </div> 
-    ); 
+          <button type="submit" disabled={isLoggingIn} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 shadow-lg shadow-blue-500/30 mt-8 flex justify-center items-center gap-2 text-[15px]">{isLoggingIn ? <><i className="bi bi-arrow-repeat animate-spin text-xl"></i> Authenticating...</> : 'Sign In'}</button>
+        </form>
+      </div>
+    );
   }
 
   return (
