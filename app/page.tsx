@@ -2309,17 +2309,9 @@ export default function MaintenanceDashboard() {
           <input 
             type="text" 
             placeholder="Search PR No. or Item Name..." 
+            value={prSearchQuery}
+            onChange={(e) => setPrSearchQuery(e.target.value)}
             className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
-            onChange={(e) => {
-               // เดี๋ยวเพิ่มระบบกรองให้ทีหลังครับลูกพี่
-          <input 
-            type="text" 
-            placeholder="Search PR No. or Item Name..." 
-            value={prSearchQuery} // 👈 เพิ่มบรรทัดนี้
-            onChange={(e) => setPrSearchQuery(e.target.value)} // 👈 แก้บรรทัดนี้ให้ทำงานจริง!
-            className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
-          />
-            }}
           />
         </div>
       </div>
