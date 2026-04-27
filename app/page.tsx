@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
 import Image from 'next/image';
+import Papa from 'papaparse';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -783,7 +784,72 @@ export default function MaintenanceDashboard() {
   };
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
+  // =================================================================
+  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (Upsert)
+  // =================================================================
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
+    setIsProcessing(true); // เปิดหน้าจอโหลดหมุนๆ (มีในโค้ดลูกพี่อยู่แล้ว)
+    showToast('กำลังอ่านไฟล์ CSV...', 'info');
+
+    Papa.parse(file, {
+      header: true, // ให้แถวแรกเป็นชื่อคอลัมน์
+      skipEmptyLines: true, // ข้ามบรรทัดที่ว่างเปล่า
+      complete: async (results) => {
+        try {
+          const rawData = results.data;
+
+          // ✂️ 1. กรองและชำแหละข้อมูล
+          const cleanData = rawData
+            .filter((row: any) => row.PRNo && row.PRNo.trim() !== '') // กรองเอาเฉพาะบรรทัดที่มีเลข PRNo
+            .map((row: any) => {
+              
+              // ชำแหละข้อความ เอาเฉพาะส่วนก่อนเครื่องหมาย / แรก
+              const rawContent = row.PRContent || '';
+              const cutContent = rawContent.split('/')[0].trim();
+
+              return {
+                PRNo: row.PRNo,
+                IniEmpName: row.IniEmpName || null,
+                PRContent: cutContent, 
+                PRQty: parseFloat(row.PRQty) || 0, 
+                UnitName: row.UnitName || null,
+                PRItemStatus: row.PRItemStatus || null,
+                PONo: row.PONo || null,
+                FinalDeliveryDate: row.FinalDeliveryDate || null,
+              };
+            });
+
+          // ถ้าไม่มีข้อมูลเลย หรือชื่อคอลัมน์ในไฟล์ไม่ตรงกับในโค้ด
+          if (cleanData.length === 0) {
+            showToast('ไม่พบข้อมูล! โปรดเช็กว่าไฟล์มีข้อมูลและชื่อคอลัมน์ตรงเป๊ะ (เช่น PRNo)', 'error');
+            setIsProcessing(false);
+            return;
+          }
+
+          // 🚀 2. โยนขึ้น Supabase (ถ้า PRNo ซ้ำ=ทับ, ไม่ซ้ำ=สร้างใหม่)
+          const { error } = await supabase
+            .from('PurchaseTracking') // 🚨 อย่าลืมไปสร้างตารางชื่อนี้ใน Supabase นะครับ!
+            .upsert(cleanData, { onConflict: 'PRNo' });
+
+          if (error) throw error;
+
+          showToast(`อัปเดตสถานะสำเร็จ ${cleanData.length} รายการ!`, 'success');
+          // fetchAllData(); // <--- ถ้าลูกพี่ทำหน้าแสดงผล PR แล้ว ค่อยเปิดใช้คำสั่งนี้นะครับ
+          
+        } catch (error: any) {
+          console.error("Import Error:", error);
+          showToast(`เกิดข้อผิดพลาด: ${error.message}`, 'error');
+        } finally {
+          setIsProcessing(false); // ปิดหน้าจอโหลด
+          e.target.value = ''; // ล้างค่า input เพื่อให้โยนไฟล์เดิมซ้ำได้
+        }
+      },
+    });
+  };
+  
   const filteredScheduleData = scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
   const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
   
@@ -1589,7 +1655,20 @@ export default function MaintenanceDashboard() {
                   <div className="flex flex-wrap gap-3 items-center">
                     <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
                     <div className="h-6 w-px bg-slate-200 hidden sm:block"></div> 
-                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2.5 text-sm border border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 active:scale-95 transition-all shadow-sm font-bold bg-white"><i className="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2.5 text-sm border border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 active:scale-95 transition-all shadow-sm font-bold bg-white"><i className="bi bi-file-earmark-excel"></i> Export CSV</button>{/* 🌟 ชุดปุ่ม Import CSV 🌟 */}
+<input 
+  type="file" 
+  accept=".csv" 
+  id="csv-upload" 
+  className="hidden" 
+  onChange={handleImportCSV} 
+/>
+<label 
+  htmlFor="csv-upload" 
+  className="flex items-center gap-2 px-4 py-2.5 text-sm border border-emerald-500 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-95 transition-all shadow-sm font-bold cursor-pointer ml-2"
+>
+  <i className="bi bi-cloud-arrow-up-fill"></i> Import PR Status
+</label>
                     <button onClick={openNewPartModal} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-slate-900 text-white rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-md shadow-slate-900/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> New Part</button>
                   </div> 
                 </div> 
