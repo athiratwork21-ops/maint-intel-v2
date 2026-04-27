@@ -927,7 +927,7 @@ export default function MaintenanceDashboard() {
 
   const activeActionPartDetails = parts.find(p => p.PartID === selectedActionPart?.id) || {};
 
-  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking
+  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking 
   const filteredPrData = prTrackingData.filter(pr => {
     if (!prSearchQuery) return true;
     const q = prSearchQuery.toLowerCase();
@@ -939,13 +939,13 @@ export default function MaintenanceDashboard() {
     );
   });
 
-  if (!session) {
-    return (
+  if (!session) { 
+    return ( 
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-[#e0e7ff] to-blue-50 relative overflow-hidden font-sans">
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-400/30 rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-pulse"></div><div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-400/20 rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-pulse"></div>
-        <form onSubmit={handleLogin} className="bg-white/80 backdrop-blur-2xl p-10 rounded-[2rem] shadow-2xl border border-white/50 w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-500 ease-out">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-xl shadow-blue-500/30 transform hover:rotate-12 transition-transform duration-300"><i className="bi bi-tools"></i></div>
-          <h1 className="text-3xl font-extrabold mb-2 text-center text-slate-800 tracking-tight">Maint. Intel</h1>
+        <form onSubmit={handleLogin} className="bg-white/80 backdrop-blur-2xl p-10 rounded-[2rem] shadow-2xl border border-white/50 w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-500 ease-out"> 
+          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 shadow-xl shadow-blue-500/30 transform hover:rotate-12 transition-transform duration-300"><i className="bi bi-tools"></i></div> 
+          <h1 className="text-3xl font-extrabold mb-2 text-center text-slate-800 tracking-tight">Maint. Intel</h1> 
           <p className="text-center text-slate-500 text-sm mb-8 font-medium">Sign in to manage inventory and maintenance</p>
           <div className="space-y-4">
             <div>
@@ -963,15 +963,15 @@ export default function MaintenanceDashboard() {
               <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Username or Email</label>
               <div className="relative">
                 <i className="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                <input type="text" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="e.g. athmaras" />
+                <input type="text" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="e.g. athmaras" /> 
               </div>
             </div>
             <div><label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Password</label><div className="relative"><i className="bi bi-lock-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 shadow-sm hover:border-blue-300" placeholder="••••••••" /> </div></div>
           </div>
-          <button type="submit" disabled={isLoggingIn} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 shadow-lg shadow-blue-500/30 mt-8 flex justify-center items-center gap-2 text-[15px]">{isLoggingIn ? <><i className="bi bi-arrow-repeat animate-spin text-xl"></i> Authenticating...</> : 'Sign In'}</button>
-        </form>
-      </div>
-    );
+          <button type="submit" disabled={isLoggingIn} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 shadow-lg shadow-blue-500/30 mt-8 flex justify-center items-center gap-2 text-[15px]">{isLoggingIn ? <><i className="bi bi-arrow-repeat animate-spin text-xl"></i> Authenticating...</> : 'Sign In'}</button> 
+        </form> 
+      </div> 
+    ); 
   }
 
   return (
@@ -2279,94 +2279,94 @@ export default function MaintenanceDashboard() {
           )}
 
           {/* ========================================================= */}
-{/* 📦 TAB: PR TRACKING (ฟังก์ชันใหม่ล่าสุด!) */}
 {/* ========================================================= */}
-{activeTab === 'pr-tracking' && (
-  <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-      
-      {/* Header ของหน้า Tracking */}
-      <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-        <div>
-          <h2 className="font-bold text-slate-800 text-lg tracking-tight">Purchase Requisition Tracking</h2>
-          <p className="text-xs text-slate-500 mt-1">อัปเดตและติดตามสถานะการสั่งซื้ออะไหล่จากระบบ ERP</p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* ปุ่ม Import CSV ที่เราย้ายมาไว้ที่นี่ */}
-          <input type="file" accept=".csv" id="csv-import-pr" className="hidden" onChange={handleImportCSV} />
-          <label htmlFor="csv-import-pr" className="flex items-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-900/20 font-bold cursor-pointer">
-            <i className="bi bi-file-earmark-arrow-up"></i> Import ERP Status
-          </label>
-          <button onClick={fetchPrTrackingData} className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 active:scale-95 bg-white"><i className="bi bi-arrow-clockwise"></i></button>
-        </div>
-      </div>
-
-      {/* ช่องค้นหา */}
-      <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
-        <div className="relative max-w-md">
-          <i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-          <input 
-            type="text" 
-            placeholder="Search PR No. or Item Name..." 
-            value={prSearchQuery}
-            onChange={(e) => setPrSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
-          />
-        </div>
-      </div>
-
-      {/* ตารางแสดงผล */}
-      <div className="overflow-auto flex-1 relative rounded-b-2xl">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md">
-            <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-              <th className="py-4 px-6 w-36">PR Number</th>
-              <th className="py-4 px-6 w-48">Requester</th>
-              <th className="py-4 px-6 w-auto">Item Description</th>
-              <th className="py-4 px-4 text-center w-24">Qty</th>
-              <th className="py-4 px-4 w-56">Status</th>
-              <th className="py-4 px-6 w-40">Delivery Date</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {filteredPrData.map((pr, idx) => (
-              <tr key={idx} className="border-b border-slate-50 hover:bg-emerald-50/30 transition-colors duration-200">
-                <td className="py-4 px-6 font-black text-slate-700">{pr.PRNo}</td>
-                <td className="py-4 px-6 text-slate-500 font-bold">{pr.IniEmpName || '-'}</td>
-                <td className="py-4 px-6">
-                  <div className="font-bold text-slate-800 leading-tight">{pr.PRContent}</div>
-                  <div className="text-[10px] text-blue-500 mt-1 font-black uppercase tracking-widest">PO: {pr.PONo || 'AWAITING PO'}</div>
-                </td>
-                <td className="py-4 px-4 text-center font-black text-slate-700">
-                  {pr.PRQty} <span className="text-[10px] text-slate-400 font-normal">{pr.UnitName}</span>
-                </td>
-                <td className="py-4 px-6">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm border ${
-                    pr.PRItemStatus?.includes('Complete') ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                    pr.PRItemStatus?.includes('Ordered') || pr.PONo ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                    'bg-amber-50 text-amber-600 border-amber-200'
-                  }`}>
-                    {pr.PRItemStatus || 'In Progress'}
-                  </span>
-                </td>
-                <td className="py-4 px-6 font-bold text-slate-600">
-                  <div className="flex items-center gap-2 whitespace-nowrap">
-                    <i className="bi bi-calendar-check text-emerald-500"></i>
-                    {pr.FinalDeliveryDate || 'TBD'}
+          {/* 📦 TAB: PR TRACKING (ฟังก์ชันใหม่ล่าสุด!) */}
+          {/* ========================================================= */}
+          {activeTab === 'pr-tracking' && (
+            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
+                
+                {/* Header ของหน้า Tracking */}
+                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
+                  <div>
+                    <h2 className="font-bold text-slate-800 text-lg tracking-tight">Purchase Requisition Tracking</h2>
+                    <p className="text-xs text-slate-500 mt-1">อัปเดตและติดตามสถานะการสั่งซื้ออะไหล่จากระบบ ERP</p>
                   </div>
-                </td>
-              </tr> {/* 🚨 พระเอกของเราอยู่ตรงนี้ครับ! ปิดแท็กครบแล้ว! 🚨 */}
-            ))}
-            {filteredPrData.length === 0 && (
-              <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ไม่พบข้อมูลการสั่งซื้อ</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-)}
+                  <div className="flex items-center gap-3">
+                    <input type="file" accept=".csv" id="csv-import-pr" className="hidden" onChange={handleImportCSV} />
+                    <label htmlFor="csv-import-pr" className="flex items-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-900/20 font-bold cursor-pointer">
+                      <i className="bi bi-file-earmark-arrow-up"></i> Import ERP Status
+                    </label>
+                    <button onClick={fetchPrTrackingData} className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 active:scale-95 bg-white"><i className="bi bi-arrow-clockwise"></i></button>
+                  </div>
+                </div>
+
+                {/* ช่องค้นหา */}
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
+                  <div className="relative max-w-md">
+                    <i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input 
+                      type="text" 
+                      placeholder="Search PR No. or Item Name..." 
+                      value={prSearchQuery}
+                      onChange={(e) => setPrSearchQuery(e.target.value)}
+                      className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* ตารางแสดงผล */}
+                <div className="overflow-auto flex-1 relative rounded-b-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md">
+                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
+                        <th className="py-4 px-6 w-36">PR Number</th>
+                        <th className="py-4 px-6 w-48">Requester</th>
+                        <th className="py-4 px-6 w-auto">Item Description</th>
+                        <th className="py-4 px-4 text-center w-24">Qty</th>
+                        <th className="py-4 px-4 w-56">Status</th>
+                        <th className="py-4 px-6 w-40">Delivery Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm">
+                      {filteredPrData.map((pr, idx) => (
+                        <tr key={idx} className="border-b border-slate-50 hover:bg-emerald-50/30 transition-colors duration-200">
+                          <td className="py-4 px-6 font-black text-slate-700">{pr.PRNo}</td>
+                          <td className="py-4 px-6 text-slate-500 font-bold">{pr.IniEmpName || '-'}</td>
+                          <td className="py-4 px-6">
+                            <div className="font-bold text-slate-800 leading-tight">{pr.PRContent}</div>
+                            <div className="text-[10px] text-blue-500 mt-1 font-black uppercase tracking-widest">PO: {pr.PONo || 'AWAITING PO'}</div>
+                          </td>
+                          <td className="py-4 px-4 text-center font-black text-slate-700">
+                            {pr.PRQty} <span className="text-[10px] text-slate-400 font-normal">{pr.UnitName}</span>
+                          </td>
+                          <td className="py-4 px-6">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm border ${
+                              pr.PRItemStatus?.includes('Complete') ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                              pr.PRItemStatus?.includes('Ordered') || pr.PONo ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                              'bg-amber-50 text-amber-600 border-amber-200'
+                            }`}>
+                              {pr.PRItemStatus || 'In Progress'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 font-bold text-slate-600">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <i className="bi bi-calendar-check text-emerald-500"></i>
+                              {pr.FinalDeliveryDate || 'TBD'}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredPrData.length === 0 && (
+                        <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ยังไม่มีข้อมูลการสั่งซื้อ กรุณา Import ไฟล์ CSV เพื่อเริ่มใช้งาน</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* ========================================================= */}
           
           {/* TAB: BASIC INFO */}
           {activeTab === 'basic-info' && ( 
