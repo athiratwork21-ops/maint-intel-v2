@@ -2364,6 +2364,9 @@ export default function MaintenanceDashboard() {
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+)}
           
           {/* TAB: BASIC INFO */}
           {activeTab === 'basic-info' && ( 
