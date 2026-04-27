@@ -134,6 +134,7 @@ export default function MaintenanceDashboard() {
   const [linesMaster, setLinesMaster] = useState<any[]>([]);
   const [locationsMaster, setLocationsMaster] = useState<any[]>([]);
   const [prTrackingData, setPrTrackingData] = useState<any[]>([]); // สำหรับเก็บข้อมูลจากตาราง PurchaseTracking
+  const [prSearchQuery, setPrSearchQuery] = useState(''); // 🌟 เพิ่มตัวแปรนี้สำหรับช่องเสิร์ช PR
 
   useEffect(() => { if (session) fetchAllData(); }, [session]);
 
@@ -797,7 +798,7 @@ export default function MaintenanceDashboard() {
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
   // =================================================================
-  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (ฉบับสมบูรณ์ ปีกกาครบ!)
+  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (ลบ PR เก่า + คลีน Status)
   // =================================================================
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -820,13 +821,17 @@ export default function MaintenanceDashboard() {
               const rawContent = row.PRContent || '';
               const cutContent = rawContent.split('/')[0].trim();
 
+              // 🧹 คลีน PRItemStatus: ลบเครื่องหมาย : หรือ  และตัวเลขด้านหลังทิ้ง
+              let cleanStatus = row.PRItemStatus || '';
+              cleanStatus = cleanStatus.replace(/[:：].*/, '').trim(); 
+
               return {
                 PRNo: row.PRNo,
                 IniEmpName: row.IniEmpName || null,
                 PRContent: cutContent, 
                 PRQty: parseFloat(row.PRQty) || 0, 
                 UnitName: row.UnitName || null,
-                PRItemStatus: row.PRItemStatus || null,
+                PRItemStatus: cleanStatus || null, // 👈 ใช้ Status ที่ล้างขยะแล้ว
                 PONo: row.PONo || null,
                 FinalDeliveryDate: row.FinalDeliveryDate || null,
               };
@@ -838,7 +843,6 @@ export default function MaintenanceDashboard() {
             return;
           }
 
-          // 🌟🌟🌟 2. กรอง PRNo ที่ซ้ำกันออก
           const uniqueData = Array.from(
             cleanData.reduce((map: Map<string, any>, item: any) => {
               map.set(item.PRNo, item); 
@@ -846,13 +850,31 @@ export default function MaintenanceDashboard() {
             }, new Map()).values()
           );
 
-          // 🚀 3. โยนขึ้น Supabase (Upsert)
+          // 🚀 2. โยนขึ้น Supabase (Upsert ทับของเดิม หรือเพิ่มใหม่)
           const { error } = await supabase
             .from('PurchaseTracking')
             .upsert(uniqueData, { onConflict: 'PRNo' });
 
           if (!error) {
-            showToast(`อัปเดตสถานะสำเร็จ ${uniqueData.length} รายการ!`, 'success');
+            // 🗑️ 3. สเต็ปลบ PR ที่หายไป (รับของแล้ว/ไม่อยู่ในไฟล์)
+            const currentCsvPrs = uniqueData.map(d => d.PRNo); // ดึงเลข PR ทั้งหมดในไฟล์ CSV
+            
+            // ดึงเลข PR ทั้งหมดที่มีในระบบตอนแรก
+            const { data: existingPrs } = await supabase.from('PurchaseTracking').select('PRNo');
+            
+            if (existingPrs) {
+              // กรองหาตัวที่ "มีในระบบ" แต่ "ไม่มีในไฟล์ CSV ใหม่"
+              const prsToDelete = existingPrs
+                .map(r => r.PRNo)
+                .filter(pr => !currentCsvPrs.includes(pr));
+                
+              // ถ้าเจอตัวที่ต้องลบ ก็สั่งลบออกให้หมด!
+              if (prsToDelete.length > 0) {
+                await supabase.from('PurchaseTracking').delete().in('PRNo', prsToDelete);
+              }
+            }
+
+            showToast(`อัปเดตและล้างข้อมูลสำเร็จ!`, 'success');
             fetchPrTrackingData(); 
           } else {
             throw error;
@@ -863,7 +885,7 @@ export default function MaintenanceDashboard() {
           showToast(`เกิดข้อผิดพลาด: ${error.message}`, 'error');
         } finally {
           setIsProcessing(false);
-          e.target.value = ''; // ล้างค่า input
+          e.target.value = ''; 
         }
       },
     });
@@ -904,6 +926,18 @@ export default function MaintenanceDashboard() {
   };
 
   const activeActionPartDetails = parts.find(p => p.PartID === selectedActionPart?.id) || {};
+
+  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking 
+  const filteredPrData = prTrackingData.filter(pr => {
+    if (!prSearchQuery) return true;
+    const q = prSearchQuery.toLowerCase();
+    return (
+      (pr.PRNo && pr.PRNo.toLowerCase().includes(q)) ||
+      (pr.PRContent && pr.PRContent.toLowerCase().includes(q)) ||
+      (pr.PONo && pr.PONo.toLowerCase().includes(q)) ||
+      (pr.IniEmpName && pr.IniEmpName.toLowerCase().includes(q))
+    );
+  });
 
   if (!session) { 
     return ( 
@@ -2278,6 +2312,13 @@ export default function MaintenanceDashboard() {
             className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
             onChange={(e) => {
                // เดี๋ยวเพิ่มระบบกรองให้ทีหลังครับลูกพี่
+          <input 
+            type="text" 
+            placeholder="Search PR No. or Item Name..." 
+            value={prSearchQuery} // 👈 เพิ่มบรรทัดนี้
+            onChange={(e) => setPrSearchQuery(e.target.value)} // 👈 แก้บรรทัดนี้ให้ทำงานจริง!
+            className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
+          />
             }}
           />
         </div>
@@ -2288,16 +2329,18 @@ export default function MaintenanceDashboard() {
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md">
             <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-              <th className="py-4 px-6">PR Number</th>
-              <th className="py-4 px-6">Requester</th>
-              <th className="py-4 px-6 w-[35%]">Item Description</th>
-              <th className="py-4 px-4 text-center">Qty</th>
-              <th className="py-4 px-6">Status</th>
-              <th className="py-4 px-6 text-center">Delivery Date</th>
+              <th className="py-4 px-6 w-36">PR Number</th>
+              <th className="py-4 px-6 w-48">Requester</th>
+              <th className="py-4 px-6 w-auto">Item Description</th> {/* ปล่อยให้ช่องนี้ยืดหยุ่น */}
+              <th className="py-4 px-4 text-center w-24">Qty</th>
+              
+              {/* ขยับ Status และ Delivery Date ให้บาลานซ์กัน */}
+              <th className="py-4 px-4 w-56">Status</th>
+              <th className="py-4 px-6 w-40">Delivery Date</th>
             </tr>
           </thead>
           <tbody className="text-sm">
-            {prTrackingData.map((pr, idx) => (
+            {filteredPrData.map((pr, idx) => (
               <tr key={idx} className="border-b border-slate-50 hover:bg-emerald-50/30 transition-colors duration-200">
                 <td className="py-4 px-6 font-black text-slate-700">{pr.PRNo}</td>
                 <td className="py-4 px-6 text-slate-500 font-bold">{pr.IniEmpName || '-'}</td>
@@ -2317,11 +2360,12 @@ export default function MaintenanceDashboard() {
                     {pr.PRItemStatus || 'In Progress'}
                   </span>
                 </td>
-                <td className="py-4 px-6 text-center font-bold text-slate-600">
-                  <i className="bi bi-calendar-check text-emerald-500 mr-2"></i>
-                  {pr.FinalDeliveryDate || 'TBD'}
+                <td className="py-4 px-6 font-bold text-slate-600">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <i className="bi bi-calendar-check text-emerald-500"></i>
+                    {pr.FinalDeliveryDate || 'TBD'}
+                  </div>
                 </td>
-              </tr>
             ))}
             {prTrackingData.length === 0 && (
               <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ยังไม่มีข้อมูลการสั่งซื้อ กรุณา Import ไฟล์ CSV เพื่อเริ่มใช้งาน</td></tr>
