@@ -135,6 +135,8 @@ export default function MaintenanceDashboard() {
   const [locationsMaster, setLocationsMaster] = useState<any[]>([]);
   const [prTrackingData, setPrTrackingData] = useState<any[]>([]); // สำหรับเก็บข้อมูลจากตาราง PurchaseTracking
   const [prSearchQuery, setPrSearchQuery] = useState(''); // 🌟 เพิ่มตัวแปรนี้สำหรับช่องเสิร์ช PR
+  const [prLastUpdated, setPrLastUpdated] = useState<string | null>(null);
+  useEffect(() => { setPrLastUpdated(localStorage.getItem('prLastUpdated')); }, []);
 
   useEffect(() => { if (session) fetchAllData(); }, [session]);
 
@@ -821,9 +823,9 @@ export default function MaintenanceDashboard() {
               const rawContent = row.PRContent || '';
               const cutContent = rawContent.split('/')[0].trim();
 
-              // 🧹 คลีน PRItemStatus: ลบเครื่องหมาย : หรือ  และตัวเลขด้านหลังทิ้ง
+              // 🧹 คลีน PRItemStatus: อนุญาตแค่ a-z, A-Z, ช่องว่าง และ & นอกนั้นตัดทิ้งหมด!
               let cleanStatus = row.PRItemStatus || '';
-              cleanStatus = cleanStatus.replace(/[:：].*/, '').trim(); 
+              cleanStatus = cleanStatus.replace(/[^a-zA-Z\s&].*/, '').trim(); 
 
               return {
                 PRNo: row.PRNo,
@@ -858,6 +860,15 @@ export default function MaintenanceDashboard() {
           if (!error) {
             // 🗑️ 3. สเต็ปลบ PR ที่หายไป (รับของแล้ว/ไม่อยู่ในไฟล์)
             const currentCsvPrs = uniqueData.map(d => d.PRNo); // ดึงเลข PR ทั้งหมดในไฟล์ CSV
+
+            // 🌟 4. บันทึกเวลาอัปเดตล่าสุด
+            const timeNow = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            localStorage.setItem('prLastUpdated', timeNow);
+            setPrLastUpdated(timeNow);
+
+            showToast(`อัปเดตและล้างข้อมูลสำเร็จ!`, 'success');
+            fetchPrTrackingData(); 
+            } else {
             
             // ดึงเลข PR ทั้งหมดที่มีในระบบตอนแรก
             const { data: existingPrs } = await supabase.from('PurchaseTracking').select('PRNo');
@@ -2292,6 +2303,7 @@ export default function MaintenanceDashboard() {
                     <h2 className="font-bold text-slate-800 text-lg tracking-tight">Purchase Requisition Tracking</h2>
                     <p className="text-xs text-slate-500 mt-1">อัปเดตและติดตามสถานะการสั่งซื้ออะไหล่จากระบบ ERP</p>
                   </div>
+                  <div className="flex flex-col items-end gap-1.5">
                   <div className="flex items-center gap-3">
                     <input type="file" accept=".csv" id="csv-import-pr" className="hidden" onChange={handleImportCSV} />
                     <label htmlFor="csv-import-pr" className="flex items-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-900/20 font-bold cursor-pointer">
@@ -2299,6 +2311,12 @@ export default function MaintenanceDashboard() {
                     </label>
                     <button onClick={fetchPrTrackingData} className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 active:scale-95 bg-white"><i className="bi bi-arrow-clockwise"></i></button>
                   </div>
+                  {/* 🌟 โชว์เวลาอัปเดตล่าสุดตรงนี้ 🌟 */}
+                  {prLastUpdated && (
+                    <div className="text-[10px] text-slate-400 font-bold mr-14 flex items-center gap-1">
+                      <i className="bi bi-clock-history"></i> Last updated: {prLastUpdated}
+                    </div>
+                  )}
                 </div>
 
                 {/* ช่องค้นหา */}
