@@ -2331,8 +2331,8 @@ export default function MaintenanceDashboard() {
                         <th className="py-4 px-6 w-48">Requester</th>
                         <th className="py-4 px-6 w-auto">Item Description</th>
                         <th className="py-4 px-4 text-center w-24">Qty</th>
-                        <th className="py-4 px-4 w-56">Status</th>
-                        <th className="py-4 px-6 w-40">Delivery Date</th>
+                        <th className="py-4 px-4 w-72">Status</th>
+                        <th className="py-4 px-6 w-36">Delivery Date</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm">
