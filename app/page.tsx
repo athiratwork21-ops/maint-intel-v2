@@ -2277,6 +2277,7 @@ export default function MaintenanceDashboard() {
 
           {/* ========================================================= */}
 {/* ========================================================= */}
+          {/* ========================================================= */}
           {/* 📦 TAB: PR TRACKING (ฟังก์ชันใหม่ล่าสุด!) */}
           {/* ========================================================= */}
           {activeTab === 'pr-tracking' && (
@@ -2289,20 +2290,22 @@ export default function MaintenanceDashboard() {
                     <h2 className="font-bold text-slate-800 text-lg tracking-tight">Purchase Requisition Tracking</h2>
                     <p className="text-xs text-slate-500 mt-1">อัปเดตและติดตามสถานะการสั่งซื้ออะไหล่จากระบบ ERP</p>
                   </div>
+                  
                   <div className="flex flex-col items-end gap-1.5">
-                  <div className="flex items-center gap-3">
-                    <input type="file" accept=".csv" id="csv-import-pr" className="hidden" onChange={handleImportCSV} />
-                    <label htmlFor="csv-import-pr" className="flex items-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-900/20 font-bold cursor-pointer">
-                      <i className="bi bi-file-earmark-arrow-up"></i> Import ERP Status
-                    </label>
-                    <button onClick={fetchPrTrackingData} className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 active:scale-95 bg-white"><i className="bi bi-arrow-clockwise"></i></button>
-                  </div>
-                  {/* 🌟 โชว์เวลาอัปเดตล่าสุดตรงนี้ 🌟 */}
-                  {prLastUpdated && (
-                    <div className="text-[10px] text-slate-400 font-bold mr-14 flex items-center gap-1">
-                      <i className="bi bi-clock-history"></i> Last updated: {prLastUpdated}
+                    <div className="flex items-center gap-3">
+                      <input type="file" accept=".csv" id="csv-import-pr" className="hidden" onChange={handleImportCSV} />
+                      <label htmlFor="csv-import-pr" className="flex items-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-900/20 font-bold cursor-pointer">
+                        <i className="bi bi-file-earmark-arrow-up"></i> Import ERP Status
+                      </label>
+                      <button onClick={fetchPrTrackingData} className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 active:scale-95 bg-white"><i className="bi bi-arrow-clockwise"></i></button>
                     </div>
-                  )}
+                    {/* 🌟 โชว์เวลาอัปเดตล่าสุด */}
+                    {prLastUpdated && (
+                      <div className="text-[10px] text-slate-400 font-bold mr-14 flex items-center gap-1">
+                        <i className="bi bi-clock-history"></i> Last updated: {prLastUpdated}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* ช่องค้นหา */}
@@ -2362,7 +2365,7 @@ export default function MaintenanceDashboard() {
                         </tr>
                       ))}
                       {filteredPrData.length === 0 && (
-                        <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ยังไม่มีข้อมูลการสั่งซื้อ กรุณา Import ไฟล์ CSV เพื่อเริ่มใช้งาน</td></tr>
+                        <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ยังไม่มีข้อมูลการสั่งซื้อ หรือค้นหาไม่พบ</td></tr>
                       )}
                     </tbody>
                   </table>
