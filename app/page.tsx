@@ -800,7 +800,7 @@ export default function MaintenanceDashboard() {
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
   // =================================================================
-  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (ลบ PR เก่า + คลีน Status)
+  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (ฉบับสมบูรณ์ ปิดวงเล็บครบ!)
   // =================================================================
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -833,7 +833,7 @@ export default function MaintenanceDashboard() {
                 PRContent: cutContent, 
                 PRQty: parseFloat(row.PRQty) || 0, 
                 UnitName: row.UnitName || null,
-                PRItemStatus: cleanStatus || null, // 👈 ใช้ Status ที่ล้างขยะแล้ว
+                PRItemStatus: cleanStatus || null,
                 PONo: row.PONo || null,
                 FinalDeliveryDate: row.FinalDeliveryDate || null,
               };
@@ -875,14 +875,12 @@ export default function MaintenanceDashboard() {
             // 🌟 4. บันทึกเวลาอัปเดตล่าสุด
             const timeNow = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
             localStorage.setItem('prLastUpdated', timeNow);
-            setPrLastUpdated(timeNow); // อัปเดตขึ้นหน้าจอทันที
+            setPrLastUpdated(timeNow);
 
-            // 🌟 5. โชว์ข้อความสำเร็จและรีเฟรชตาราง
             showToast(`อัปเดตและล้างข้อมูลสำเร็จ!`, 'success');
             fetchPrTrackingData(); 
-            
           } else {
-            throw error; // ถ้า Error โยนไปเข้า catch
+            throw error;
           }
 
         } catch (error: any) {
