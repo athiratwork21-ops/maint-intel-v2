@@ -800,7 +800,7 @@ export default function MaintenanceDashboard() {
 
   const handleExportCSV = () => { if (stockData.length === 0) { showToast('No data available', 'warning'); return; } const headers = ['Location', 'Part ID', 'Part Name', 'Physical (On-Hand)', 'Reserved', 'Available Balance', 'Last Updated']; const csvRows = stockData.map(row => { const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] }; const pDetails = parts.find(p => p.PartID === row.PartID) || {}; return [ row.Location || '-', row.PartID || '-', pDetails.PartName || row.PartName || '-', alloc.physical, alloc.reserved, alloc.available, row.LastUpdated ? new Date(row.LastUpdated).toLocaleString('en-US') : '-' ]; }); const csvContent = [headers.join(','), ...csvRows.map(e => e.join(','))].join('\n'); const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.setAttribute('download', `Stock_Report_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); showToast('Excel downloaded successfully!', 'success'); };
   // =================================================================
-  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ (ฉบับสมบูรณ์ ปิดวงเล็บครบ!)
+  // 🚀 ฟังก์ชัน Import CSV และอัปเดตสถานะ
   // =================================================================
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -816,14 +816,11 @@ export default function MaintenanceDashboard() {
         try {
           const rawData = results.data;
 
-          // ✂️ 1. กรองและชำแหละข้อมูล
           const cleanData = rawData
             .filter((row: any) => row.PRNo && row.PRNo.trim() !== '')
             .map((row: any) => {
               const rawContent = row.PRContent || '';
               const cutContent = rawContent.split('/')[0].trim();
-
-              // 🧹 คลีน PRItemStatus: อนุญาตแค่ a-z, A-Z, ช่องว่าง และ & นอกนั้นตัดทิ้งหมด!
               let cleanStatus = row.PRItemStatus || '';
               cleanStatus = cleanStatus.replace(/[^a-zA-Z\s&].*/, '').trim(); 
 
@@ -852,13 +849,11 @@ export default function MaintenanceDashboard() {
             }, new Map()).values()
           );
 
-          // 🚀 2. โยนขึ้น Supabase (Upsert ทับของเดิม หรือเพิ่มใหม่)
           const { error } = await supabase
             .from('PurchaseTracking')
             .upsert(uniqueData, { onConflict: 'PRNo' });
 
           if (!error) {
-            // 🗑️ 3. สเต็ปลบ PR ที่หายไป (รับของแล้ว/ไม่อยู่ในไฟล์)
             const currentCsvPrs = uniqueData.map(d => d.PRNo); 
             const { data: existingPrs } = await supabase.from('PurchaseTracking').select('PRNo');
             
@@ -872,7 +867,6 @@ export default function MaintenanceDashboard() {
               }
             }
 
-            // 🌟 4. บันทึกเวลาอัปเดตล่าสุด
             const timeNow = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
             localStorage.setItem('prLastUpdated', timeNow);
             setPrLastUpdated(timeNow);
