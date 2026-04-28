@@ -972,7 +972,7 @@ export default function MaintenanceDashboard() {
   }
 
   return (
-  <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-700 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
+<div className="flex h-screen bg-[#f8fafc] font-sans text-slate-700 overflow-hidden relative selection:bg-blue-100 selection:text-blue-900">
       {/* 🌟 MAINT. INTEL: CINEMATIC INTRO 🌟 */}
       {showIntro && (
         <div className="fixed inset-0 z-[99999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden font-mono" style={{ animation: 'introVaultOpen 0.6s cubic-bezier(0.7, 0, 0.3, 1) forwards 4s' }}>
