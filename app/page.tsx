@@ -859,36 +859,30 @@ export default function MaintenanceDashboard() {
 
           if (!error) {
             // 🗑️ 3. สเต็ปลบ PR ที่หายไป (รับของแล้ว/ไม่อยู่ในไฟล์)
-            const currentCsvPrs = uniqueData.map(d => d.PRNo); // ดึงเลข PR ทั้งหมดในไฟล์ CSV
-
-            // 🌟 4. บันทึกเวลาอัปเดตล่าสุด
-            const timeNow = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            localStorage.setItem('prLastUpdated', timeNow);
-            setPrLastUpdated(timeNow);
-
-            showToast(`อัปเดตและล้างข้อมูลสำเร็จ!`, 'success');
-            fetchPrTrackingData(); 
-            } else {
-            
-            // ดึงเลข PR ทั้งหมดที่มีในระบบตอนแรก
+            const currentCsvPrs = uniqueData.map(d => d.PRNo); 
             const { data: existingPrs } = await supabase.from('PurchaseTracking').select('PRNo');
             
             if (existingPrs) {
-              // กรองหาตัวที่ "มีในระบบ" แต่ "ไม่มีในไฟล์ CSV ใหม่"
               const prsToDelete = existingPrs
                 .map(r => r.PRNo)
                 .filter(pr => !currentCsvPrs.includes(pr));
                 
-              // ถ้าเจอตัวที่ต้องลบ ก็สั่งลบออกให้หมด!
               if (prsToDelete.length > 0) {
                 await supabase.from('PurchaseTracking').delete().in('PRNo', prsToDelete);
               }
             }
 
+            // 🌟 4. บันทึกเวลาอัปเดตล่าสุด
+            const timeNow = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            localStorage.setItem('prLastUpdated', timeNow);
+            setPrLastUpdated(timeNow); // อัปเดตขึ้นหน้าจอทันที
+
+            // 🌟 5. โชว์ข้อความสำเร็จและรีเฟรชตาราง
             showToast(`อัปเดตและล้างข้อมูลสำเร็จ!`, 'success');
             fetchPrTrackingData(); 
+            
           } else {
-            throw error;
+            throw error; // ถ้า Error โยนไปเข้า catch
           }
 
         } catch (error: any) {
