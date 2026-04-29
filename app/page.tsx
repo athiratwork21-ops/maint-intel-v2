@@ -141,11 +141,23 @@ export default function MaintenanceDashboard() {
   useEffect(() => { if (session) fetchAllData(); }, [session]);
 
   const fetchPrTrackingData = async () => {
-    const { data, error } = await supabase
+    // 1. ดึงข้อมูลตาราง PR
+    const { data: prData } = await supabase
       .from('PurchaseTracking')
       .select('*')
-      .order('PRNo', { ascending: false }); // เอาเลข PR ล่าสุดขึ้นก่อน
-    if (data) setPrTrackingData(data);
+      .order('PRNo', { ascending: false }); 
+    if (prData) setPrTrackingData(prData);
+
+    // 2. ดึงเวลาอัปเดตล่าสุดจากส่วนกลางมาโชว์ 🌟
+    const { data: timeData } = await supabase
+      .from('SystemSettings')
+      .select('SettingValue')
+      .eq('SettingName', 'prLastUpdated')
+      .single();
+      
+    if (timeData) {
+      setPrLastUpdated(timeData.SettingValue);
+    }
   };
 
   // 🚨 อย่าลืมไปเรียก fetchPrTrackingData() ไว้ใน fetchAllData หรือ useEffect ด้วยนะครับ!
@@ -867,9 +879,15 @@ export default function MaintenanceDashboard() {
               }
             }
 
+            // 🌟 4. บันทึกเวลาอัปเดตล่าสุด (ยิงขึ้นส่วนกลาง)
             const timeNow = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            localStorage.setItem('prLastUpdated', timeNow);
-            setPrLastUpdated(timeNow);
+            
+            // อัปเดตขึ้น Supabase
+            await supabase
+              .from('SystemSettings')
+              .upsert({ SettingName: 'prLastUpdated', SettingValue: timeNow }, { onConflict: 'SettingName' });
+              
+            setPrLastUpdated(timeNow); // อัปเดตโชว์หน้าจอตัวเองทันที
 
             showToast(`อัปเดตและล้างข้อมูลสำเร็จ!`, 'success');
             fetchPrTrackingData(); 
