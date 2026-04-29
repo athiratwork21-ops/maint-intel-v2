@@ -15,6 +15,10 @@ export default function MaintenanceDashboard() {
   const [showIntro, setShowIntro] = useState(false);
   
   const [departments, setDepartments] = useState<any[]>([]);
+  
+  // 🚨 เติมบรรทัดนี้กลับเข้าไปครับ! (ตัวแปรเก็บแผนกที่หายไป)
+  const [selectedDept, setSelectedDept] = useState(''); 
+
   // 🌟 เก็บค่า Location หลายตัวสำหรับ Fixture
   const [multiLocations, setMultiLocations] = useState<string[]>([]);
   const [activeDeptName, setActiveDeptName] = useState('');
