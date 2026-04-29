@@ -662,7 +662,7 @@ export default function MaintenanceDashboard() {
       if (uploadError) { showToast(`Image upload failed`, 'error'); setIsProcessing(false); return; }
       const { data } = supabase.storage.from('part-images').getPublicUrl(fileName); finalImageUrl = data.publicUrl;
     }
-    const { error } = await supabase.from('Fixtures').update({ ModelName: formData.get('modelName'), ImageURL: finalImageUrl, multiLocations.join(', ') || '-' }).eq('FixtureNo', selectedFixture.FixtureNo);
+    const { error } = await supabase.from('Fixtures').update({ ModelName: formData.get('modelName'), ImageURL: finalImageUrl, Location: multiLocations.join(', ') || '-' }).eq('FixtureNo', selectedFixture.FixtureNo);
     if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast('Fixture info updated!', 'success'); setEditFixtureInfoOpen(false); fetchAllData(); }
     setIsProcessing(false);
   };
@@ -2010,7 +2010,7 @@ export default function MaintenanceDashboard() {
                   <div className="flex flex-wrap gap-3 items-center">
                     <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
                     <div className="h-6 w-px bg-slate-200 hidden sm:block"></div> 
-                    <button onClick={() => setNewFixtureModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition-all shadow-md shadow-purple-600/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> Add Fixture</button>
+                    <button onClick={() => { setPreviewImage(null); setMultiLocations([]); setNewFixtureModalOpen(true); }} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition-all shadow-md shadow-purple-600/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> Add Fixture</button>
                   </div> 
                 </div> 
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search Fixture No. or Model..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm shadow-sm transition-all" /></div></div> 
@@ -2050,7 +2050,7 @@ export default function MaintenanceDashboard() {
                                 <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
                                   <button onClick={() => { setSelectedFixture(item); setFixtureActionReason('New Receive'); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-seam text-lg"></i> Update Stock</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => { setSelectedFixture(item); setPreviewImage(item.ImageURL || null); setEditFixtureInfoOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Fixture Info</button>
+                                  <button onClick={() => { setSelectedFixture(item); setPreviewImage(item.ImageURL || null); setMultiLocations(item.Location && item.Location !== '-' ? item.Location.split(', ').map(l => l.trim()) : []); setEditFixtureInfoOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Fixture Info</button>
                                   <div className="h-px bg-slate-100 my-1 mx-4"></div>
                                   <button onClick={() => handleDeleteFixture(item.FixtureNo)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Fixture</button>
                                 </div>
