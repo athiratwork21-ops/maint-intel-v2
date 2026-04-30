@@ -1625,8 +1625,7 @@ export default function MaintenanceDashboard() {
           </div> 
         </header>
 
-        /* 
-         */
+        <div className="flex-1 relative overflow-hidden">
           
           {/* TAB: DASHBOARD */}
           {activeTab === 'dashboard' && ( 
@@ -2560,4 +2559,4 @@ export default function MaintenanceDashboard() {
       </main>
     </div>
   );
-}
+} 
