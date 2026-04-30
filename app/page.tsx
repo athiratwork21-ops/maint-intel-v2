@@ -1625,16 +1625,8 @@ export default function MaintenanceDashboard() {
           </div> 
         </header>
 
-        {/* 🌟 Injected Sub-Tabs (โผล่มาเฉพาะตอนอยู่หน้า Inventory) 🌟 */}
-        {['stock', 'consumables', 'fixtures'].includes(activeTab) && (
-           <div className="bg-white border-b border-slate-200 px-10 flex gap-8 shrink-0 relative z-20">
-               <button onClick={() => setActiveTab('stock')} className={`py-4 text-[13px] font-extrabold border-b-[3px] transition-all ${activeTab === 'stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><i className="bi bi-box-seam mr-2"></i>Spare Parts</button>
-               <button onClick={() => setActiveTab('consumables')} className={`py-4 text-[13px] font-extrabold border-b-[3px] transition-all ${activeTab === 'consumables' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><i className="bi bi-box2-heart mr-2"></i>Consumables</button>
-               <button onClick={() => setActiveTab('fixtures')} className={`py-4 text-[13px] font-extrabold border-b-[3px] transition-all ${activeTab === 'fixtures' ? 'border-purple-500 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}><i className="bi bi-tools mr-2"></i>Fixtures & Jigs</button>
-           </div>
-        )}
-
-        <div className="flex-1 relative overflow-hidden">
+        /* 
+         */
           
           {/* TAB: DASHBOARD */}
           {activeTab === 'dashboard' && ( 
