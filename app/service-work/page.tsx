@@ -59,3 +59,91 @@ export default function ServiceWorkPortal() {
     </div>
   );
 }
+import React, { useState } from 'react';
+
+export default function ServiceDispatch() {
+  // 🌟 สมมติว่าดึงข้อมูลพวกนี้มาจากตาราง Master (Basic Info) แล้ว
+  const mockParts = [{ pn: 'PN-001', name: 'Sensor SICK' }, { pn: 'PN-002', name: 'Servo Motor' }];
+  const mockStaff = [{ id: 'EMP01', name: 'สมชาย ซ่อมเก่ง' }, { id: 'EMP02', name: 'สายฟ้า พาเพลิน' }];
+  const mockLines = ['Line-A', 'Line-B', 'Line-C'];
+
+  return (
+    <div className="p-8 bg-slate-50 min-h-screen font-sans">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-black text-slate-800 mb-6 flex items-center gap-3">
+          <i className="bi bi-ticket-detailed-fill text-blue-600"></i> สร้างตั๋วจ่ายงาน (Job Dispatch)
+        </h1>
+
+        <form className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* 1. W/O Number (พิมพ์เอา เพราะน่าจะมาจากระบบ ERP อื่น) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Work Order (W/O)</label>
+              <input type="text" placeholder="e.g. WO-2026-9999" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700" />
+            </div>
+
+            {/* 2. เลือกพนักงาน (Dropdown) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assign To (มอบหมายให้)</label>
+              <div className="relative">
+                <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none">
+                  <option value="">-- เลือกช่างผู้รับผิดชอบ --</option>
+                  {mockStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
+                </select>
+                <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              </div>
+            </div>
+
+            {/* 3. เลือกอะไหล่ (Dropdown) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Part Number (P/N)</label>
+              <div className="relative">
+                <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none">
+                  <option value="">-- เลือกอะไหล่ --</option>
+                  {mockParts.map(p => <option key={p.pn} value={p.pn}>{p.pn} - {p.name}</option>)}
+                </select>
+                <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              </div>
+            </div>
+
+            {/* 4. จำนวน */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Quantity (จำนวน)</label>
+              <div className="flex items-center">
+                <input type="number" min="1" defaultValue="1" className="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-lg z-10" />
+                <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span>
+              </div>
+            </div>
+
+            {/* 5. เลือก Line (Dropdown) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Target Line</label>
+              <div className="relative">
+                <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none">
+                  <option value="">-- เลือก Line --</option>
+                  {mockLines.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              </div>
+            </div>
+
+            {/* 6. วัน-เวลาที่ต้องเข้าทำ */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Schedule Date/Time</label>
+              <input type="datetime-local" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700" />
+            </div>
+
+          </div>
+
+          <div className="pt-6 border-t border-slate-100">
+            <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-lg py-5 rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.02] active:scale-95 transition-all">
+              <i className="bi bi-send-check-fill mr-2"></i> สร้างตั๋วจ่ายงาน (Dispatch Ticket)
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  );
+}
