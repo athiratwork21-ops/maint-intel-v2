@@ -3,6 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { supabaseServiceWork } from '../../lib/supabase-servicework'; 
 
 // =====================================================================
+// 🛡️ บังคับ TypeScript ให้รู้จักโครงสร้าง (แก้ปัญหา Type never[])
+// =====================================================================
+interface PortalData {
+  parts: any[];
+  staff: any[];
+  lines: any[];
+  tickets: any[];
+  inventory: any[];
+  logs: any[];
+}
+
+// =====================================================================
 // 📦 1. Component: Master Data (จัดการข้อมูลพื้นฐาน)
 // =====================================================================
 function MasterDataTab({ fetchData }: any) {
@@ -29,6 +41,13 @@ function MasterDataTab({ fetchData }: any) {
           <input name="id" placeholder="รหัสพนักงาน" required className="flex-1 p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" />
           <input name="name" placeholder="ชื่อ-สกุล" required className="flex-1 p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm" />
           <button type="submit" disabled={isProcessing} className="bg-indigo-600 text-white font-bold px-6 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all">เพิ่ม</button>
+        </form>
+      </div>
+      <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+        <h2 className="text-lg font-black mb-4 flex items-center gap-2"><i className="bi bi-diagram-3-fill text-emerald-600"></i> เพิ่มจุดส่งของ (Lines)</h2>
+        <form onSubmit={(e:any) => handleAdd(e, 'master_lines', { line_name: e.target.line.value })} className="flex gap-4 w-1/2">
+          <input name="line" placeholder="ชื่อ Line / เครื่องจักร" required className="flex-1 p-3 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-sm" />
+          <button type="submit" disabled={isProcessing} className="bg-emerald-600 text-white font-bold px-6 rounded-xl hover:bg-emerald-700 active:scale-95 transition-all">เพิ่ม</button>
         </form>
       </div>
     </div>
@@ -109,6 +128,7 @@ function JobBoard({ tickets, fetchAll }: any) {
             )}
           </div>
         ))}
+        {tickets.length === 0 && <div className="col-span-full text-center text-slate-400 py-10 font-bold">ยังไม่มีตั๋วงานในระบบ</div>}
       </div>
     </div>
   );
@@ -183,7 +203,9 @@ export default function ServiceWorkPortal() {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('board');
-  const [data, setData] = useState<any>({ parts: [], staff: [], lines: [], tickets: [], inventory: [], logs: [] });
+  
+  // 🌟 จุดแก้ปัญหา TypeScript: บังคับใช้ Interface PortalData ตรงนี้!
+  const [data, setData] = useState<PortalData>({ parts: [], staff: [], lines: [], tickets: [], inventory: [], logs: [] });
   const [loading, setLoading] = useState(false);
 
   const fetchAll = async () => {
