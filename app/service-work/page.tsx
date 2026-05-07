@@ -183,7 +183,7 @@ export default function ServiceWorkPortal() {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('board');
-  const [data, setData] = useState({ parts: [], staff: [], lines: [], tickets: [], inventory: [], logs: [] });
+  const [data, setData] = useState<any>({ parts: [], staff: [], lines: [], tickets: [], inventory: [], logs: [] });
   const [loading, setLoading] = useState(false);
 
   const fetchAll = async () => {
