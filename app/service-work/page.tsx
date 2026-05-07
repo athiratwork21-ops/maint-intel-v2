@@ -1,10 +1,10 @@
 "use client";
 import React, { useState } from 'react';
-// 🌟 เดี๋ยวเราค่อย import supabase ตัวใหม่เข้ามาตรงนี้
+// 🌟 เดี๋ยวค่อย import supabase ตัวใหม่เข้ามาใช้งานจริงตรงนี้
 // import { supabaseServiceWork } from '../../lib/supabase-servicework'; 
 
 // =====================================================================
-// 📦 1. Component ย่อย: ฟอร์มจ่ายงาน (เอา export default ออก)
+// 📦 1. Component ย่อย: ฟอร์มจ่ายงาน (ซ่อนการทำงานไว้ด้านหลัง)
 // =====================================================================
 function ServiceDispatch() {
   // 🌟 สมมติว่าดึงข้อมูลพวกนี้มาจากตาราง Master (Basic Info) แล้ว
@@ -12,26 +12,55 @@ function ServiceDispatch() {
   const mockStaff = [{ id: 'EMP01', name: 'สมชาย ซ่อมเก่ง' }, { id: 'EMP02', name: 'สายฟ้า พาเพลิน' }];
   const mockLines = ['Line-A', 'Line-B', 'Line-C'];
 
+  // 🌟 ฟังก์ชันจัดการตอนกดปุ่ม "สร้างตั๋ว"
+  const handleDispatchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    // ⏰ แสตมป์เวลาปัจจุบันเป๊ะๆ วินาทีที่กดปุ่ม!
+    const timestamp = new Date().toISOString(); 
+
+    // รวบรวมข้อมูลเตรียมโยนลง Database
+    const newJobTicket = {
+      woNumber: formData.get('woNumber'),
+      assignTo: formData.get('assignTo'),
+      partNumber: formData.get('partNumber'),
+      quantity: formData.get('quantity'),
+      targetLine: formData.get('targetLine'),
+      createdAt: timestamp, // บันทึกเวลาที่กดส่ง
+      status: 'Pending'
+    };
+
+    console.log("🚀 ข้อมูลตั๋วจ่ายงานที่เตรียมส่งลง DB:", newJobTicket);
+    
+    // โชว์แจ้งเตือนว่าบันทึกเวลาไหน
+    const displayTime = new Date(timestamp).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'medium' });
+    alert(`สร้างตั๋วงานสำเร็จ!\nบันทึกระบบอัตโนมัติเวลา: ${displayTime}`);
+    
+    // เคลียร์ฟอร์มหลังส่งเสร็จ
+    e.currentTarget.reset();
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-4">
       <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
         <i className="bi bi-ticket-detailed-fill text-blue-600"></i> สร้างตั๋วจ่ายงาน (Job Dispatch)
       </h2>
 
-      <form className="bg-slate-50 p-8 rounded-3xl border border-slate-200 space-y-6">
+      <form onSubmit={handleDispatchSubmit} className="bg-slate-50 p-8 rounded-3xl border border-slate-200 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* 1. W/O Number */}
-          <div>
+          {/* 1. W/O Number (ปรับให้ยาวเต็มบรรทัด md:col-span-2) */}
+          <div className="md:col-span-2">
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Work Order (W/O)</label>
-            <input type="text" placeholder="e.g. WO-2026-9999" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 shadow-sm" />
+            <input type="text" name="woNumber" required placeholder="e.g. WO-2026-9999" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 shadow-sm" />
           </div>
 
           {/* 2. เลือกพนักงาน */}
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Assign To (มอบหมายให้)</label>
             <div className="relative">
-              <select className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none shadow-sm">
+              <select name="assignTo" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none shadow-sm">
                 <option value="">-- เลือกช่างผู้รับผิดชอบ --</option>
                 {mockStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
               </select>
@@ -39,32 +68,11 @@ function ServiceDispatch() {
             </div>
           </div>
 
-          {/* 3. เลือกอะไหล่ */}
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Part Number (P/N)</label>
-            <div className="relative">
-              <select className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none shadow-sm">
-                <option value="">-- เลือกอะไหล่ --</option>
-                {mockParts.map(p => <option key={p.pn} value={p.pn}>{p.pn} - {p.name}</option>)}
-              </select>
-              <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            </div>
-          </div>
-
-          {/* 4. จำนวน */}
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Quantity (จำนวน)</label>
-            <div className="flex items-center shadow-sm rounded-xl">
-              <input type="number" min="1" defaultValue="1" className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-lg z-10" />
-              <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span>
-            </div>
-          </div>
-
-          {/* 5. เลือก Line */}
+          {/* 3. เลือก Line */}
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Target Line</label>
             <div className="relative">
-              <select className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none shadow-sm">
+              <select name="targetLine" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none shadow-sm">
                 <option value="">-- เลือก Line --</option>
                 {mockLines.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
@@ -72,18 +80,36 @@ function ServiceDispatch() {
             </div>
           </div>
 
-          {/* 6. วัน-เวลาที่ต้องเข้าทำ */}
+          {/* 4. เลือกอะไหล่ */}
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Schedule Date/Time</label>
-            <input type="datetime-local" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 shadow-sm" />
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Part Number (P/N)</label>
+            <div className="relative">
+              <select name="partNumber" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 appearance-none shadow-sm">
+                <option value="">-- เลือกอะไหล่ --</option>
+                {mockParts.map(p => <option key={p.pn} value={p.pn}>{p.pn} - {p.name}</option>)}
+              </select>
+              <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            </div>
           </div>
 
+          {/* 5. จำนวน */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Quantity (จำนวน)</label>
+            <div className="flex items-center shadow-sm rounded-xl">
+              <input type="number" name="quantity" min="1" defaultValue="1" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-lg z-10" />
+              <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span>
+            </div>
+          </div>
+          
         </div>
 
         <div className="pt-6 border-t border-slate-200 mt-6">
-          <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-lg py-5 rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.01] active:scale-95 transition-all">
-            <i className="bi bi-send-check-fill mr-2"></i> บันทึกและสร้างตั๋วจ่ายงาน
+          <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-lg py-5 rounded-xl shadow-lg shadow-blue-500/30 hover:scale-[1.01] active:scale-95 transition-all flex justify-center items-center gap-2">
+            <i className="bi bi-send-check-fill"></i> บันทึกและสร้างตั๋วจ่ายงาน
           </button>
+          <p className="text-center text-[11px] text-slate-400 mt-3 font-bold">
+            <i className="bi bi-clock-history mr-1"></i> วันและเวลาจะถูกบันทึกอัตโนมัติเมื่อกดปุ่มส่ง
+          </p>
         </div>
 
       </form>
@@ -93,7 +119,7 @@ function ServiceDispatch() {
 
 
 // =====================================================================
-// 🚀 2. Component หลัก: หน้าประตูทางเข้า (มี export default ได้แค่อันเดียว)
+// 🚀 2. Component หลัก: หน้าประตูทางเข้า Service Work
 // =====================================================================
 export default function ServiceWorkPortal() {
   const [password, setPassword] = useState('');
@@ -144,7 +170,7 @@ export default function ServiceWorkPortal() {
           <h1 className="text-3xl font-black text-slate-800">Service Work Database</h1>
           <p className="text-slate-500 mt-2 font-medium">ศูนย์รวมข้อมูลการจ่ายงานและประวัติเบิกจ่าย (Separate Database)</p>
         </div>
-        <button onClick={() => setIsAuthenticated(false)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors border border-red-100">
+        <button onClick={() => setIsAuthenticated(false)} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors border border-red-100 shadow-sm active:scale-95">
           <i className="bi bi-box-arrow-right mr-2"></i>ออกจากระบบ
         </button>
       </header>
