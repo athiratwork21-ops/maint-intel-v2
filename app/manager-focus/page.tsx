@@ -1,32 +1,48 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // ==========================================
-// 🛡️ โครงสร้างข้อมูล
+// 🛡️ โครงสร้างข้อมูล (เพิ่ม dueDate)
 // ==========================================
 interface Task {
   id: string;
   title: string;
   priority: 'High' | 'Med' | 'Low';
   status: 'backlog' | 'planned' | 'done';
+  dueDate?: string; 
   startTime?: string;
-  endTime?: string;
 }
 
 export default function ManagerFocusDashboard() {
   const [tasks, setTasks] = useState<Task[]>([
-    { id: '1', title: 'ตรวจอนุมัติ P/O อะไหล่ประจำเดือน', priority: 'High', status: 'backlog' },
-    { id: '2', title: 'ประชุมทีมช่างซ่อมบำรุง (Weekly)', priority: 'Med', status: 'backlog' },
-    { id: '3', title: 'สรุป Report แจ้งซ่อมของ Line A', priority: 'High', status: 'planned', startTime: '10:00', endTime: '11:30' },
-    { id: '4', title: 'เซ็นเอกสาร OT พนักงาน', priority: 'Low', status: 'done', startTime: '08:30', endTime: '09:00' },
+    { id: '1', title: 'ตรวจอนุมัติ P/O อะไหล่ประจำเดือน', priority: 'High', status: 'backlog', dueDate: '2026-05-09' },
+    { id: '2', title: 'ประชุมทีมช่างซ่อมบำรุง (Weekly)', priority: 'Med', status: 'backlog', dueDate: '2026-05-11' },
+    { id: '3', title: 'สั่งซื้อเครื่องจักรใหม่ Line B', priority: 'High', status: 'backlog', dueDate: '2026-05-05' }, // เลยกำหนด
+    { id: '4', title: 'สรุป Report แจ้งซ่อม', priority: 'High', status: 'planned', startTime: '10:00' },
   ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [timeForm, setTimeForm] = useState({ start: '09:00', end: '10:00' });
+  const [startTime, setStartTime] = useState('09:00'); // เหลือแค่เวลาเริ่ม
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'High' | 'Med' | 'Low'>('Med');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
+  
+  // State สำหรับคุม Custom Dropdown
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // ปิด Dropdown เมื่อคลิกที่อื่น
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // 📊 คำนวณ Dashboard
   const totalTasks = tasks.length;
@@ -35,13 +51,40 @@ export default function ManagerFocusDashboard() {
   const plannedTasks = tasks.filter(t => t.status === 'planned').length;
   const progressPercent = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
 
+  // 🗓️ ฟังก์ชันคำนวณสถานะ Deadline
+  const getDeadlineStatus = (dueDate?: string) => {
+    if (!dueDate) return { label: 'ไม่มีกำหนด', color: 'text-slate-400 bg-slate-50 border-slate-100', level: 99 };
+    
+    // ตั้งค่าเวลาปัจจุบันให้เป็นเที่ยงคืน เพื่อเทียบแค่วันที่
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dueDate);
+    target.setHours(0, 0, 0, 0);
+    
+    // คำนวณส่วนต่างเป็นจำนวนวัน
+    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return { label: 'เลยกำหนด!', color: 'text-red-600 bg-red-50 border-red-200 animate-pulse', level: 1 };
+    if (diffDays === 0) return { label: 'ต้องเสร็จวันนี้!', color: 'text-orange-600 bg-orange-50 border-orange-200', level: 2 };
+    if (diffDays <= 2) return { label: `อีก ${diffDays} วัน`, color: 'text-amber-600 bg-amber-50 border-amber-200', level: 3 };
+    return { label: `ใน ${diffDays} วัน`, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', level: 4 };
+  };
+
   // ⚙️ ฟังก์ชันจัดการงาน
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-    const newTask: Task = { id: Date.now().toString(), title: newTaskTitle, priority: newTaskPriority, status: 'backlog' };
+    const newTask: Task = { 
+      id: Date.now().toString(), 
+      title: newTaskTitle, 
+      priority: newTaskPriority, 
+      dueDate: newTaskDueDate || undefined,
+      status: 'backlog' 
+    };
     setTasks([...tasks, newTask]);
     setNewTaskTitle('');
+    setNewTaskDueDate('');
+    setIsDropdownOpen(false);
   };
 
   const openScheduleModal = (task: Task) => {
@@ -52,20 +95,32 @@ export default function ManagerFocusDashboard() {
   const handleScheduleTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTask) return;
-    setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: 'planned', startTime: timeForm.start, endTime: timeForm.end } : t));
+    setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: 'planned', startTime: startTime } : t));
     setIsModalOpen(false);
   };
 
   const markAsDone = (id: string) => { setTasks(tasks.map(t => t.id === id ? { ...t, status: 'done' } : t)); };
-  const moveToBacklog = (id: string) => { setTasks(tasks.map(t => t.id === id ? { ...t, status: 'backlog', startTime: undefined, endTime: undefined } : t)); };
+  const moveToBacklog = (id: string) => { setTasks(tasks.map(t => t.id === id ? { ...t, status: 'backlog', startTime: undefined } : t)); };
+
+  // 🔀 เรียงงานใน Backlog ตาม Deadline Level (ใกล้หมดเวลาขึ้นก่อน)
+  const sortedBacklog = tasks
+    .filter(t => t.status === 'backlog')
+    .sort((a, b) => getDeadlineStatus(a.dueDate).level - getDeadlineStatus(b.dueDate).level);
 
   const todaysSchedule = tasks.filter(t => t.status === 'planned').sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
+  // ตัวแปรเสริมสำหรับ Custom Dropdown
+  const priorityOptions = [
+    { value: 'High', label: 'ด่วน', icon: '🔥', color: 'text-red-500 bg-red-50' },
+    { value: 'Med', label: 'กลาง', icon: '⚡', color: 'text-amber-500 bg-amber-50' },
+    { value: 'Low', label: 'ชิล', icon: '🧊', color: 'text-blue-500 bg-blue-50' }
+  ];
+  const currentPriority = priorityOptions.find(p => p.value === newTaskPriority);
+
   return (
-    // 🔒 ล็อคหน้าจอด้วย h-screen และ overflow-hidden + antialiased ให้ฟอนต์เนียน
     <div className="h-screen bg-[#F8FAFC] font-sans antialiased p-6 flex flex-col overflow-hidden">
       
-      {/* 🌟 HEADER (shrink-0 ป้องกันการโดนบีบ) */}
+      {/* 🌟 HEADER */}
       <header className="mb-6 flex justify-between items-end shrink-0">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Executive Planner</h1>
@@ -82,7 +137,7 @@ export default function ManagerFocusDashboard() {
         </div>
       </header>
 
-      {/* 📊 DASHBOARD CARDS (shrink-0) */}
+      {/* 📊 DASHBOARD CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 shrink-0">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow">
           <div className="w-12 h-12 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center text-xl border border-slate-100"><i className="bi bi-card-list"></i></div>
@@ -102,63 +157,93 @@ export default function ManagerFocusDashboard() {
         </div>
       </div>
 
-      {/* 🛠️ MAIN WORKSPACE (flex-1 min-h-0 ให้พื้นที่ที่เหลือขยายเต็ม และ Scroll ได้) */}
+      {/* 🛠️ MAIN WORKSPACE */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* ซ้าย: BACKLOG */}
-        <div className="lg:col-span-5 bg-white rounded-[2rem] border border-slate-200/60 shadow-sm p-6 flex flex-col h-full">
+        <div className="lg:col-span-6 xl:col-span-5 bg-white rounded-[2rem] border border-slate-200/60 shadow-sm p-6 flex flex-col h-full">
           <h2 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2 tracking-tight"><i className="bi bi-inbox text-amber-500"></i> Brain Dump</h2>
           
           {/* ฟอร์มเพิ่มงาน */}
-          <form onSubmit={handleAddTask} className="flex gap-2 mb-6 shrink-0">
-            <input type="text" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="เพิ่มงานด่วน..." className="flex-1 bg-white border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all shadow-sm" />
+          <form onSubmit={handleAddTask} className="flex flex-col gap-3 mb-6 shrink-0 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+            <input type="text" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="เพิ่มงานด่วน..." className="w-full bg-white border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all shadow-sm" />
             
-            {/* 🎯 Dropdown แบบ Premium */}
-            <div className="relative shrink-0">
-              <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value as any)} className="appearance-none bg-white border border-slate-200 p-3.5 pr-10 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-600 cursor-pointer shadow-sm transition-all h-full">
-                <option value="High">🔥 ด่วน</option><option value="Med">⚡ กลาง</option><option value="Low">🧊 ชิล</option>
-              </select>
-              <i className="bi bi-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs font-bold"></i>
-            </div>
+            <div className="flex gap-2 relative" ref={dropdownRef}>
+              {/* เลือกวันที่ (Deadline) */}
+              <div className="relative flex-1">
+                <input type="date" value={newTaskDueDate} onChange={e => setNewTaskDueDate(e.target.value)} className="w-full appearance-none bg-white border border-slate-200 p-3.5 pl-10 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-600 cursor-pointer shadow-sm transition-all h-full" />
+                <i className="bi bi-calendar-event absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+              </div>
 
-            <button type="submit" className="bg-slate-900 text-white w-12 rounded-xl hover:bg-slate-800 active:scale-95 transition-all flex justify-center items-center text-lg shadow-sm"><i className="bi bi-plus-lg"></i></button>
+              {/* 🎯 Custom Dropdown (ความด่วน) */}
+              <div className="relative w-32 shrink-0">
+                <button type="button" onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm hover:border-slate-300 transition-all">
+                  <span className="flex items-center gap-2">{currentPriority?.icon} {currentPriority?.label}</span>
+                  <i className="bi bi-chevron-down text-[10px] text-slate-400"></i>
+                </button>
+                
+                {isDropdownOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in slide-in-from-top-2 duration-150">
+                    {priorityOptions.map(option => (
+                      <button key={option.value} type="button" onClick={() => { setNewTaskPriority(option.value as any); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-2 border-b border-slate-50 last:border-0">
+                        <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs ${option.color}`}>{option.icon}</span> {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button type="submit" className="bg-slate-900 text-white w-14 shrink-0 rounded-xl hover:bg-slate-800 active:scale-95 transition-all flex justify-center items-center text-lg shadow-sm"><i className="bi bi-plus-lg"></i></button>
+            </div>
           </form>
 
-          {/* List งาน (Scrollable) */}
+          {/* List งาน (Scrollable & Sorted) */}
           <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-            {tasks.filter(t => t.status === 'backlog').length === 0 && <div className="text-center text-slate-400 mt-10 font-medium text-sm">ไม่มีงานค้าง ยอดเยี่ยมมากครับ! 🎉</div>}
-            {tasks.filter(t => t.status === 'backlog').map(task => (
-              <div key={task.id} className="group p-4 bg-slate-50/50 border border-slate-100 hover:bg-white hover:border-blue-200 hover:shadow-sm rounded-xl transition-all flex items-center justify-between">
-                <div>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider mb-1.5 inline-block ${task.priority === 'High' ? 'bg-red-100 text-red-600' : task.priority === 'Med' ? 'bg-amber-100 text-amber-600' : 'bg-slate-200 text-slate-600'}`}>{task.priority}</span>
-                  <p className="font-semibold text-slate-700 text-sm">{task.title}</p>
+            {sortedBacklog.length === 0 && <div className="text-center text-slate-400 mt-10 font-medium text-sm">ไม่มีงานค้าง ยอดเยี่ยมมากครับ! 🎉</div>}
+            
+            {sortedBacklog.map(task => {
+              const deadline = getDeadlineStatus(task.dueDate);
+              return (
+                <div key={task.id} className="group p-4 bg-white border border-slate-200 hover:border-blue-300 hover:shadow-md rounded-2xl transition-all flex items-center justify-between">
+                  <div className="flex-1 pr-4">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${task.priority === 'High' ? 'bg-red-100 text-red-600' : task.priority === 'Med' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>{task.priority}</span>
+                      
+                      {/* ⏳ ป้ายบอกสถานะ Deadline */}
+                      {task.dueDate && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${deadline.color}`}>
+                          <i className="bi bi-clock"></i> {deadline.label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-semibold text-slate-700 text-sm leading-snug">{task.title}</p>
+                  </div>
+                  <button onClick={() => openScheduleModal(task)} className="shrink-0 opacity-0 group-hover:opacity-100 bg-white border border-blue-100 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm">
+                    <i className="bi bi-arrow-right-short"></i>
+                  </button>
                 </div>
-                <button onClick={() => openScheduleModal(task)} className="opacity-0 group-hover:opacity-100 bg-white border border-blue-100 text-blue-600 px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm">
-                  <i className="bi bi-arrow-right-short text-lg leading-none"></i>
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
         {/* ขวา: TODAY'S TIMELINE */}
-        <div className="lg:col-span-7 bg-slate-900 rounded-[2rem] shadow-xl p-6 md:p-8 flex flex-col h-full relative overflow-hidden">
+        <div className="lg:col-span-6 xl:col-span-7 bg-slate-900 rounded-[2rem] shadow-xl p-6 md:p-8 flex flex-col h-full relative overflow-hidden">
           <div className="absolute top-0 right-0 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
           
-          <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2 relative z-10 tracking-tight"><i className="bi bi-calendar2-range text-blue-400"></i> Today&apos;s Schedule</h2>
+          <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2 relative z-10 tracking-tight"><i className="bi bi-calendar2-range text-blue-400"></i> Today&apos;s Schedule</h2>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar relative z-10">
             {todaysSchedule.length === 0 && <div className="text-center text-slate-400 mt-20 font-medium text-sm">ยังไม่ได้เลือกงานมาทำวันนี้ครับ.</div>}
             
             {todaysSchedule.map((task) => (
               <div key={task.id} className="flex gap-5 group">
-                {/* เวลา */}
-                <div className="w-20 text-right shrink-0 pt-3 border-r border-slate-700/50 pr-5">
+                {/* ⏱️ เวลา (โชว์แค่ Start Time) */}
+                <div className="w-16 text-right shrink-0 pt-4 border-r border-slate-700/50 pr-4">
                   <p className="text-white font-bold text-lg leading-none tracking-tight">{task.startTime}</p>
-                  <p className="text-slate-400 font-medium text-[11px] mt-1">{task.endTime}</p>
                 </div>
                 {/* กล่องงาน */}
-                <div className="flex-1 bg-slate-800/80 border border-slate-700/50 p-4 rounded-2xl hover:border-blue-500/50 transition-all flex justify-between items-center group-hover:bg-slate-800">
+                <div className="flex-1 bg-slate-800/80 border border-slate-700/50 p-4 rounded-2xl hover:border-blue-500/50 transition-all flex justify-between items-center group-hover:bg-slate-800 shadow-sm">
                   <div>
                     <p className="font-semibold text-slate-100 text-[14px]">{task.title}</p>
                   </div>
@@ -174,41 +259,41 @@ export default function ManagerFocusDashboard() {
 
       </div>
 
-      {/* ⏱️ MODAL: ตั้งเวลางาน (คลีนๆ) */}
+      {/* ⏱️ MODAL: ตั้งเวลาเริ่มงาน (อัปเดตใหม่ ถามแค่ Start Time) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-bold text-slate-800 mb-1 tracking-tight">กำหนดเวลา</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-1 tracking-tight">เลือกเวลาเริ่มงาน</h3>
             <p className="text-slate-500 text-sm font-medium mb-6 truncate">{selectedTask?.title}</p>
             
             <form onSubmit={handleScheduleTask}>
-              <div className="flex items-center gap-4 mb-8">
-                <div className="flex-1">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Start Time</label>
-                  <input type="time" required value={timeForm.start} onChange={e => setTimeForm({...timeForm, start: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
-                </div>
-                <div className="text-slate-300 font-black pt-6">-</div>
-                <div className="flex-1">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">End Time</label>
-                  <input type="time" required value={timeForm.end} onChange={e => setTimeForm({...timeForm, end: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
-                </div>
+              <div className="mb-8 relative">
+                <i className="bi bi-clock absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
+                <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 rounded-xl font-black text-xl text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-center" />
               </div>
               
               <div className="flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 rounded-xl font-semibold text-slate-500 hover:bg-slate-50 transition-colors">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-3 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-md transition-all active:scale-95">บันทึก</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3.5 rounded-xl font-semibold text-slate-500 hover:bg-slate-50 transition-colors">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3.5 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-md transition-all active:scale-95">จัดลงตาราง</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* สไตล์ Scrollbar ซ่อนไว้ (เนียนๆ) */}
+      {/* สไตล์ Scrollbar & ซ่อนไอคอนปฏิทินของ Input Date */}
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: #94a3b8; }
+        
+        /* ซ่อนไอคอนปฏิทินของเบราว์เซอร์บางตัวที่มันชอบแทรกเข้ามา */
+        input[type="date"]::-webkit-inner-spin-button,
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            display: none;
+            -webkit-appearance: none;
+        }
       `}} />
     </div>
   );
