@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
-import { supabase } from '@/lib/supabase.ts'; // 🚨 ดึงท่อเชื่อมมาใช้ (แก้ Path ให้ตรงกับโฟลเดอร์ของบอสด้วยนะ)
+import { supabase } from '../../lib/supabase-managerfocus'; // 🚨 ดึงท่อเชื่อมมาใช้ (แก้ Path ให้ตรงกับโฟลเดอร์ของบอสด้วยนะ)
 
 // ==========================================
 // 🛡️ โครงสร้างข้อมูล
