@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 // ==========================================
-// 🛡️ โครงสร้างข้อมูล (เพิ่ม dueDate)
+// 🛡️ โครงสร้างข้อมูล
 // ==========================================
 interface Task {
   id: string;
@@ -13,32 +13,51 @@ interface Task {
   startTime?: string;
 }
 
+// 🗓️ ฟังก์ชันหาค่าวันที่ล่วงหน้า (YYYY-MM-DD)
+const getOffsetDate = (days: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// 🗓️ ฟังก์ชันแปลงวันที่ให้เป็นภาษาคน (บนปุ่ม Dropdown)
+const formatDisplayDate = (dateString: string) => {
+  if (!dateString) return 'ไม่มีกำหนด';
+  if (dateString === getOffsetDate(0)) return 'วันนี้';
+  if (dateString === getOffsetDate(1)) return 'พรุ่งนี้';
+  return new Date(dateString).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+};
+
 export default function ManagerFocusDashboard() {
   const [tasks, setTasks] = useState<Task[]>([
-    { id: '1', title: 'ตรวจอนุมัติ P/O อะไหล่ประจำเดือน', priority: 'High', status: 'backlog', dueDate: '2026-05-09' },
-    { id: '2', title: 'ประชุมทีมช่างซ่อมบำรุง (Weekly)', priority: 'Med', status: 'backlog', dueDate: '2026-05-11' },
-    { id: '3', title: 'สั่งซื้อเครื่องจักรใหม่ Line B', priority: 'High', status: 'backlog', dueDate: '2026-05-05' }, // เลยกำหนด
+    { id: '1', title: 'ตรวจอนุมัติ P/O อะไหล่ประจำเดือน', priority: 'High', status: 'backlog', dueDate: getOffsetDate(0) },
+    { id: '2', title: 'ประชุมทีมช่างซ่อมบำรุง (Weekly)', priority: 'Med', status: 'backlog', dueDate: getOffsetDate(2) },
+    { id: '3', title: 'สั่งซื้อเครื่องจักรใหม่ Line B', priority: 'High', status: 'backlog', dueDate: getOffsetDate(-2) }, // เลยกำหนด
     { id: '4', title: 'สรุป Report แจ้งซ่อม', priority: 'High', status: 'planned', startTime: '10:00' },
   ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [startTime, setStartTime] = useState('09:00'); // เหลือแค่เวลาเริ่ม
+  const [startTime, setStartTime] = useState('09:00');
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'High' | 'Med' | 'Low'>('Med');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
   
-  // State สำหรับคุม Custom Dropdown
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  // State สำหรับคุม Custom Dropdown ทั้ง 2 ตัว
+  const [isPriorityOpen, setIsPriorityOpen] = useState(false);
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const priorityRef = useRef<HTMLDivElement>(null);
+  const dateRef = useRef<HTMLDivElement>(null);
 
   // ปิด Dropdown เมื่อคลิกที่อื่น
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
+      if (priorityRef.current && !priorityRef.current.contains(event.target as Node)) setIsPriorityOpen(false);
+      if (dateRef.current && !dateRef.current.contains(event.target as Node)) setIsDateOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -51,17 +70,15 @@ export default function ManagerFocusDashboard() {
   const plannedTasks = tasks.filter(t => t.status === 'planned').length;
   const progressPercent = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
 
-  // 🗓️ ฟังก์ชันคำนวณสถานะ Deadline
+  // 🗓️ ฟังก์ชันคำนวณสถานะ Deadline เพื่อแสดงป้ายสี และใช้เรียงลำดับ
   const getDeadlineStatus = (dueDate?: string) => {
     if (!dueDate) return { label: 'ไม่มีกำหนด', color: 'text-slate-400 bg-slate-50 border-slate-100', level: 99 };
     
-    // ตั้งค่าเวลาปัจจุบันให้เป็นเที่ยงคืน เพื่อเทียบแค่วันที่
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const target = new Date(dueDate);
     target.setHours(0, 0, 0, 0);
     
-    // คำนวณส่วนต่างเป็นจำนวนวัน
     const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return { label: 'เลยกำหนด!', color: 'text-red-600 bg-red-50 border-red-200 animate-pulse', level: 1 };
@@ -84,7 +101,8 @@ export default function ManagerFocusDashboard() {
     setTasks([...tasks, newTask]);
     setNewTaskTitle('');
     setNewTaskDueDate('');
-    setIsDropdownOpen(false);
+    setIsPriorityOpen(false);
+    setIsDateOpen(false);
   };
 
   const openScheduleModal = (task: Task) => {
@@ -109,7 +127,7 @@ export default function ManagerFocusDashboard() {
 
   const todaysSchedule = tasks.filter(t => t.status === 'planned').sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
-  // ตัวแปรเสริมสำหรับ Custom Dropdown
+  // ตัวแปรสำหรับ Custom Dropdown
   const priorityOptions = [
     { value: 'High', label: 'ด่วน', icon: '🔥', color: 'text-red-500 bg-red-50' },
     { value: 'Med', label: 'กลาง', icon: '⚡', color: 'text-amber-500 bg-amber-50' },
@@ -168,24 +186,50 @@ export default function ManagerFocusDashboard() {
           <form onSubmit={handleAddTask} className="flex flex-col gap-3 mb-6 shrink-0 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
             <input type="text" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="เพิ่มงานด่วน..." className="w-full bg-white border border-slate-200 p-3.5 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all shadow-sm" />
             
-            <div className="flex gap-2 relative" ref={dropdownRef}>
-              {/* เลือกวันที่ (Deadline) */}
-              <div className="relative flex-1">
-                <input type="date" value={newTaskDueDate} onChange={e => setNewTaskDueDate(e.target.value)} className="w-full appearance-none bg-white border border-slate-200 p-3.5 pl-10 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-600 cursor-pointer shadow-sm transition-all h-full" />
-                <i className="bi bi-calendar-event absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+            <div className="flex gap-2 relative">
+              
+              {/* 📅 Custom Dropdown (วันที่/Deadline) */}
+              <div className="relative flex-1" ref={dateRef}>
+                <button type="button" onClick={() => setIsDateOpen(!isDateOpen)} className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm hover:border-slate-300 transition-all text-slate-600">
+                  <span className="flex items-center gap-2">
+                    <i className={`bi bi-calendar-event ${newTaskDueDate ? 'text-blue-500' : 'text-slate-400'}`}></i> 
+                    {formatDisplayDate(newTaskDueDate)}
+                  </span>
+                  <i className="bi bi-chevron-down text-[10px] text-slate-400"></i>
+                </button>
+                
+                {isDateOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <button type="button" onClick={() => { setNewTaskDueDate(''); setIsDateOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50">
+                      <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs bg-slate-100 text-slate-500"><i className="bi bi-dash-lg"></i></span> ไม่มีกำหนด
+                    </button>
+                    <button type="button" onClick={() => { setNewTaskDueDate(getOffsetDate(0)); setIsDateOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50">
+                      <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs bg-red-50 text-red-600"><i className="bi bi-exclamation-circle"></i></span> วันนี้
+                    </button>
+                    <button type="button" onClick={() => { setNewTaskDueDate(getOffsetDate(1)); setIsDateOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50">
+                      <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs bg-amber-50 text-amber-600"><i className="bi bi-brightness-high"></i></span> พรุ่งนี้
+                    </button>
+                    <button type="button" onClick={() => { setNewTaskDueDate(getOffsetDate(7)); setIsDateOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50">
+                      <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs bg-blue-50 text-blue-600"><i className="bi bi-calendar-week"></i></span> สัปดาห์หน้า
+                    </button>
+                    <div className="p-2.5 bg-slate-50/50">
+                       <input type="date" value={newTaskDueDate} onChange={e => { setNewTaskDueDate(e.target.value); setIsDateOpen(false); }} className="w-full bg-white border border-slate-200 p-2 rounded-lg text-[13px] font-bold text-slate-600 outline-none focus:border-blue-500 shadow-sm cursor-pointer" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 🎯 Custom Dropdown (ความด่วน) */}
-              <div className="relative w-32 shrink-0">
-                <button type="button" onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm hover:border-slate-300 transition-all">
+              <div className="relative w-[120px] shrink-0" ref={priorityRef}>
+                <button type="button" onClick={() => setIsPriorityOpen(!isPriorityOpen)} className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm hover:border-slate-300 transition-all">
                   <span className="flex items-center gap-2">{currentPriority?.icon} {currentPriority?.label}</span>
                   <i className="bi bi-chevron-down text-[10px] text-slate-400"></i>
                 </button>
                 
-                {isDropdownOpen && (
+                {isPriorityOpen && (
                   <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in slide-in-from-top-2 duration-150">
                     {priorityOptions.map(option => (
-                      <button key={option.value} type="button" onClick={() => { setNewTaskPriority(option.value as any); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-2 border-b border-slate-50 last:border-0">
+                      <button key={option.value} type="button" onClick={() => { setNewTaskPriority(option.value as any); setIsPriorityOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-2 border-b border-slate-50 last:border-0">
                         <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs ${option.color}`}>{option.icon}</span> {option.label}
                       </button>
                     ))}
@@ -193,7 +237,7 @@ export default function ManagerFocusDashboard() {
                 )}
               </div>
 
-              <button type="submit" className="bg-slate-900 text-white w-14 shrink-0 rounded-xl hover:bg-slate-800 active:scale-95 transition-all flex justify-center items-center text-lg shadow-sm"><i className="bi bi-plus-lg"></i></button>
+              <button type="submit" className="bg-slate-900 text-white w-[52px] shrink-0 rounded-xl hover:bg-slate-800 active:scale-95 transition-all flex justify-center items-center text-lg shadow-sm"><i className="bi bi-plus-lg"></i></button>
             </div>
           </form>
 
@@ -206,7 +250,7 @@ export default function ManagerFocusDashboard() {
               return (
                 <div key={task.id} className="group p-4 bg-white border border-slate-200 hover:border-blue-300 hover:shadow-md rounded-2xl transition-all flex items-center justify-between">
                   <div className="flex-1 pr-4">
-                    <div className="flex items-center gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${task.priority === 'High' ? 'bg-red-100 text-red-600' : task.priority === 'Med' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>{task.priority}</span>
                       
                       {/* ⏳ ป้ายบอกสถานะ Deadline */}
@@ -248,8 +292,8 @@ export default function ManagerFocusDashboard() {
                     <p className="font-semibold text-slate-100 text-[14px]">{task.title}</p>
                   </div>
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => moveToBacklog(task.id)} className="w-8 h-8 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-600 hover:text-white flex items-center justify-center transition-colors"><i className="bi bi-arrow-counterclockwise"></i></button>
-                    <button onClick={() => markAsDone(task.id)} className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white flex items-center justify-center transition-colors"><i className="bi bi-check-lg"></i></button>
+                    <button onClick={() => moveToBacklog(task.id)} className="w-8 h-8 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-600 hover:text-white flex items-center justify-center transition-colors tooltip-trigger" title="ถอดออก"><i className="bi bi-arrow-counterclockwise"></i></button>
+                    <button onClick={() => markAsDone(task.id)} className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white flex items-center justify-center transition-colors tooltip-trigger" title="เสร็จแล้ว!"><i className="bi bi-check-lg"></i></button>
                   </div>
                 </div>
               </div>
@@ -259,7 +303,7 @@ export default function ManagerFocusDashboard() {
 
       </div>
 
-      {/* ⏱️ MODAL: ตั้งเวลาเริ่มงาน (อัปเดตใหม่ ถามแค่ Start Time) */}
+      {/* ⏱️ MODAL: ตั้งเวลาเริ่มงาน */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
@@ -288,7 +332,6 @@ export default function ManagerFocusDashboard() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: #94a3b8; }
         
-        /* ซ่อนไอคอนปฏิทินของเบราว์เซอร์บางตัวที่มันชอบแทรกเข้ามา */
         input[type="date"]::-webkit-inner-spin-button,
         input[type="date"]::-webkit-calendar-picker-indicator {
             display: none;
