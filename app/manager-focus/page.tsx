@@ -151,7 +151,7 @@ export default function ManagerFocusDashboard() {
           {/* ลวดลาย BG ดำ */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
           
-          <h2 className="text-xl font-black text-white mb-8 flex items-center gap-2 relative z-10"><i className="bi bi-calendar-check text-blue-400"></i> Today's Schedule (แผนของวันนี้)</h2>
+          <h2 className="text-xl font-black text-white mb-8 flex items-center gap-2 relative z-10"><i className="bi bi-calendar-check text-blue-400"></i> Today&apos;s Schedule (แผนของวันนี้)</h2>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar relative z-10">
             {todaysSchedule.length === 0 && <div className="text-center text-slate-500 mt-20 font-bold">ยังไม่ได้เลือกงานมาทำวันนี้ครับบอส.</div>}
