@@ -160,6 +160,12 @@ export default function ManagerFocusDashboard() {
     setIsDateOpen(false);
   };
 
+  // เปิด Modal ตั้งเวลา
+  const openScheduleModal = (task: Task) => {
+    setSelectedTask(task);
+    setIsModalOpen(true);
+  };
+  
   // 2. จัดงานลงตาราง (อัปเดตสถานะและเวลา)
   const handleScheduleTask = async (e: React.FormEvent) => {
     e.preventDefault();
