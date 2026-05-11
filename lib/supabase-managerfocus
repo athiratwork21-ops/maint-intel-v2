@@ -1,8 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-// อย่าลืมเอา URL กับ ANON KEY ของโปรเจกต์ที่เก็บบอร์ดนี้ไปใส่ใน Vercel Environment ด้วยนะครับ
-const supabaseUrl = NEXT_PUBLIC_SUPABASE_managerfocus_URL || 'https://npericsunhazkcutarxu.supabase.co';
-const supabaseKey = NEXT_PUBLIC_SUPABASE_managerfocus_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZXJpY3N1bmhhemtjdXRhcnh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNTAzNzMsImV4cCI6MjA5MzcyNjM3M30.z73em6T-9GF__oOFPQ9UwcRhJPIQZDzsfUwCqE3oktA'
-;
+// ต้องมี process.env. นำหน้าชื่อตัวแปรนะครับบอส
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_managerfocus_URL || 'https://npericsunhazkcutarxu.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_managerfocus_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
