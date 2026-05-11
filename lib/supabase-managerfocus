@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // อย่าลืมเอา URL กับ ANON KEY ของโปรเจกต์ที่เก็บบอร์ดนี้ไปใส่ใน Vercel Environment ด้วยนะครับ
-const supabaseUrl = NEXT_PUBLIC_SUPABASE_managerfocus_URL || 'https://yiqltqonrtfgtwwbumkv.supabase.co';
-const supabaseKey = NEXT_PUBLIC_SUPABASE_managerfocus_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpcWx0cW9ucnRmZ3R3d2J1bWt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMjkyMzksImV4cCI6MjA4ODcwNTIzOX0.WmMUedBgqOzrLkpo0PZ37t-calQNlYfPwW7zV3yMeJA'
+const supabaseUrl = NEXT_PUBLIC_SUPABASE_managerfocus_URL || 'https://npericsunhazkcutarxu.supabase.co';
+const supabaseKey = NEXT_PUBLIC_SUPABASE_managerfocus_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZXJpY3N1bmhhemtjdXRhcnh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNTAzNzMsImV4cCI6MjA5MzcyNjM3M30.z73em6T-9GF__oOFPQ9UwcRhJPIQZDzsfUwCqE3oktA'
 ;
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
