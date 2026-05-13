@@ -49,6 +49,31 @@ export default function ManagerFocusDashboard() {
   const priorityRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
 
+  // ฟังก์ชันยิงแจ้งเตือนส่วนตัว
+  const sendPersonalNotification = async (taskName: string, time: string) => {
+    await fetch('/api/notify-personal', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        message: `🚨 บอสครับ! งานด่วน: **${taskName}**\nจัดลงคิวเวลา **${time}** เรียบร้อยครับ พร้อมลุย!`,
+        email: "athmaras@deltaww.com" // 👈 ใส่อีเมลของบอสตรงนี้
+      })
+    });
+  };
+
+  // แอบเอาไปแทรกตอนบอสกดยืนยันจัดงานลงตาราง (handleScheduleTask)
+  const handleScheduleTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTask) return;
+
+    // โค้ดอัปเดตงานลง DB เดิม...
+    setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: 'planned', startTime: startTime } : t));
+    setIsModalOpen(false);
+    await supabase.from('manager_tasks').update({ status: 'planned', start_time: startTime }).eq('id', selectedTask.id);
+
+    // 🚀 ยิงแจ้งเตือนเข้า MS Teams ส่วนตัวทันที!
+    sendPersonalNotification(selectedTask.title, startTime);
+  };
+
   // ==========================================
   // ⚡ โหลดข้อมูลครั้งแรกจาก Supabase
   // ==========================================
