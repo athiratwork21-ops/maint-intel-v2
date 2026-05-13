@@ -1,10 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { supabase } from '../../lib/supabase-managerfocus'; // 🚨 ดึงท่อเชื่อมมาใช้ (แก้ Path ให้ตรงกับโฟลเดอร์ของบอสด้วยนะ)
+import { supabase } from '@/lib/supabase-managerfocus'; // 🚨 เช็ค Path อีกทีนะครับ ถ้า error ให้เปลี่ยนเป็น '../../lib/supabase-managerfocus'
 
-// ==========================================
-// 🛡️ โครงสร้างข้อมูล
-// ==========================================
 interface Task {
   id: string;
   title: string;
@@ -12,15 +9,12 @@ interface Task {
   status: 'backlog' | 'planned' | 'done';
   dueDate?: string; 
   startTime?: string;
+  owner_email?: string;
 }
 
-// 🗓️ ฟังก์ชันหาค่าวันที่ล่วงหน้า
 const getOffsetDate = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const d = new Date(); d.setDate(d.getDate() + days);
+  const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 
@@ -32,8 +26,13 @@ const formatDisplayDate = (dateString: string) => {
 };
 
 export default function ManagerFocusDashboard() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  // 🔐 ระบบ Login ด้วย Email
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [userEmail, setUserEmail] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
 
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [startTime, setStartTime] = useState('09:00');
@@ -48,29 +47,38 @@ export default function ManagerFocusDashboard() {
   const priorityRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
 
-  // ==========================================
-  // ⚡ โหลดข้อมูลครั้งแรกจาก Supabase (จัดระเบียบใหม่)
-  // ==========================================
+  // 1️⃣ ตรวจสอบอีเมลในเครื่องตอนโหลดเว็บครั้งแรก
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('managerEmail');
+    if (savedEmail) {
+      setUserEmail(savedEmail);
+      setIsLoggedIn(true);
+    }
+    setIsCheckingAuth(false);
+  }, []);
+
+  // 2️⃣ โหลดข้อมูลเฉพาะงานของ "อีเมล" นี้
   const fetchTasks = useCallback(async () => {
-    const { data, error } = await supabase.from('manager_tasks').select('*');
+    if (!userEmail) return;
+    const { data, error } = await supabase
+      .from('manager_tasks')
+      .select('*')
+      .eq('owner_email', userEmail); // 👈 ฟิลเตอร์งานของคนๆ นี้
+
     if (error) {
       console.error('Error fetching tasks:', error);
     } else if (data) {
       const formattedData: Task[] = data.map(d => ({
-        id: d.id,
-        title: d.title,
-        priority: d.priority,
-        status: d.status,
-        dueDate: d.due_date || undefined,
-        startTime: d.start_time || undefined
+        id: d.id, title: d.title, priority: d.priority, status: d.status,
+        dueDate: d.due_date || undefined, startTime: d.start_time || undefined, owner_email: d.owner_email
       }));
       setTasks(formattedData);
     }
-  }, []);
+  }, [userEmail]);
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    if (isLoggedIn) fetchTasks();
+  }, [isLoggedIn, fetchTasks]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -81,7 +89,23 @@ export default function ManagerFocusDashboard() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ฟังก์ชันยิงแจ้งเตือนส่วนตัว
+  // 🔐 ฟังก์ชัน Login / Logout
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !emailInput.includes('@')) return alert('กรุณากรอกอีเมลให้ถูกต้องครับบอส');
+    localStorage.setItem('managerEmail', emailInput.trim());
+    setUserEmail(emailInput.trim());
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('managerEmail');
+    setUserEmail('');
+    setIsLoggedIn(false);
+    setTasks([]);
+  };
+
+  // 🚀 ฟังก์ชันยิงแจ้งเตือนส่วนตัว (ใช้อีเมลที่ Login)
   const sendPersonalNotification = async (taskName: string, time: string) => {
     try {
       await fetch('/api/notify-personal', {
@@ -89,7 +113,7 @@ export default function ManagerFocusDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: `🚨 บอสครับ! งานด่วน: **${taskName}**\nจัดลงคิวเวลา **${time}** เรียบร้อยครับ พร้อมลุย!`,
-          email: "athmaras@deltaww.com"
+          email: userEmail // 👈 ใช้อีเมลที่บอสกรอกเข้ามาแทนค่า Fix
         })
       });
     } catch (error) {
@@ -97,46 +121,22 @@ export default function ManagerFocusDashboard() {
     }
   };
 
-  // 📊 คำนวณ Dashboard
-  const totalTasks = tasks.length;
-  const doneTasks = tasks.filter(t => t.status === 'done').length;
-  const backlogTasks = tasks.filter(t => t.status === 'backlog').length;
-  const plannedTasks = tasks.filter(t => t.status === 'planned').length;
-  const progressPercent = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
-
-  const getDeadlineStatus = (dueDate?: string) => {
-    if (!dueDate) return { label: 'ไม่มีกำหนด', color: 'text-slate-400 bg-slate-50 border-slate-100', level: 99 };
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const target = new Date(dueDate); target.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return { label: 'เลยกำหนด!', color: 'text-red-600 bg-red-50 border-red-200 animate-pulse', level: 1 };
-    if (diffDays === 0) return { label: 'ต้องเสร็จวันนี้!', color: 'text-orange-600 bg-orange-50 border-orange-200', level: 2 };
-    if (diffDays <= 2) return { label: `อีก ${diffDays} วัน`, color: 'text-amber-600 bg-amber-50 border-amber-200', level: 3 };
-    return { label: `ใน ${diffDays} วัน`, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', level: 4 };
-  };
-
   const handleManualDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/[^0-9]/g, ''); 
     if (val.length > 2) val = val.substring(0, 2) + '/' + val.substring(2, 4);
     setManualDate(val);
-    
     if (val.length === 5) {
       const [day, month] = val.split('/');
       const year = new Date().getFullYear();
       const d = parseInt(day); const m = parseInt(month);
       if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
         setNewTaskDueDate(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
-        setIsDateOpen(false);
-        setManualDate('');
+        setIsDateOpen(false); setManualDate('');
       }
     }
   };
 
-  // ==========================================
-  // ⚙️ ฟังก์ชันจัดการงาน (เชื่อม Database แล้ว!)
-  // ==========================================
-  
+  // ⚙️ เพิ่มงานใหม่ (ผูกกับอีเมลด้วย)
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
@@ -145,35 +145,26 @@ export default function ManagerFocusDashboard() {
       title: newTaskTitle,
       priority: newTaskPriority,
       due_date: newTaskDueDate || null,
-      status: 'backlog'
+      status: 'backlog',
+      owner_email: userEmail // 👈 แปะชื่อเจ้าของงานลง DB
     }]).select();
 
-    if (error) {
-      console.error('Error adding task:', error);
-      return;
-    }
+    if (error) return console.error('Error adding task:', error);
 
     if (data && data[0]) {
       const newTask: Task = { 
-        id: data[0].id, 
-        title: data[0].title, 
-        priority: data[0].priority, 
-        dueDate: data[0].due_date || undefined,
-        status: data[0].status 
+        id: data[0].id, title: data[0].title, priority: data[0].priority, 
+        dueDate: data[0].due_date || undefined, status: data[0].status, owner_email: data[0].owner_email 
       };
       setTasks([...tasks, newTask]);
     }
 
-    setNewTaskTitle('');
-    setNewTaskDueDate('');
-    setManualDate('');
-    setIsPriorityOpen(false);
-    setIsDateOpen(false);
+    setNewTaskTitle(''); setNewTaskDueDate(''); setManualDate('');
+    setIsPriorityOpen(false); setIsDateOpen(false);
   };
 
   const openScheduleModal = (task: Task) => {
-    setSelectedTask(task);
-    setIsModalOpen(true);
+    setSelectedTask(task); setIsModalOpen(true);
   };
   
   const handleScheduleTask = async (e: React.FormEvent) => {
@@ -183,12 +174,9 @@ export default function ManagerFocusDashboard() {
     setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: 'planned', startTime: startTime } : t));
     setIsModalOpen(false);
     
-    await supabase.from('manager_tasks').update({ 
-      status: 'planned', 
-      start_time: startTime 
-    }).eq('id', selectedTask.id);
+    await supabase.from('manager_tasks').update({ status: 'planned', start_time: startTime }).eq('id', selectedTask.id);
 
-    // 🚀 ยิงแจ้งเตือนเข้า MS Teams
+    // ยิงแจ้งเตือน
     sendPersonalNotification(selectedTask.title, startTime);
   };
 
@@ -202,10 +190,51 @@ export default function ManagerFocusDashboard() {
     await supabase.from('manager_tasks').update({ status: 'backlog', start_time: null }).eq('id', id);
   };
 
-  const sortedBacklog = tasks
-    .filter(t => t.status === 'backlog')
-    .sort((a, b) => getDeadlineStatus(a.dueDate).level - getDeadlineStatus(b.dueDate).level);
+  // ==========================================
+  // 🎨 ส่วนแสดงผล (UI)
+  // ==========================================
 
+  // ระหว่างโหลด ไม่ให้หน้าเว็บกระพริบ
+  if (isCheckingAuth) return <div className="h-screen bg-[#F8FAFC] flex items-center justify-center font-bold text-slate-400">Loading...</div>;
+
+  // 🛑 หน้าต่าง LOGIN (บังคับกรอกอีเมล)
+  if (!isLoggedIn) {
+    return (
+      <div className="h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans antialiased">
+        <div className="bg-white p-10 rounded-[2rem] shadow-2xl w-full max-w-md border border-slate-100">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-inner mx-auto"><i className="bi bi-microsoft-teams"></i></div>
+          <h2 className="text-2xl font-black text-slate-800 text-center mb-2 tracking-tight">เข้าสู่ระบบจัดการงาน</h2>
+          <p className="text-slate-500 text-sm font-semibold text-center mb-8">ใส่อีเมล MS Teams เพื่อดูงานของคุณและรับการแจ้งเตือน</p>
+          
+          <form onSubmit={handleLogin}>
+            <input type="email" required placeholder="เช่น athmaras@deltaww.com" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 mb-4 text-center transition-all" />
+            <button type="submit" className="w-full py-4 rounded-xl font-black bg-slate-900 text-white hover:bg-slate-800 shadow-xl shadow-slate-900/20 transition-all active:scale-95">เริ่มลุยงาน!</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // 📊 คำนวณ Dashboard
+  const totalTasks = tasks.length;
+  const doneTasks = tasks.filter(t => t.status === 'done').length;
+  const backlogTasks = tasks.filter(t => t.status === 'backlog').length;
+  const plannedTasks = tasks.filter(t => t.status === 'planned').length;
+  const progressPercent = totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
+
+  const getDeadlineStatus = (dueDate?: string) => {
+    if (!dueDate) return { label: 'ไม่มีกำหนด', color: 'text-slate-400 bg-slate-50 border-slate-100', level: 99 };
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const target = new Date(dueDate); target.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { label: 'เลยกำหนด!', color: 'text-red-600 bg-red-50 border-red-200 animate-pulse', level: 1 };
+    if (diffDays === 0) return { label: 'ต้องเสร็จวันนี้!', color: 'text-orange-600 bg-orange-50 border-orange-200', level: 2 };
+    if (diffDays <= 2) return { label: `อีก ${diffDays} วัน`, color: 'text-amber-600 bg-amber-50 border-amber-200', level: 3 };
+    return { label: `ใน ${diffDays} วัน`, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', level: 4 };
+  };
+
+  const sortedBacklog = tasks.filter(t => t.status === 'backlog').sort((a, b) => getDeadlineStatus(a.dueDate).level - getDeadlineStatus(b.dueDate).level);
   const todaysSchedule = tasks.filter(t => t.status === 'planned').sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
   const priorityOptions = [
@@ -223,17 +252,23 @@ export default function ManagerFocusDashboard() {
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Executive Planner</h1>
           <p className="text-slate-500 font-medium mt-1">
-            <i className="bi bi-calendar-event mr-2"></i>
-            {new Date().toLocaleDateString('th-TH', { weekday: 'long', month: 'long', day: 'numeric' })}
+            <i className="bi bi-calendar-event mr-2"></i> {new Date().toLocaleDateString('th-TH', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Daily Progress</p>
+        <div className="text-right flex flex-col items-end">
+          {/* ป้ายบอกว่าล็อคอินอีเมลอะไรอยู่ + ปุ่มออกระบบ */}
+          <div className="flex items-center gap-3 mb-3 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+            <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-[10px]"><i className="bi bi-person-fill"></i></div>
+            <span className="text-xs font-bold text-slate-600">{userEmail}</span>
+            <button onClick={handleLogout} className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase px-2 border-l border-slate-200 ml-1 transition-colors">เปลี่ยน</button>
+          </div>
+          
           <div className="flex items-center gap-3">
-            <div className="w-48 h-2.5 bg-slate-200 rounded-full overflow-hidden shadow-inner">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Daily Progress</p>
+            <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden shadow-inner">
               <div className="h-full bg-emerald-500 rounded-full transition-all duration-700 ease-out" style={{ width: `${progressPercent}%` }}></div>
             </div>
-            <span className="font-bold text-slate-700">{progressPercent}%</span>
+            <span className="font-bold text-slate-700 text-sm">{progressPercent}%</span>
           </div>
         </div>
       </header>
@@ -292,7 +327,6 @@ export default function ManagerFocusDashboard() {
                     <button type="button" onClick={() => { setNewTaskDueDate(getOffsetDate(7)); setIsDateOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-3 border-b border-slate-50">
                       <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs bg-blue-50 text-blue-600"><i className="bi bi-calendar-week"></i></span> สัปดาห์หน้า
                     </button>
-                    
                     <div className="p-3 bg-slate-50/80">
                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 ml-1">พิมพ์วันที่ (วว/ดด)</label>
                        <input type="text" placeholder="เช่น 1505" value={manualDate} onChange={handleManualDateChange} maxLength={5} className="w-full bg-white border border-slate-200 p-2.5 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all text-center" />
@@ -306,7 +340,6 @@ export default function ManagerFocusDashboard() {
                   <span className="flex items-center gap-2">{currentPriority?.icon} {currentPriority?.label}</span>
                   <i className="bi bi-chevron-down text-[10px] text-slate-400"></i>
                 </button>
-                
                 {isPriorityOpen && (
                   <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in slide-in-from-top-2 duration-150">
                     {priorityOptions.map(option => (
@@ -324,7 +357,6 @@ export default function ManagerFocusDashboard() {
 
           <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
             {sortedBacklog.length === 0 && <div className="text-center text-slate-400 mt-10 font-medium text-sm">ไม่มีงานค้าง ยอดเยี่ยมมากครับ! 🎉</div>}
-            
             {sortedBacklog.map(task => {
               const deadline = getDeadlineStatus(task.dueDate);
               return (
@@ -357,7 +389,6 @@ export default function ManagerFocusDashboard() {
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar relative z-10">
             {todaysSchedule.length === 0 && <div className="text-center text-slate-400 mt-20 font-medium text-sm">ยังไม่ได้เลือกงานมาทำวันนี้ครับ.</div>}
-            
             {todaysSchedule.map((task) => (
               <div key={task.id} className="flex gap-5 group">
                 <div className="w-16 text-right shrink-0 pt-4 border-r border-slate-700/50 pr-4">
@@ -391,7 +422,6 @@ export default function ManagerFocusDashboard() {
                 <i className="bi bi-clock absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
                 <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 rounded-xl font-black text-xl text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-center" />
               </div>
-              
               <div className="flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3.5 rounded-xl font-semibold text-slate-500 hover:bg-slate-50 transition-colors">ยกเลิก</button>
                 <button type="submit" className="flex-1 py-3.5 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 shadow-md transition-all active:scale-95">จัดลงตาราง</button>
