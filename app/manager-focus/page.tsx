@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase-managerfocus'; // 🚨 ดึงท่อเชื่อมมาใช้ (แก้ Path ให้ตรงกับโฟลเดอร์ของบอสด้วยนะ)
 
 // ==========================================
@@ -32,7 +32,6 @@ const formatDisplayDate = (dateString: string) => {
 };
 
 export default function ManagerFocusDashboard() {
-  // 🌟 ลบข้อมูลจำลองทิ้ง ปล่อยว่างไว้รอข้อมูลจริง
   const [tasks, setTasks] = useState<Task[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -49,44 +48,14 @@ export default function ManagerFocusDashboard() {
   const priorityRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
 
-  // ฟังก์ชันยิงแจ้งเตือนส่วนตัว
-  const sendPersonalNotification = async (taskName: string, time: string) => {
-    await fetch('/api/notify-personal', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        message: `🚨 บอสครับ! งานด่วน: **${taskName}**\nจัดลงคิวเวลา **${time}** เรียบร้อยครับ พร้อมลุย!`,
-        email: "athmaras@deltaww.com" // 👈 ใส่อีเมลของบอสตรงนี้
-      })
-    });
-  };
-
-  // แอบเอาไปแทรกตอนบอสกดยืนยันจัดงานลงตาราง (handleScheduleTask)
-  const handleScheduleTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTask) return;
-
-    // โค้ดอัปเดตงานลง DB เดิม...
-    setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: 'planned', startTime: startTime } : t));
-    setIsModalOpen(false);
-    await supabase.from('manager_tasks').update({ status: 'planned', start_time: startTime }).eq('id', selectedTask.id);
-
-    // 🚀 ยิงแจ้งเตือนเข้า MS Teams ส่วนตัวทันที!
-    sendPersonalNotification(selectedTask.title, startTime);
-  };
-
   // ==========================================
-  // ⚡ โหลดข้อมูลครั้งแรกจาก Supabase
+  // ⚡ โหลดข้อมูลครั้งแรกจาก Supabase (จัดระเบียบใหม่)
   // ==========================================
-  useEffect(() => {
-    fetchTasks();
-  }, []);
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     const { data, error } = await supabase.from('manager_tasks').select('*');
     if (error) {
       console.error('Error fetching tasks:', error);
     } else if (data) {
-      // แปลงชื่อคอลัมน์ Database (due_date) ให้ตรงกับ Frontend (dueDate)
       const formattedData: Task[] = data.map(d => ({
         id: d.id,
         title: d.title,
@@ -97,7 +66,11 @@ export default function ManagerFocusDashboard() {
       }));
       setTasks(formattedData);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -107,6 +80,22 @@ export default function ManagerFocusDashboard() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // ฟังก์ชันยิงแจ้งเตือนส่วนตัว
+  const sendPersonalNotification = async (taskName: string, time: string) => {
+    try {
+      await fetch('/api/notify-personal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: `🚨 บอสครับ! งานด่วน: **${taskName}**\nจัดลงคิวเวลา **${time}** เรียบร้อยครับ พร้อมลุย!`,
+          email: "athmaras@deltaww.com"
+        })
+      });
+    } catch (error) {
+      console.error("Failed to send notification:", error);
+    }
+  };
 
   // 📊 คำนวณ Dashboard
   const totalTasks = tasks.length;
@@ -148,25 +137,22 @@ export default function ManagerFocusDashboard() {
   // ⚙️ ฟังก์ชันจัดการงาน (เชื่อม Database แล้ว!)
   // ==========================================
   
-  // 1. เพิ่มงานใหม่
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    // ยิงเข้า DB
     const { data, error } = await supabase.from('manager_tasks').insert([{
       title: newTaskTitle,
       priority: newTaskPriority,
       due_date: newTaskDueDate || null,
       status: 'backlog'
-    }]).select(); // .select() เพื่อให้มันรีเทิร์น ID ที่ถูกสร้างกลับมาให้เรา
+    }]).select();
 
     if (error) {
       console.error('Error adding task:', error);
       return;
     }
 
-    // เอาข้อมูลจริงที่ได้จาก DB มาแสดงผล (หน้าเว็บจะได้เห็นทันที)
     if (data && data[0]) {
       const newTask: Task = { 
         id: data[0].id, 
@@ -185,35 +171,32 @@ export default function ManagerFocusDashboard() {
     setIsDateOpen(false);
   };
 
-  // เปิด Modal ตั้งเวลา
   const openScheduleModal = (task: Task) => {
     setSelectedTask(task);
     setIsModalOpen(true);
   };
   
-  // 2. จัดงานลงตาราง (อัปเดตสถานะและเวลา)
   const handleScheduleTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTask) return;
 
-    // อัปเดตหน้าเว็บทันที (Optimistic UI) จะได้รู้สึกว่าลื่นไหล
     setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: 'planned', startTime: startTime } : t));
     setIsModalOpen(false);
-
-    // อัปเดตหลังบ้านเงียบๆ
+    
     await supabase.from('manager_tasks').update({ 
       status: 'planned', 
       start_time: startTime 
     }).eq('id', selectedTask.id);
+
+    // 🚀 ยิงแจ้งเตือนเข้า MS Teams
+    sendPersonalNotification(selectedTask.title, startTime);
   };
 
-  // 3. ติ๊กงานเสร็จแล้ว
   const markAsDone = async (id: string) => { 
     setTasks(tasks.map(t => t.id === id ? { ...t, status: 'done' } : t)); 
     await supabase.from('manager_tasks').update({ status: 'done' }).eq('id', id);
   };
 
-  // 4. ถอดงานกลับไป Backlog
   const moveToBacklog = async (id: string) => { 
     setTasks(tasks.map(t => t.id === id ? { ...t, status: 'backlog', startTime: undefined } : t)); 
     await supabase.from('manager_tasks').update({ status: 'backlog', start_time: null }).eq('id', id);
