@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase-managerfocus'; // 🚨 เช็ค Path อีกทีนะครับ ถ้า error ให้เปลี่ยนเป็น '../../lib/supabase-managerfocus'
+import { supabase } from '@/lib/supabase-managerfocus'; // 🚨 เช็ค Path อีกทีนะครับ
 
 interface Task {
   id: string;
@@ -9,7 +9,7 @@ interface Task {
   status: 'backlog' | 'planned' | 'done';
   dueDate?: string; 
   startTime?: string;
-  owner_email?: string;
+  owner_email?: string; // 💡 ยังใช้คอลัมน์เดิมใน DB แต่เราจะเก็บแค่ Username แทนครับ
 }
 
 const getOffsetDate = (days: number) => {
@@ -26,11 +26,11 @@ const formatDisplayDate = (dateString: string) => {
 };
 
 export default function ManagerFocusDashboard() {
-  // 🔐 ระบบ Login ด้วย Email
+  // 🔐 ระบบ Login ด้วย Username
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [userEmail, setUserEmail] = useState('');
+  const [username, setUsername] = useState(''); // เปลี่ยนจาก userEmail เป็น username
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [emailInput, setEmailInput] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,23 +47,23 @@ export default function ManagerFocusDashboard() {
   const priorityRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
 
-  // 1️⃣ ตรวจสอบอีเมลในเครื่องตอนโหลดเว็บครั้งแรก
+  // 1️⃣ ตรวจสอบ Username ในเครื่องตอนโหลดเว็บครั้งแรก
   useEffect(() => {
-    const savedEmail = localStorage.getItem('managerEmail');
-    if (savedEmail) {
-      setUserEmail(savedEmail);
+    const savedUser = localStorage.getItem('managerUsername');
+    if (savedUser) {
+      setUsername(savedUser);
       setIsLoggedIn(true);
     }
     setIsCheckingAuth(false);
   }, []);
 
-  // 2️⃣ โหลดข้อมูลเฉพาะงานของ "อีเมล" นี้
+  // 2️⃣ โหลดข้อมูลเฉพาะงานของ "ยูสเซอร์" นี้
   const fetchTasks = useCallback(async () => {
-    if (!userEmail) return;
+    if (!username) return;
     const { data, error } = await supabase
       .from('manager_tasks')
       .select('*')
-      .eq('owner_email', userEmail); // 👈 ฟิลเตอร์งานของคนๆ นี้
+      .eq('owner_email', username); // 👈 ฟิลเตอร์ด้วยยูสเซอร์เนม
 
     if (error) {
       console.error('Error fetching tasks:', error);
@@ -74,7 +74,7 @@ export default function ManagerFocusDashboard() {
       }));
       setTasks(formattedData);
     }
-  }, [userEmail]);
+  }, [username]);
 
   useEffect(() => {
     if (isLoggedIn) fetchTasks();
@@ -92,15 +92,15 @@ export default function ManagerFocusDashboard() {
   // 🔐 ฟังก์ชัน Login / Logout
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput.trim() || !emailInput.includes('@')) return alert('กรุณากรอกอีเมลให้ถูกต้องครับบอส');
-    localStorage.setItem('managerEmail', emailInput.trim());
-    setUserEmail(emailInput.trim());
+    if (!usernameInput.trim()) return alert('กรุณากรอกยูสเซอร์เนมด้วยครับบอส'); // เอาการเช็ค @ ออกแล้ว
+    localStorage.setItem('managerUsername', usernameInput.trim());
+    setUsername(usernameInput.trim());
     setIsLoggedIn(true);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('managerEmail');
-    setUserEmail('');
+    localStorage.removeItem('managerUsername');
+    setUsername('');
     setIsLoggedIn(false);
     setTasks([]);
   };
@@ -112,8 +112,7 @@ export default function ManagerFocusDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          // 💡 ใส่ชื่อ/อีเมล ไปในข้อความเลย ให้รู้ว่างานใคร
-          message: `🔔 **มีการจัดคิวงานใหม่!**\n\n👤 **เจ้าของงาน:** ${userEmail}\n📌 **ชื่องาน:** ${taskName}\n⏰ **เวลาเริ่ม:** ${time}`
+          message: `🔔 **มีการจัดคิวงานใหม่!**\n\n👤 **ผู้รับผิดชอบ:** ${username}\n📌 **ชื่องาน:** ${taskName}\n⏰ **เวลาเริ่ม:** ${time}`
         })
       });
     } catch (error) {
@@ -136,7 +135,7 @@ export default function ManagerFocusDashboard() {
     }
   };
 
-  // ⚙️ เพิ่มงานใหม่ (ผูกกับอีเมลด้วย)
+  // ⚙️ เพิ่มงานใหม่ (ผูกกับยูสเซอร์ด้วย)
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
@@ -146,7 +145,7 @@ export default function ManagerFocusDashboard() {
       priority: newTaskPriority,
       due_date: newTaskDueDate || null,
       status: 'backlog',
-      owner_email: userEmail // 👈 แปะชื่อเจ้าของงานลง DB
+      owner_email: username // 👈 เก็บแค่ยูสเซอร์เนม
     }]).select();
 
     if (error) return console.error('Error adding task:', error);
@@ -176,7 +175,7 @@ export default function ManagerFocusDashboard() {
     
     await supabase.from('manager_tasks').update({ status: 'planned', start_time: startTime }).eq('id', selectedTask.id);
 
-    // ยิงแจ้งเตือน
+    // ยิงแจ้งเตือนเข้า Teams
     sendTeamsNotification(selectedTask.title, startTime);
   };
 
@@ -197,17 +196,17 @@ export default function ManagerFocusDashboard() {
   // ระหว่างโหลด ไม่ให้หน้าเว็บกระพริบ
   if (isCheckingAuth) return <div className="h-screen bg-[#F8FAFC] flex items-center justify-center font-bold text-slate-400">Loading...</div>;
 
-  // 🛑 หน้าต่าง LOGIN (บังคับกรอกอีเมล)
+  // 🛑 หน้าต่าง LOGIN (กรอกยูสเซอร์เนม)
   if (!isLoggedIn) {
     return (
       <div className="h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 font-sans antialiased">
         <div className="bg-white p-10 rounded-[2rem] shadow-2xl w-full max-w-md border border-slate-100">
-          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-inner mx-auto"><i className="bi bi-microsoft-teams"></i></div>
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-inner mx-auto"><i className="bi bi-person-badge"></i></div>
           <h2 className="text-2xl font-black text-slate-800 text-center mb-2 tracking-tight">เข้าสู่ระบบจัดการงาน</h2>
-          <p className="text-slate-500 text-sm font-semibold text-center mb-8">ใส่อีเมล MS Teams เพื่อดูงานของคุณและรับการแจ้งเตือน</p>
+          <p className="text-slate-500 text-sm font-semibold text-center mb-8">ใส่ยูสเซอร์เนมเพื่อจัดการคิวงานของคุณ</p>
           
           <form onSubmit={handleLogin}>
-            <input type="email" required placeholder="เช่น athmaras@deltaww.com" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+            <input type="text" required placeholder="เช่น athmaras" value={usernameInput} onChange={e => setUsernameInput(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 mb-4 text-center transition-all" />
             <button type="submit" className="w-full py-4 rounded-xl font-black bg-slate-900 text-white hover:bg-slate-800 shadow-xl shadow-slate-900/20 transition-all active:scale-95">เริ่มลุยงาน!</button>
           </form>
@@ -256,11 +255,11 @@ export default function ManagerFocusDashboard() {
           </p>
         </div>
         <div className="text-right flex flex-col items-end">
-          {/* ป้ายบอกว่าล็อคอินอีเมลอะไรอยู่ + ปุ่มออกระบบ */}
+          {/* ป้ายบอกว่าล็อคอินด้วย Username อะไรอยู่ */}
           <div className="flex items-center gap-3 mb-3 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
             <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-[10px]"><i className="bi bi-person-fill"></i></div>
-            <span className="text-xs font-bold text-slate-600">{userEmail}</span>
-            <button onClick={handleLogout} className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase px-2 border-l border-slate-200 ml-1 transition-colors">เปลี่ยน</button>
+            <span className="text-xs font-bold text-slate-600">{username}</span>
+            <button onClick={handleLogout} className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase px-2 border-l border-slate-200 ml-1 transition-colors">ออก</button>
           </div>
           
           <div className="flex items-center gap-3">
