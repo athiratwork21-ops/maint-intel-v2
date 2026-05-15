@@ -105,15 +105,15 @@ export default function ManagerFocusDashboard() {
     setTasks([]);
   };
 
-  // 🚀 ฟังก์ชันยิงแจ้งเตือนส่วนตัว (ใช้อีเมลที่ Login)
-  const sendPersonalNotification = async (taskName: string, time: string) => {
+  // 🚀 ฟังก์ชันยิงแจ้งเตือนเข้าห้องรวม MS Teams
+  const sendTeamsNotification = async (taskName: string, time: string) => {
     try {
-      await fetch('/api/notify-personal', {
+      await fetch('/api/notify-teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message: `🚨 บอสครับ! งานด่วน: **${taskName}**\nจัดลงคิวเวลา **${time}** เรียบร้อยครับ พร้อมลุย!`,
-          email: userEmail // 👈 ใช้อีเมลที่บอสกรอกเข้ามาแทนค่า Fix
+          // 💡 ใส่ชื่อ/อีเมล ไปในข้อความเลย ให้รู้ว่างานใคร
+          message: `🔔 **มีการจัดคิวงานใหม่!**\n\n👤 **เจ้าของงาน:** ${userEmail}\n📌 **ชื่องาน:** ${taskName}\n⏰ **เวลาเริ่ม:** ${time}`
         })
       });
     } catch (error) {
@@ -177,7 +177,7 @@ export default function ManagerFocusDashboard() {
     await supabase.from('manager_tasks').update({ status: 'planned', start_time: startTime }).eq('id', selectedTask.id);
 
     // ยิงแจ้งเตือน
-    sendPersonalNotification(selectedTask.title, startTime);
+    sendTeamsNotification(selectedTask.title, startTime);
   };
 
   const markAsDone = async (id: string) => { 
