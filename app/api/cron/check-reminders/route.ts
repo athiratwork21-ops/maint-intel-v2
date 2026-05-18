@@ -38,7 +38,7 @@ export async function GET(req: Request) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            text: `⏰ **แจ้งเตือนถึงเวลาทำงาน!**\n\n👤 **ผู้รับผิดชอบ:** ${task.owner_email}\n📌 **ชื่องาน:** ${task.title}\n⚡ **เริ่มเลยตอนนี้!** (${task.start_time})`
+            text: `⏰ **แจ้งเตือนถึงเวลาทำงาน!**\n\n👤 **ผู้รับผิดชอบ:** ${task.owner_email}\n\n📌 **ชื่องาน:** ${task.title}\n\n⚡ **เริ่มเลยตอนนี้!** (${task.start_time})`
           }),
         });
       }
