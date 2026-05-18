@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 
     // 3. ถ้ามีงานที่ถึงเวลาแล้ว ให้ยิงแจ้งเตือนเข้า MS Teams
     if (tasks && tasks.length > 0) {
-      const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+      const webhookUrl = process.env.TEAMS_WEBHOOK_URL_MF;
       
       for (const task of tasks) {
         await fetch(webhookUrl!, {
