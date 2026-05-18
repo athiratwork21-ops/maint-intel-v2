@@ -176,7 +176,7 @@ export default function ManagerFocusDashboard() {
     await supabase.from('manager_tasks').update({ status: 'planned', start_time: startTime }).eq('id', selectedTask.id);
 
     // ยิงแจ้งเตือนเข้า Teams
-    sendTeamsNotification(selectedTask.title, startTime);
+    //sendTeamsNotification(selectedTask.title, startTime);
   };
 
   const markAsDone = async (id: string) => { 
