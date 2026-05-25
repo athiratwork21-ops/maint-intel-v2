@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
 import Image from 'next/image';
 import Papa from 'papaparse';
+import ShelfPickerModal from '../components/ShelfPickerModal';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -104,6 +105,7 @@ export default function MaintenanceDashboard() {
 
   const [fixtures, setFixtures] = useState<any[]>([]);
   const [isNewFixtureModalOpen, setNewFixtureModalOpen] = useState(false);
+  const [isShelfMapOpen, setIsShelfMapOpen] = useState(false);
   const [isEditFixtureStockOpen, setEditFixtureStockOpen] = useState(false);
   const [isEditFixtureInfoOpen, setEditFixtureInfoOpen] = useState(false);
   const [selectedFixture, setSelectedFixture] = useState<any>(null);
@@ -1367,6 +1369,17 @@ export default function MaintenanceDashboard() {
                 {/* 🌟 จุดที่แก้: Multi-Location สำหรับ Add New Fixture 🌟 */}
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Locations (เลือกได้มากกว่า 1)</label>
+                  {/* 👈 เพิ่มปุ่มเรียกแผนที่ตรงนี้ */}
+    <button 
+      type="button" 
+      onClick={() => setIsShelfMapOpen(true)}
+      className="text-[10px] font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1.5 rounded-lg transition-colors border border-purple-200 active:scale-95"
+    >
+      <i className="bi bi-map-fill mr-1"></i> เลือกจากแผนที่เชลฟ์
+    </button>
+  </div>
+
+  <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
                   <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
                     {locationsMaster.map(loc => (
                       <label key={loc.LocationName} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${multiLocations.includes(loc.LocationName) ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white border-slate-200 text-slate-500 hover:border-purple-300'}`}>
@@ -2514,6 +2527,24 @@ export default function MaintenanceDashboard() {
                 <form className="space-y-8" onSubmit={handleLogRecord}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
+                      {/* 🌟 วาง Modal แผนที่เชลฟ์ตรงนี้ 🌟 */}
+        {isShelfMapOpen && (
+          <ShelfPickerModal 
+            onSelect={(loc) => {
+              // ถ้ายังไม่มีพิกัดนี้ใน array ให้เพิ่มเข้าไป
+              if (!multiLocations.includes(loc)) {
+                setMultiLocations([...multiLocations, loc]);
+              }
+              setIsShelfMapOpen(false); // เลือกเสร็จให้ปิดแผนที่
+            }}
+            onClose={() => setIsShelfMapOpen(false)}
+          />
+        )}
+
+      </main>
+    </div>
+  );
+}
                       <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">1. Machine</label>
                       <div className="relative">
                         <input type="text" name="machineId" list="machine-list" required placeholder="-- Type to search machine --" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white" />
