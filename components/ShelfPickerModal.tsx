@@ -1,9 +1,12 @@
-'use client'
-import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+  'use client'
+  import { useState, useEffect } from 'react'
+  import { supabase } from '../lib/supabase' // 👈 ใช้ตัวเชื่อมที่บอสมีอยู่แล้วแทน
 
-export default function ShelfPickerModal({ onSelect, onClose }: { onSelect: (loc: string) => void, onClose: () => void }) {
-  const supabase = createClientComponentClient()
+  export default function ShelfPickerModal({ onSelect, onClose }: { onSelect: (loc: string) => void, onClose: () => void }) {
+  const [locations, setLocations] = useState<any[]>([])
+  const [selectedShelf, setSelectedShelf] = useState('A04')
+
+  // โค้ดที่เหลือปล่อยเหมือนเดิมเลยครับ...
   const [locations, setLocations] = useState<any[]>([])
   const [selectedShelf, setSelectedShelf] = useState('A04') // เริ่มต้นที่เชลฟ์ A04 ตามรูปบอส
 
