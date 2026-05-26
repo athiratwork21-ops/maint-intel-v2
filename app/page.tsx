@@ -1366,43 +1366,54 @@ export default function MaintenanceDashboard() {
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required placeholder="e.g. FIX-001" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required placeholder="Model name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
                 
-                {/* 🌟 จุดที่แก้: Multi-Location สำหรับ Add New Fixture 🌟 */}
+                {/* 🌟 โค้ด Locations UI แบบใหม่ (โละ Checkbox ทิ้ง) 🌟 */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Locations (เลือกได้มากกว่า 1)</label>
-                  {/* 👈 เพิ่มปุ่มเรียกแผนที่ตรงนี้ */}
-    <button 
-      type="button" 
-      onClick={() => setIsShelfMapOpen(true)}
-      className="text-[10px] font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1.5 rounded-lg transition-colors border border-purple-200 active:scale-95"
-    >
-      <i className="bi bi-map-fill mr-1"></i> เลือกจากแผนที่เชลฟ์
-    </button>
-  </div>
-
-  <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
-                  <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
-                    {locationsMaster.map(loc => (
-                      <label key={loc.LocationName} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${multiLocations.includes(loc.LocationName) ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white border-slate-200 text-slate-500 hover:border-purple-300'}`}>
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={multiLocations.includes(loc.LocationName)}
-                          onChange={() => {
-                            if (multiLocations.includes(loc.LocationName)) {
-                              setMultiLocations(multiLocations.filter(l => l !== loc.LocationName));
-                            } else {
-                              setMultiLocations([...multiLocations, loc.LocationName]);
-                            }
-                          }}
-                        />
-                        <i className={`bi ${multiLocations.includes(loc.LocationName) ? 'bi-check-square-fill' : 'bi-square'} text-[13px]`}></i>
-                        <span className="text-[13px] font-bold uppercase">{loc.LocationName}</span>
-                      </label>
-                    ))}
-                    {locationsMaster.length === 0 && <span className="text-sm text-slate-400 font-bold p-2">ไม่มีข้อมูล Location ในระบบ</span>}
+                  <div className="flex justify-between items-end mb-2">
+                    <label className="block text-xs font-bold text-slate-600 uppercase">Locations (พิกัดจัดเก็บ)</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsShelfMapOpen(true)}
+                      className="text-[10px] font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1.5 rounded-lg transition-colors border border-purple-200 active:scale-95 shadow-sm"
+                    >
+                      <i className="bi bi-map-fill mr-1"></i> เลือกจากแผนที่
+                    </button>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1.5"><i className="bi bi-info-circle-fill mr-1"></i>คลิกเพื่อเลือกหรือยกเลิกพิกัดจัดเก็บ</p>
+                  
+                  {/* กล่องแสดงพิกัดที่เลือกไว้ (แบบ Tag) */}
+                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[64px] shadow-inner items-center">
+                    {multiLocations.length === 0 ? (
+                      <span className="text-slate-400 text-xs font-bold"><i className="bi bi-info-circle mr-1"></i> ยังไม่ได้เลือกพิกัด...</span>
+                    ) : (
+                      multiLocations.map((loc, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-xs font-black uppercase shadow-sm">
+                          <i className="bi bi-geo-alt-fill text-purple-400"></i> {loc}
+                          <button type="button" onClick={() => setMultiLocations(multiLocations.filter(l => l !== loc))} className="ml-1 text-slate-300 hover:text-red-500 transition-colors"><i className="bi bi-x-circle-fill"></i></button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  
+                  {/* Dropdown เสริม (สำหรับเลือก Manual เช่น ตู้ Production) */}
+                  <div className="mt-2 relative">
+                    <select 
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-xs font-bold text-slate-500 appearance-none shadow-sm cursor-pointer hover:border-purple-300 transition-colors"
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val && !multiLocations.includes(val)) {
+                          setMultiLocations([...multiLocations, val]);
+                        }
+                      }}
+                    >
+                      <option value="" disabled>+ หรือเลือกพิกัดแบบธรรมดาจากรายการ...</option>
+                      {locationsMaster.filter(l => !multiLocations.includes(l.LocationName)).map(loc => (
+                        <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>
+                      ))}
+                    </select>
+                    <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                  </div>
                 </div>
+                {/* 🌟 จบโค้ด Locations UI แบบใหม่ 🌟 */}
 
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
                 <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-check-lg mr-2"></i>Create Fixture</button>
@@ -1437,31 +1448,54 @@ export default function MaintenanceDashboard() {
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required defaultValue={selectedFixture.ModelName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
                 
                 {/* 🌟 จุดที่แก้: Multi-Location สำหรับ Edit Fixture Info 🌟 */}
+                {/* 🌟 โค้ด Locations UI แบบใหม่ (โละ Checkbox ทิ้ง) 🌟 */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Locations (เลือกได้มากกว่า 1)</label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
-                    {locationsMaster.map(loc => (
-                      <label key={loc.LocationName} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${multiLocations.includes(loc.LocationName) ? 'bg-indigo-100 border-indigo-500 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={multiLocations.includes(loc.LocationName)}
-                          onChange={() => {
-                            if (multiLocations.includes(loc.LocationName)) {
-                              setMultiLocations(multiLocations.filter(l => l !== loc.LocationName));
-                            } else {
-                              setMultiLocations([...multiLocations, loc.LocationName]);
-                            }
-                          }}
-                        />
-                        <i className={`bi ${multiLocations.includes(loc.LocationName) ? 'bi-check-square-fill' : 'bi-square'} text-[13px]`}></i>
-                        <span className="text-[13px] font-bold uppercase">{loc.LocationName}</span>
-                      </label>
-                    ))}
-                    {locationsMaster.length === 0 && <span className="text-sm text-slate-400 font-bold p-2">ไม่มีข้อมูล Location ในระบบ</span>}
+                  <div className="flex justify-between items-end mb-2">
+                    <label className="block text-xs font-bold text-slate-600 uppercase">Locations (พิกัดจัดเก็บ)</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsShelfMapOpen(true)}
+                      className="text-[10px] font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1.5 rounded-lg transition-colors border border-purple-200 active:scale-95 shadow-sm"
+                    >
+                      <i className="bi bi-map-fill mr-1"></i> เลือกจากแผนที่
+                    </button>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1.5"><i className="bi bi-info-circle-fill mr-1"></i>คลิกเพื่อเลือกหรือยกเลิกพิกัดจัดเก็บ</p>
+                  
+                  {/* กล่องแสดงพิกัดที่เลือกไว้ (แบบ Tag) */}
+                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[64px] shadow-inner items-center">
+                    {multiLocations.length === 0 ? (
+                      <span className="text-slate-400 text-xs font-bold"><i className="bi bi-info-circle mr-1"></i> ยังไม่ได้เลือกพิกัด...</span>
+                    ) : (
+                      multiLocations.map((loc, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-xs font-black uppercase shadow-sm">
+                          <i className="bi bi-geo-alt-fill text-purple-400"></i> {loc}
+                          <button type="button" onClick={() => setMultiLocations(multiLocations.filter(l => l !== loc))} className="ml-1 text-slate-300 hover:text-red-500 transition-colors"><i className="bi bi-x-circle-fill"></i></button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  
+                  {/* Dropdown เสริม (สำหรับเลือก Manual เช่น ตู้ Production) */}
+                  <div className="mt-2 relative">
+                    <select 
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-xs font-bold text-slate-500 appearance-none shadow-sm cursor-pointer hover:border-purple-300 transition-colors"
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val && !multiLocations.includes(val)) {
+                          setMultiLocations([...multiLocations, val]);
+                        }
+                      }}
+                    >
+                      <option value="" disabled>+ หรือเลือกพิกัดแบบธรรมดาจากรายการ...</option>
+                      {locationsMaster.filter(l => !multiLocations.includes(l.LocationName)).map(loc => (
+                        <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>
+                      ))}
+                    </select>
+                    <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                  </div>
                 </div>
+                {/* 🌟 จบโค้ด Locations UI แบบใหม่ 🌟 */}
 
                 <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-save mr-2"></i>Save Changes</button>
               </div>
