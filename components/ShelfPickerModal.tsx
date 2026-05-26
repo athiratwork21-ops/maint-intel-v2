@@ -1,14 +1,10 @@
-  'use client'
-  import { useState, useEffect } from 'react'
-  import { supabase } from '../lib/supabase' // 👈 ใช้ตัวเชื่อมที่บอสมีอยู่แล้วแทน
+'use client'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
-  export default function ShelfPickerModal({ onSelect, onClose }: { onSelect: (loc: string) => void, onClose: () => void }) {
+export default function ShelfPickerModal({ onSelect, onClose }: { onSelect: (loc: string) => void, onClose: () => void }) {
   const [locations, setLocations] = useState<any[]>([])
   const [selectedShelf, setSelectedShelf] = useState('A04')
-
-  // โค้ดที่เหลือปล่อยเหมือนเดิมเลยครับ...
-  const [locations, setLocations] = useState<any[]>([])
-  const [selectedShelf, setSelectedShelf] = useState('A04') // เริ่มต้นที่เชลฟ์ A04 ตามรูปบอส
 
   useEffect(() => {
     fetchLocations()
@@ -16,7 +12,7 @@
 
   const fetchLocations = async () => {
     const { data, error } = await supabase
-      .from('storage_locations') // ชื่อตารางที่บอสสร้างไว้
+      .from('storage_locations')
       .select('*')
       .eq('shelf_name', selectedShelf)
       .order('layer_no', { ascending: false })
