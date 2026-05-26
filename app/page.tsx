@@ -2526,25 +2526,7 @@ export default function MaintenanceDashboard() {
                 <h3 className="text-2xl font-black text-slate-800 mb-8 border-b border-slate-100 pb-6 flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><i className="bi bi-tools"></i></div> Manual Record Replacement</h3>
                 <form className="space-y-8" onSubmit={handleLogRecord}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                      {/* 🌟 วาง Modal แผนที่เชลฟ์ตรงนี้ 🌟 */}
-        {isShelfMapOpen && (
-          <ShelfPickerModal 
-            onSelect={(loc) => {
-              // ถ้ายังไม่มีพิกัดนี้ใน array ให้เพิ่มเข้าไป
-              if (!multiLocations.includes(loc)) {
-                setMultiLocations([...multiLocations, loc]);
-              }
-              setIsShelfMapOpen(false); // เลือกเสร็จให้ปิดแผนที่
-            }}
-            onClose={() => setIsShelfMapOpen(false)}
-          />
-        )}
-
-      </main>
-    </div>
-  );
-}
+                    <div>                
                       <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">1. Machine</label>
                       <div className="relative">
                         <input type="text" name="machineId" list="machine-list" required placeholder="-- Type to search machine --" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white" />
@@ -2587,7 +2569,20 @@ export default function MaintenanceDashboard() {
             </div> 
           )}
         </div>
+      {/* 🌟 วาง Modal แผนที่เชลฟ์ตรงนี้ (ก่อนปิด main) 🌟 */}
+        {isShelfMapOpen && (
+          <ShelfPickerModal 
+            onSelect={(loc) => {
+              if (!multiLocations.includes(loc)) {
+                setMultiLocations([...multiLocations, loc]);
+              }
+              setIsShelfMapOpen(false);
+            }}
+            onClose={() => setIsShelfMapOpen(false)}
+          />
+        )}
+
       </main>
     </div>
   );
-} 
+}
