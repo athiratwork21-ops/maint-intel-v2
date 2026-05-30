@@ -12,8 +12,9 @@ export default function ShelfMapSelector({
   const [isLoading, setIsLoading] = useState(true)
   const [tabs, setTabs] = useState<{ label: string, shelves: string[] }[]>([])
   const [activeTabLabel, setActiveTabLabel] = useState('')
-  const [locationData, setLocationData] = useState<Record<string, boolean>>({}) // เก็บพิกัดที่มีอยู่จริงในระบบ
-  const [occupiedMap, setOccupiedMap] = useState<Record<string, string>>({}) // เก็บพิกัดที่โดนใช้งานแล้ว (Location -> Item ID)
+  
+  // 🌟 ใช้ Dictionary เพื่อความเร็วแบบ O(1) (แก้ปัญหาเว็บหน่วง)
+  const [shelfData, setShelfData] = useState<Record<string, Record<number, Record<number, { code: string, occupiedBy: string | null }>>>>({})
 
   useEffect(() => {
     fetchStorageData()
@@ -23,160 +24,167 @@ export default function ShelfMapSelector({
     setIsLoading(true)
 
     // 1. ดึงข้อมูลพิกัดคลังสินค้าทั้งหมดที่เป็นของโซน Fixture
-    const { data: locMaster } = await supabase.from('LocationMaster')
-      .select('LocationName')
-      .ilike('LocationName', '1-FTR-%')
-
-    const locMap: Record<string, boolean> = {}
-    const shelfSet = new Set<string>()
-
-    locMaster?.forEach(item => {
-      locMap[item.LocationName] = true
-      const parts = item.LocationName.split('-')
-      if (parts.length >= 3) {
-        shelfSet.add(parts[2]) // ดึงรหัสตู้ออกมา เช่น 'A01', 'A02'
-      }
-    })
-    setLocationData(locMap)
-
-    // 2. เช็กของที่มีอยู่จริงในระบบ (Fixtures และ อะไหล่ทั่วไป) ว่ายึดช่องไหนไปแล้วบ้าง!
+    const { data: locMaster } = await supabase.from('LocationMaster').select('LocationName').ilike('LocationName', '1-FTR-%')
+    
+    // 2. ดึงข้อมูลของที่ใช้งานอยู่ (Fixtures & Stock)
     const { data: fixData } = await supabase.from('Fixtures').select('FixtureNo, Location')
     const { data: stockData } = await supabase.from('Stock').select('PartID, Location').gt('Balance', 0)
 
     const occMap: Record<string, string> = {}
+    fixData?.forEach(f => { if (f.Location && f.Location !== '-') f.Location.split(',').forEach((l: string) => { occMap[l.trim()] = f.FixtureNo }) })
+    stockData?.forEach(s => { if (s.Location && s.Location !== '-') s.Location.split(',').forEach((l: string) => { occMap[l.trim()] = s.PartID }) })
 
-    // ยัดข้อมูล Fixture ลงแผนที่
-    fixData?.forEach(f => {
-      if (f.Location && f.Location !== '-') {
-        f.Location.split(',').forEach((l: string) => { occMap[l.trim()] = f.FixtureNo })
+    // 3. ประกอบร่าง Dictionary (จัดเรียง Shelf -> Layer -> Slot)
+    const sData: Record<string, Record<number, Record<number, { code: string, occupiedBy: string | null }>>> = {}
+    const shelfSet = new Set<string>()
+
+    locMaster?.forEach(item => {
+      const locCode = item.LocationName
+      const parts = locCode.split('-') // ['1', 'FTR', 'A01', 'L5', 'S1']
+      if (parts.length >= 5) {
+        const shelf = parts[2]
+        const layer = parseInt(parts[3].replace('L', ''))
+        const slot = parseInt(parts[4].replace('S', ''))
+
+        if (!sData[shelf]) sData[shelf] = {}
+        if (!sData[shelf][layer]) sData[shelf][layer] = {}
+
+        sData[shelf][layer][slot] = {
+          code: locCode,
+          occupiedBy: occMap[locCode] || null
+        }
+        shelfSet.add(shelf)
       }
     })
+    setShelfData(sData)
 
-    // ยัดข้อมูล Stock อะไหล่ ลงแผนที่
-    stockData?.forEach(s => {
-      if (s.Location && s.Location !== '-') {
-        s.Location.split(',').forEach((l: string) => { occMap[l.trim()] = s.PartID })
-      }
-    })
-    setOccupiedMap(occMap)
-
-    // 3. หั่นตู้เชลฟ์ออกเป็นกลุ่ม กลุ่มละ 5 ตู้ (ตามหลัก ABC Analysis)
+    // 4. จัดกลุ่มตู้ (ห้าม A ปน B) และตัดแบ่งทีละ 5 ตู้
     const sortedShelves = Array.from(shelfSet).sort()
-    const chunkedTabs = []
-    for (let i = 0; i < sortedShelves.length; i += 5) {
-      const chunk = sortedShelves.slice(i, i + 5)
-      const label = chunk.length > 1 ? `${chunk[0]} - ${chunk[chunk.length - 1]}` : chunk[0]
-      chunkedTabs.push({ label, shelves: chunk })
-    }
+    const groupedByZone: Record<string, string[]> = {}
+
+    // แยกกลุ่มตามตัวอักษรนำหน้า (A, B, C)
+    sortedShelves.forEach(shelf => {
+      const zone = shelf.charAt(0)
+      if (!groupedByZone[zone]) groupedByZone[zone] = []
+      groupedByZone[zone].push(shelf)
+    })
+
+    const chunkedTabs: { label: string, shelves: string[] }[] = []
+
+    // ตัดกลุ่มละ 5 ตู้ ของแต่ละ Zone
+    Object.keys(groupedByZone).sort().forEach(zone => {
+      const shelvesInZone = groupedByZone[zone]
+      for (let i = 0; i < shelvesInZone.length; i += 5) {
+        const chunk = shelvesInZone.slice(i, i + 5)
+        const label = chunk.length > 1 
+          ? `โซน ${zone} (${chunk[0]} - ${chunk[chunk.length - 1]})` 
+          : `โซน ${zone} (${chunk[0]})`
+        chunkedTabs.push({ label, shelves: chunk })
+      }
+    })
 
     setTabs(chunkedTabs)
     if (chunkedTabs.length > 0) setActiveTabLabel(chunkedTabs[0].label)
-
     setIsLoading(false)
   }
 
   const activeTab = tabs.find(t => t.label === activeTabLabel)
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#e2e8f0] relative">
+    <div className="w-full h-full flex flex-col bg-slate-100">
       
       {/* 🌟 Header */}
-      <div className="p-5 border-b border-slate-300 bg-white shrink-0 shadow-sm z-10">
-        <h3 className="font-black text-lg text-slate-800"><i className="bi bi-map-fill text-indigo-500 mr-2"></i> Visual Storage Map</h3>
-        <p className="text-xs text-slate-500 mt-1">คลิกที่ช่องสีเขียวเพื่อเลือกพิกัดจัดเก็บ ระบบตัดกลุ่มเชลฟ์อัตโนมัติ 5 ตู้/โซน</p>
+      <div className="p-4 border-b border-slate-200 bg-white shrink-0 z-10 flex justify-between items-center">
+        <div>
+          <h3 className="font-black text-base text-slate-800"><i className="bi bi-diagram-3-fill text-indigo-500 mr-2"></i> Visual Storage Map</h3>
+          <p className="text-[10px] text-slate-500 mt-0.5">แบ่งโซนคลังสินค้าอัตโนมัติ (A, B, C แยกจากกัน)</p>
+        </div>
       </div>
 
-      {/* 🌟 Tab Selector (จัดกลุ่มทีละ 5) */}
-      <div className="p-3 bg-slate-100 flex gap-2 overflow-x-auto shrink-0 shadow-inner min-h-[64px] border-b border-slate-300 z-10">
+      {/* 🌟 Tab Selector */}
+      <div className="p-3 bg-white flex gap-2 overflow-x-auto shrink-0 shadow-sm border-b border-slate-200 z-10 scrollbar-hide">
         {isLoading ? (
-          <span className="text-xs text-slate-400 font-bold m-auto flex items-center gap-2"><i className="bi bi-arrow-repeat animate-spin text-lg"></i> โหลดข้อมูลคลังสินค้า...</span>
+          <span className="text-[11px] text-slate-400 font-bold m-auto flex items-center gap-2"><i className="bi bi-arrow-repeat animate-spin text-sm"></i> กำลังโหลดโครงสร้างคลัง...</span>
         ) : (
           tabs.map(tab => (
             <button 
               key={tab.label} type="button" onClick={() => setActiveTabLabel(tab.label)}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap shadow-sm border ${
+              className={`px-5 py-2 rounded-lg text-[11px] font-black transition-all whitespace-nowrap shadow-sm border ${
                 activeTabLabel === tab.label 
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-indigo-600/30' 
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200 hover:border-slate-300'
+                  ? 'bg-indigo-600 text-white border-indigo-700' 
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200 hover:border-slate-300'
               }`}
             >
-              โซน {tab.label}
+              {tab.label}
             </button>
           ))
         )}
       </div>
 
-      {/* 🌟 พื้นที่จำลอง Shelf (เรียงตู้หน้ากระดาน) */}
-      <div className="p-6 overflow-y-auto overflow-x-auto flex-1 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
-        
+      {/* 🌟 พื้นที่จำลอง Shelf */}
+      <div className="p-6 overflow-y-auto overflow-x-auto flex-1 bg-slate-100/50">
         {activeTab && (
-          <div className="flex gap-8 pb-8 w-max mx-auto px-4">
-            
-            {/* วนลูปวาดตู้ (Shelf) แต่ละตู้ในกลุ่ม */}
+          <div className="flex gap-6 pb-8 w-max mx-auto px-2">
             {activeTab.shelves.map(shelf => (
-              <div key={shelf} className="flex flex-col min-w-[280px] bg-slate-300 p-3.5 rounded-[1.5rem] border-4 border-slate-400 shadow-2xl relative">
+              <div key={shelf} className="flex flex-col min-w-[200px] bg-white p-2.5 rounded-2xl border border-slate-200 shadow-lg relative">
                 
-                {/* ป้ายชื่อตู้ */}
-                <div className="text-center bg-slate-700 text-white font-black py-2 rounded-xl mb-4 shadow-inner uppercase tracking-widest text-sm">
-                  ตู้ {shelf}
+                <div className="text-center bg-slate-800 text-white font-black py-1.5 rounded-xl mb-3 shadow-inner text-xs tracking-wider">
+                  {shelf}
                 </div>
 
-                {/* โครงเหล็กของตู้ */}
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
                   {[5, 4, 3, 2, 1].map(layer => (
-                    <div key={layer} className="flex gap-3 bg-slate-400/30 p-2.5 rounded-2xl relative border-b-4 border-slate-400/50 shadow-inner">
-                      
-                      {/* ป้ายบอกชั้น (L1, L2...) */}
-                      <div className="absolute -left-3 top-1/2 -translate-y-1/2 bg-slate-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm z-10 border border-slate-700">
+                    <div key={layer} className="flex gap-2 relative border-b-2 border-slate-100 pb-2">
+                      <div className="w-5 flex items-center justify-center bg-slate-50 rounded text-[9px] font-black text-slate-400 border border-slate-100">
                         L{layer}
                       </div>
 
-                      {/* ช่องวางของ ซ้าย-ขวา */}
-                      {[1, 2].map(slot => {
-                        const locCode = `1-FTR-${shelf}-L${layer}-S${slot}`;
-                        const isExistInDB = locationData[locCode]; // เช็กว่าแอดมินสร้างช่องนี้ไว้ในระบบหรือเปล่า
-                        const occupiedItem = occupiedMap[locCode]; // เช็กว่ามีใครเอาของมาวางทับหรือยัง
-                        const isSelected = selectedLocations.includes(locCode);
+                      <div className="flex-1 grid grid-cols-2 gap-2">
+                        {[1, 2].map(slot => {
+                          const slotData = shelfData[shelf]?.[layer]?.[slot];
 
-                        // ถ้าฐานข้อมูลไม่มีรหัสช่องนี้ ให้แสดงเป็นช่องโหว่ (Void)
-                        if (!isExistInDB) {
+                          // 🔴 ถ้าไม่ได้แอดพิกัดไว้ใน Database ปล่อยช่องให้ล่องหนไปเลย จะได้ไม่รกตา
+                          if (!slotData) {
+                            return <div key={`empty-${slot}`} className="h-14 rounded-lg bg-transparent border border-dashed border-slate-200/50"></div>;
+                          }
+
+                          const isSelected = selectedLocations.includes(slotData.code);
+
+                          // 🔴 ถ้าของเต็มแล้ว (Occupied)
+                          if (slotData.occupiedBy) {
+                            return (
+                              <div key={slotData.code} className="h-14 rounded-lg border border-slate-300 bg-slate-100 flex flex-col items-center justify-center opacity-80 cursor-not-allowed shadow-inner">
+                                <i className="bi bi-box-seam-fill text-slate-400 text-sm mb-0.5"></i>
+                                <span className="text-[8px] font-bold text-slate-500 truncate max-w-[80%]">{slotData.occupiedBy}</span>
+                              </div>
+                            );
+                          }
+
+                          // 🟢 ถ้าว่างและคลิกได้ (Available)
                           return (
-                            <div key={locCode} className="flex-1 h-24 rounded-xl border-2 border-dashed border-slate-400 bg-slate-300/30 flex items-center justify-center opacity-60">
-                              <span className="text-[10px] font-bold text-slate-500">-</span>
-                            </div>
+                            <button 
+                              key={slotData.code} type="button"
+                              onClick={() => onToggleLocation(slotData.code)}
+                              className={`h-14 rounded-lg border-2 transition-all flex flex-col items-center justify-center group
+                                ${isSelected 
+                                  ? 'border-indigo-500 bg-indigo-50 shadow-md scale-[1.02]' 
+                                  : 'border-emerald-300 bg-emerald-50/30 hover:border-emerald-500 hover:bg-emerald-100 hover:shadow-sm'}`}
+                            >
+                              {isSelected ? (
+                                <i className="bi bi-check-circle-fill text-indigo-600 text-lg"></i>
+                              ) : (
+                                <>
+                                  <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest group-hover:scale-110 transition-transform">ว่าง</span>
+                                  <span className="text-[8px] font-bold text-emerald-400 mt-0.5">S{slot}</span>
+                                </>
+                              )}
+                            </button>
                           );
-                        }
-
-                        // ถ้าช่องนั้นโดนจองแล้ว (Occupied)
-                        if (occupiedItem) {
-                          return (
-                            <div key={locCode} className="flex-1 h-24 rounded-xl border-2 border-slate-400 bg-slate-200 flex flex-col items-center justify-center opacity-80 cursor-not-allowed shadow-inner relative overflow-hidden">
-                              <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(0,0,0,0.05)_25%,rgba(0,0,0,0.05)_50%,transparent_50%,transparent_75%,rgba(0,0,0,0.05)_75%,rgba(0,0,0,0.05)_100%)] bg-[length:10px_10px]"></div>
-                              <img src="/black-box.png" className="w-10 h-10 object-contain drop-shadow-md mb-1 relative z-10" alt="Box" />
-                              <p className="text-[9px] font-black text-slate-700 bg-white/70 px-2 py-0.5 rounded backdrop-blur-sm relative z-10 truncate max-w-[90%]">{occupiedItem}</p>
-                            </div>
-                          );
-                        }
-
-                        // ถ้าช่องนั้นว่าง และคลิกเลือกได้
-                        return (
-                          <button 
-                            key={locCode} type="button"
-                            onClick={() => onToggleLocation(locCode)}
-                            className={`flex-1 h-24 rounded-xl border-2 transition-all flex flex-col items-center justify-center shadow-md relative overflow-hidden
-                              ${isSelected ? 'border-indigo-500 bg-indigo-50 ring-4 ring-indigo-500/30' : 'border-emerald-400 bg-white hover:border-emerald-600 hover:bg-emerald-50 hover:-translate-y-1 group'}`}
-                          >
-                            <i className={`bi ${isSelected ? 'bi-check-circle-fill text-indigo-600' : 'bi-plus-circle text-emerald-500 group-hover:scale-125 transition-transform'} text-xl mb-1`}></i>
-                            <p className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? 'text-indigo-700' : 'text-emerald-600'}`}>{isSelected ? 'Selected' : 'Available'}</p>
-                            <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">Slot {slot}</p>
-                          </button>
-                        );
-                      })}
+                        })}
+                      </div>
                     </div>
                   ))}
                 </div>
-
-                <div className="h-6 w-full mt-2 border-x-4 border-b-4 border-slate-400 rounded-b-lg opacity-50"></div> {/* ขาตู้เชลฟ์ */}
               </div>
             ))}
           </div>
