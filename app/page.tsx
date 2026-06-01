@@ -1422,14 +1422,66 @@ export default function MaintenanceDashboard() {
       {isReceiveStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-emerald-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-box-arrow-in-down-right text-emerald-500 bg-emerald-50 p-2 rounded-lg"></i> Receive Stock</h3> <button onClick={() => setReceiveStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReceiveStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Receive Qty</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="1" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow hover:border-emerald-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> </div> <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-600/20"><i className="bi bi-plus-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
       {isReduceStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Adjust Stock</h3> <button onClick={() => setReduceStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReduceStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Correct Balance</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="0" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow hover:border-indigo-300 z-10 text-lg font-bold text-indigo-600" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> <p className="text-xs text-slate-500 mt-2">Enter the exact new balance to overwrite existing data</p> </div> <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
       {isLeadTimeModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-amber-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-clock-history text-amber-500 bg-amber-50 p-2 rounded-lg"></i> Update Lead Time</h3> <button onClick={() => setLeadTimeModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleUpdateLeadTime}> <p className="text-sm text-slate-500 mb-2 leading-relaxed">Update supplier lead time to improve AI prediction accuracy.</p> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">New Lead Time</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="days" placeholder="e.g. 30" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-amber-500 transition-shadow hover:border-amber-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" className="w-full bg-amber-500 text-white font-bold py-4 rounded-xl mt-4 hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-500/20"><i className="bi bi-check-circle mr-2"></i>Save Lead Time</button> </form> </div> </div> )}
-      {isNewMachineModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine</h3> <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label><input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label><input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label> <div className="relative"><select name="line" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all"><option value="">-- Select Line --</option>{linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div> </div> <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]"><i className="bi bi-plus-lg mr-2"></i>Create Machine</button> </form> </div> </div> )}
+      {/* 🌟 Modal: Register New Machine 🌟 */}
+      {isNewMachineModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]">
+            
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine
+              </h3>
+              <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95">
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            
+            <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label>
+                <input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label>
+                <input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" />
+              </div>
+              
+              {/* 🌟 CustomDropdown แทนที่ Select เดิม 🌟 */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label>
+                <CustomDropdown 
+                  name="line" 
+                  defaultValue=""
+                  options={[
+                    { value: '', label: '-- Select Line --' },
+                    ...linesMaster.map(line => ({ value: line.LineName, label: line.LineName }))
+                  ]}
+                  placeholder="-- Select Line --"
+                />
+              </div>
+
+              <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]">
+                <i className="bi bi-plus-lg mr-2"></i>Create Machine
+              </button>
+            </form>
+            
+          </div>
+        </div>
+      )}
+      {/* 🌟 Modal: Edit Machine 🌟 */}
       {isEditMachineModalOpen && editingMachineData && ( 
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> 
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> 
+            
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> 
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Edit Machine</h3> 
-              <button onClick={() => setEditMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> 
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className="bi bi-pencil-square text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Edit Machine
+              </h3> 
+              <button onClick={() => setEditMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95">
+                <i className="bi bi-x-lg"></i>
+              </button> 
             </div> 
+            
             <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleEditMachineSubmit}> 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label>
@@ -1440,20 +1492,28 @@ export default function MaintenanceDashboard() {
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label>
                 <input type="text" name="name" required defaultValue={editingMachineData.MachineName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" />
               </div> 
+              
+              {/* 🌟 CustomDropdown มาแทนที่ตรงนี้ครับ 🌟 */}
               <div> 
-                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line (Current: {editingMachineData.LineName || '-'})</label> 
-                <div className="relative">
-                  <select name="line" required defaultValue={editingMachineData.LineName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all">
-                    <option value="">-- Select Line --</option>
-                    {linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}
-                  </select>
-                  <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
-                </div> 
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
+                  Production Line (Current: {editingMachineData.LineName || '-'})
+                </label> 
+                <CustomDropdown 
+                  name="line" 
+                  defaultValue={editingMachineData.LineName || ''}
+                  options={[
+                    { value: '', label: '-- Select Line --' },
+                    ...linesMaster.map(line => ({ value: line.LineName, label: line.LineName }))
+                  ]}
+                  placeholder="-- Select Line --"
+                />
               </div> 
+
               <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]">
                 {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>}
               </button> 
             </form> 
+            
           </div> 
         </div> 
       )}
