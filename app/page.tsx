@@ -357,6 +357,62 @@ export default function MaintenanceDashboard() {
     });
   };
 
+  // =================================================================
+  // 🌟 Global ESC Key Listener (ปิดป๊อปอัพด้วยปุ่ม ESC แบบมีลำดับชั้น)
+  // =================================================================
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        
+        // 🔴 ลำดับที่ 1: ปิดพวก Dropdown, ซูมรูป, หรือหน้าต่าง Confirm ก่อน (ป้องกันข้อมูลฟอร์มหาย)
+        if (openDropdownId) {
+          setOpenDropdownId(null);
+          return;
+        }
+        if (zoomedImage) {
+          setZoomedImage(null);
+          return;
+        }
+        if (confirmDialog?.isOpen) {
+          setConfirmDialog(null);
+          return;
+        }
+        if (moveCategoryModal?.isOpen) {
+          setMoveCategoryModal(null);
+          return;
+        }
+        if (basicInfoModal.isOpen) {
+          setBasicInfoModal({ ...basicInfoModal, isOpen: false });
+          return;
+        }
+
+        // 🔵 ลำดับที่ 2: ถ้าไม่มีป๊อปอัพซ้อนทับอยู่ ให้ทำการปิด Modal ฟอร์มหลักทั้งหมด
+        setReceiveStockModalOpen(false);
+        setReduceStockModalOpen(false);
+        setLeadTimeModalOpen(false);
+        setNewPartModalOpen(false);
+        setEditPartModalOpen(false);
+        setNewMachineModalOpen(false);
+        setEditMachineModalOpen(false);
+        setNewConsumableModalOpen(false);
+        setReceiveConsumableOpen(false);
+        setReduceConsumableOpen(false);
+        setEditConsumableOpen(false);
+        setNewFixtureModalOpen(false);
+        setEditFixtureStockOpen(false);
+        setEditFixtureInfoOpen(false);
+      }
+    };
+
+    // เปิดเรดาร์ดักจับการกดคีย์บอร์ด
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // คืนค่าระบบเมื่อ Component ถูกทำลาย (ป้องกัน Memory Leak)
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    
+  // 🚨 ใส่ Dependencies เพื่อให้ React อัปเดตสถานะของชั้นที่ 1 ตลอดเวลา
+  }, [openDropdownId, zoomedImage, confirmDialog, moveCategoryModal, basicInfoModal]);
+  
   const handleChangeReason = async (recordId: string, newReason: string) => {
     const { error } = await supabase.from('ChangeHistory').update({ ReasonType: newReason }).eq('RecordID', recordId);
     if (!error) { showToast('เปลี่ยนสาเหตุสำเร็จ ระบบจะคำนวณ MTBF ใหม่', 'success'); fetchAllData(); } 
