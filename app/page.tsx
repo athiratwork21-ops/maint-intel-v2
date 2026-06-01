@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
 import Image from 'next/image';
 import Papa from 'papaparse';
+import ShelfMapSelector from '../components/ShelfMapSelector';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -1344,115 +1345,153 @@ export default function MaintenanceDashboard() {
         </div>
       )}
 
-      {/* 🌟 Modal: New Fixture (พร้อมอัปโหลดรูป) 🌟 */}
+      {/* 🌟 Modal: New Fixture (SPLIT SCREEN UX) 🌟 */}
       {isNewFixtureModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-purple-500 flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-tools text-purple-500 bg-purple-50 p-2 rounded-lg"></i> Add New Fixture</h3>
-              <button onClick={() => setNewFixtureModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
-            </div>
-            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewFixtureSubmit}>
-              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
-                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Fixture Image</label>
-                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-purple-400 shadow-inner">
-                  {previewImage ? ( <img src={previewImage} className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )}
-                  <label className="absolute bottom-4 left-4 bg-purple-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-purple-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label>
-                </div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+          
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl h-[90vh] overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-purple-500">
+            
+            {/* 🔴 ฝั่งซ้าย: ฟอร์มกรอกข้อมูล */}
+            <div className="w-full md:w-1/2 flex flex-col border-r border-slate-200 bg-white">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <h3 className="font-black text-lg text-slate-800"><i className="bi bi-tools text-purple-500 mr-2"></i> Add New Fixture</h3>
+                <button type="button" onClick={() => setNewFixtureModalOpen(false)} className="text-slate-400 hover:text-red-500 bg-slate-50 hover:bg-red-50 w-8 h-8 rounded-full flex items-center justify-center transition-all"><i className="bi bi-x-lg"></i></button>
               </div>
-              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
-                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required placeholder="e.g. FIX-001" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
-                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required placeholder="Model name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
-                
-                {/* 🌟 จุดที่แก้: Multi-Location สำหรับ Add New Fixture 🌟 */}
+
+              <form className="flex-1 overflow-y-auto p-6 space-y-5" onSubmit={handleNewFixtureSubmit}>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Locations (เลือกได้มากกว่า 1)</label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
-                    {locationsMaster.map(loc => (
-                      <label key={loc.LocationName} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${multiLocations.includes(loc.LocationName) ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white border-slate-200 text-slate-500 hover:border-purple-300'}`}>
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={multiLocations.includes(loc.LocationName)}
-                          onChange={() => {
-                            if (multiLocations.includes(loc.LocationName)) {
-                              setMultiLocations(multiLocations.filter(l => l !== loc.LocationName));
-                            } else {
-                              setMultiLocations([...multiLocations, loc.LocationName]);
-                            }
-                          }}
-                        />
-                        <i className={`bi ${multiLocations.includes(loc.LocationName) ? 'bi-check-square-fill' : 'bi-square'} text-[13px]`}></i>
-                        <span className="text-[13px] font-bold uppercase">{loc.LocationName}</span>
-                      </label>
-                    ))}
-                    {locationsMaster.length === 0 && <span className="text-sm text-slate-400 font-bold p-2">ไม่มีข้อมูล Location ในระบบ</span>}
+                  <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-wider">Fixture Image</label>
+                  <div className="relative w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center overflow-hidden hover:border-purple-400 transition-colors">
+                    {previewImage ? <img src={previewImage} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-camera text-3xl text-slate-300"></i>}
+                    <label className="absolute bottom-2 right-2 bg-white/90 backdrop-blur text-purple-600 px-3 py-1.5 rounded-lg shadow-sm border border-purple-100 cursor-pointer text-xs font-bold hover:bg-purple-50 transition-colors">
+                      Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} />
+                    </label>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1.5"><i className="bi bi-info-circle-fill mr-1"></i>คลิกเพื่อเลือกหรือยกเลิกพิกัดจัดเก็บ</p>
                 </div>
 
-                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
-                <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-check-lg mr-2"></i>Create Fixture</button>
-              </div>
-            </form>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No. *</label><input type="text" name="fixtureNo" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 text-sm font-bold" /></div>
+                  <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Total Qty</label><input type="number" name="totalQty" min="1" defaultValue={1} required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 text-sm font-bold" /></div>
+                </div>
+                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 text-sm font-bold" /></div>
+
+                {/* 🌟 แสดงพิกัดที่เลือกไว้ 🌟 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Selected Locations</label>
+                  <div className="flex flex-wrap gap-2 p-4 bg-purple-50/50 border border-purple-100 rounded-xl min-h-[80px] shadow-inner items-start">
+                    {multiLocations.length === 0 ? (
+                      <span className="text-slate-400 text-xs font-bold w-full text-center py-2"><i className="bi bi-arrow-right-circle mr-1"></i> เลือกพิกัดจากแผนที่ด้านขวา</span>
+                    ) : (
+                      multiLocations.map((loc, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-purple-200 text-purple-700 rounded-lg text-xs font-black uppercase shadow-sm">
+                          <i className="bi bi-geo-alt-fill text-purple-400"></i> {loc}
+                          <button type="button" onClick={() => setMultiLocations(multiLocations.filter(l => l !== loc))} className="ml-1 text-slate-300 hover:text-red-500"><i className="bi bi-x-circle-fill"></i></button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <button type="submit" disabled={isProcessing} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50 text-sm">
+                    {isProcessing ? "Processing..." : "Create Fixture"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* 🔵 ฝั่งขวา: แผนที่เชลฟ์แบบฝังตัว */}
+            <div className="w-full md:w-1/2 flex flex-col h-full bg-slate-50">
+              <ShelfMapSelector 
+                selectedLocations={multiLocations} 
+                onToggleLocation={(loc) => {
+                  if (multiLocations.includes(loc)) {
+                    setMultiLocations(multiLocations.filter(l => l !== loc));
+                  } else {
+                    setMultiLocations([...multiLocations, loc]);
+                  }
+                }} 
+              />
+            </div>
           </div>
         </div>
       )}
 
-      {/* 🌟 Modal: Edit Fixture Info (แก้รูปและชื่อ) 🌟 */}
+      {/* 🌟 Modal: Edit Fixture Info (SPLIT SCREEN UX) 🌟 */}
       {isEditFixtureInfoOpen && selectedFixture && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-fill text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Fixture Info</h3>
-              <button onClick={() => setEditFixtureInfoOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
-            </div>
-            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditFixtureInfoSubmit}>
-              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
-                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Fixture Image</label>
-                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner">
-                  {previewImage ? ( <img src={previewImage} className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )}
-                  <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label>
-                </div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+          
+          {/* 🚨 ขยายความกว้างเป็น max-w-6xl และแบ่งจอซ้ายขวาด้วย md:flex-row */}
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl h-[90vh] overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500">
+            
+            {/* 🔴 ฝั่งซ้าย: ฟอร์มแก้ไขข้อมูล */}
+            <div className="w-full md:w-1/2 flex flex-col border-r border-slate-200 bg-white">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <h3 className="font-black text-lg text-slate-800"><i className="bi bi-pencil-fill text-indigo-500 mr-2"></i> Edit Fixture Info</h3>
+                <button type="button" onClick={() => setEditFixtureInfoOpen(false)} className="text-slate-400 hover:text-red-500 bg-slate-50 hover:bg-red-50 w-8 h-8 rounded-full flex items-center justify-center transition-all"><i className="bi bi-x-lg"></i></button>
               </div>
-              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+
+              <form className="flex-1 overflow-y-auto p-6 space-y-5" onSubmit={handleEditFixtureInfoSubmit}>
+                {/* รูปภาพ */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No.</label>
-                  <div className="w-full p-4 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-500 text-sm cursor-not-allowed">{selectedFixture.FixtureNo}</div>
-                  <p className="text-[10px] text-slate-400 mt-1">Fixture ID cannot be changed.</p>
-                </div>
-                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label><input type="text" name="modelName" required defaultValue={selectedFixture.ModelName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-slate-800 text-sm shadow-sm focus:bg-white" /></div>
-                
-                {/* 🌟 จุดที่แก้: Multi-Location สำหรับ Edit Fixture Info 🌟 */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Locations (เลือกได้มากกว่า 1)</label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto shadow-inner">
-                    {locationsMaster.map(loc => (
-                      <label key={loc.LocationName} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all ${multiLocations.includes(loc.LocationName) ? 'bg-indigo-100 border-indigo-500 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
-                        <input 
-                          type="checkbox" 
-                          className="hidden"
-                          checked={multiLocations.includes(loc.LocationName)}
-                          onChange={() => {
-                            if (multiLocations.includes(loc.LocationName)) {
-                              setMultiLocations(multiLocations.filter(l => l !== loc.LocationName));
-                            } else {
-                              setMultiLocations([...multiLocations, loc.LocationName]);
-                            }
-                          }}
-                        />
-                        <i className={`bi ${multiLocations.includes(loc.LocationName) ? 'bi-check-square-fill' : 'bi-square'} text-[13px]`}></i>
-                        <span className="text-[13px] font-bold uppercase">{loc.LocationName}</span>
-                      </label>
-                    ))}
-                    {locationsMaster.length === 0 && <span className="text-sm text-slate-400 font-bold p-2">ไม่มีข้อมูล Location ในระบบ</span>}
+                  <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-wider">Fixture Image</label>
+                  <div className="relative w-full h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center overflow-hidden hover:border-indigo-400 transition-colors">
+                    {previewImage ? <img src={previewImage} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-camera text-3xl text-slate-300"></i>}
+                    <label className="absolute bottom-2 right-2 bg-white/90 backdrop-blur text-indigo-600 px-3 py-1.5 rounded-lg shadow-sm border border-indigo-100 cursor-pointer text-xs font-bold hover:bg-indigo-50 transition-colors">
+                      Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} />
+                    </label>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1.5"><i className="bi bi-info-circle-fill mr-1"></i>คลิกเพื่อเลือกหรือยกเลิกพิกัดจัดเก็บ</p>
                 </div>
 
-                <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-[15px]"><i className="bi bi-save mr-2"></i>Save Changes</button>
-              </div>
-            </form>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Fixture No.</label>
+                  <div className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-500 text-sm cursor-not-allowed">{selectedFixture.FixtureNo}</div>
+                  <p className="text-[10px] text-slate-400 mt-1">Fixture ID cannot be changed.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model Name *</label>
+                  <input type="text" name="modelName" required defaultValue={selectedFixture.ModelName} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 text-sm font-bold" />
+                </div>
+
+                {/* 🌟 แสดงพิกัดที่เลือกไว้ (ลบ Dropdown เก่าทิ้ง ใช้ Tag สวยๆ แทน) 🌟 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">Selected Locations</label>
+                  <div className="flex flex-wrap gap-2 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl min-h-[80px] shadow-inner items-start">
+                    {multiLocations.length === 0 ? (
+                      <span className="text-slate-400 text-xs font-bold w-full text-center py-2"><i className="bi bi-arrow-right-circle mr-1"></i> เลือกพิกัดจากแผนที่ด้านขวา</span>
+                    ) : (
+                      multiLocations.map((loc, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-black uppercase shadow-sm">
+                          <i className="bi bi-geo-alt-fill text-indigo-400"></i> {loc}
+                          <button type="button" onClick={() => setMultiLocations(multiLocations.filter(l => l !== loc))} className="ml-1 text-slate-300 hover:text-red-500"><i className="bi bi-x-circle-fill"></i></button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 text-sm">
+                    {isProcessing ? "Processing..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* 🔵 ฝั่งขวา: แผนที่เชลฟ์แบบฝังตัว (ดึง Component เดียวกันมาใช้) */}
+            <div className="w-full md:w-1/2 flex flex-col h-full bg-slate-50">
+              <ShelfMapSelector 
+                selectedLocations={multiLocations} 
+                onToggleLocation={(loc) => {
+                  if (multiLocations.includes(loc)) {
+                    setMultiLocations(multiLocations.filter(l => l !== loc)); // ถ้ามีอยู่แล้วให้ลบออก
+                  } else {
+                    setMultiLocations([...multiLocations, loc]); // ถ้ายังไม่มีให้เพิ่ม
+                  }
+                }} 
+              />
+            </div>
+
           </div>
         </div>
       )}
