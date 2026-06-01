@@ -5,6 +5,7 @@ import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
 import Image from 'next/image';
 import Papa from 'papaparse';
 import ShelfMapSelector from '../components/ShelfMapSelector';
+import CustomDropdown from '../components/CustomDropdown';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -357,6 +358,62 @@ export default function MaintenanceDashboard() {
     });
   };
 
+  // =================================================================
+  // 🌟 Global ESC Key Listener (ปิดป๊อปอัพด้วยปุ่ม ESC แบบมีลำดับชั้น)
+  // =================================================================
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        
+        // 🔴 ลำดับที่ 1: ปิดพวก Dropdown, ซูมรูป, หรือหน้าต่าง Confirm ก่อน (ป้องกันข้อมูลฟอร์มหาย)
+        if (openDropdownId) {
+          setOpenDropdownId(null);
+          return;
+        }
+        if (zoomedImage) {
+          setZoomedImage(null);
+          return;
+        }
+        if (confirmDialog?.isOpen) {
+          setConfirmDialog(null);
+          return;
+        }
+        if (moveCategoryModal?.isOpen) {
+          setMoveCategoryModal(null);
+          return;
+        }
+        if (basicInfoModal.isOpen) {
+          setBasicInfoModal({ ...basicInfoModal, isOpen: false });
+          return;
+        }
+
+        // 🔵 ลำดับที่ 2: ถ้าไม่มีป๊อปอัพซ้อนทับอยู่ ให้ทำการปิด Modal ฟอร์มหลักทั้งหมด
+        setReceiveStockModalOpen(false);
+        setReduceStockModalOpen(false);
+        setLeadTimeModalOpen(false);
+        setNewPartModalOpen(false);
+        setEditPartModalOpen(false);
+        setNewMachineModalOpen(false);
+        setEditMachineModalOpen(false);
+        setNewConsumableModalOpen(false);
+        setReceiveConsumableOpen(false);
+        setReduceConsumableOpen(false);
+        setEditConsumableOpen(false);
+        setNewFixtureModalOpen(false);
+        setEditFixtureStockOpen(false);
+        setEditFixtureInfoOpen(false);
+      }
+    };
+
+    // เปิดเรดาร์ดักจับการกดคีย์บอร์ด
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // คืนค่าระบบเมื่อ Component ถูกทำลาย (ป้องกัน Memory Leak)
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    
+  // 🚨 ใส่ Dependencies เพื่อให้ React อัปเดตสถานะของชั้นที่ 1 ตลอดเวลา
+  }, [openDropdownId, zoomedImage, confirmDialog, moveCategoryModal, basicInfoModal]);
+  
   const handleChangeReason = async (recordId: string, newReason: string) => {
     const { error } = await supabase.from('ChangeHistory').update({ ReasonType: newReason }).eq('RecordID', recordId);
     if (!error) { showToast('เปลี่ยนสาเหตุสำเร็จ ระบบจะคำนวณ MTBF ใหม่', 'success'); fetchAllData(); } 
@@ -971,14 +1028,13 @@ export default function MaintenanceDashboard() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Department</label>
-              <div className="relative">
-                <i className="bi bi-building absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                <select value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm font-bold text-slate-700 shadow-sm hover:border-blue-300 appearance-none">
-                  <option value="" disabled>-- Select your department --</option>
-                  {departments.map(d => <option key={d.DepartmentID} value={d.DepartmentID}>{d.DepartmentName}</option>)}
-                </select>
-                <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm"></i>
-              </div>
+              <CustomDropdown 
+                value={selectedDept} 
+                onChange={setSelectedDept} 
+                options={departments.map(d => ({ value: d.DepartmentID, label: d.DepartmentName }))}
+                placeholder="-- Select your department --"
+                iconClass="bi bi-building"
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Username or Email</label>
@@ -1137,7 +1193,20 @@ export default function MaintenanceDashboard() {
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Item Name *</label><input type="text" name="name" required placeholder="e.g. Rubber Gloves, N95 Mask" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. 3M" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700 appearance-none uppercase"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
+                      Location
+                    </label>
+                    <CustomDropdown 
+                      name="location" 
+                      defaultValue=""
+                      options={[
+                        { value: '', label: '-- Not specified --' },
+                        ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                      ]}
+                      placeholder="-- Not specified --"
+                    />
+                  </div>
                   <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Initial Balance</label><input type="number" name="balance" min="0" defaultValue={0} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
@@ -1173,7 +1242,20 @@ export default function MaintenanceDashboard() {
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label><input type="text" name="partNumber" defaultValue={editingConsumableData?.PartNumber} placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Item Name *</label><input type="text" name="name" required defaultValue={editingConsumableData?.ItemName} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
                 <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" defaultValue={editingConsumableData?.ItemModel} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700" /></div>
-                <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" defaultValue={editingConsumableData?.Location} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all focus:bg-white font-bold text-sm text-slate-700 appearance-none uppercase"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
+                    Location
+                  </label>
+                  <CustomDropdown 
+                    name="location" 
+                    defaultValue={editingConsumableData?.Location || ''}
+                    options={[
+                      { value: '', label: '-- Not specified --' },
+                      ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                    ]}
+                    placeholder="-- Not specified --"
+                  />
+                </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-red-500">Min (ROP)</label><input type="number" name="min" required defaultValue={editingConsumableData?.MinQty} className="w-full p-4 bg-slate-50 border border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all focus:bg-white font-bold text-sm text-red-700 text-center px-2" /></div>
                   <div><label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase text-orange-500">Safety</label><input type="number" name="safety" required defaultValue={editingConsumableData?.SafetyStock} className="w-full p-4 bg-slate-50 border border-orange-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 transition-all focus:bg-white font-bold text-sm text-orange-700 text-center px-2" /></div>
@@ -1215,7 +1297,89 @@ export default function MaintenanceDashboard() {
         </div>
       )}
       
-      {isNewPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Part</h3> <button onClick={() => setNewPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-blue-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-blue-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"><div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label><input type="text" name="partNumber" placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm focus:bg-white" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label><input type="text" name="name" required placeholder="Part Name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div className="grid grid-cols-2 gap-4"> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label><input type="text" name="model" placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label><div className="relative"><select name="location" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm"><option value="">-- Not specified --</option>{locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div></div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 text-[15px]"> {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Uploading...</> : <><i className="bi bi-check-lg mr-2"></i>Create Part</>} </button> </div> </form> </div> </div> )}
+      {/* 🌟 Modal: Register New Part 🌟 */}
+      {isNewPartModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]">
+            
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Part
+              </h3>
+              <button onClick={() => setNewPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95">
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            
+            <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleNewPartSubmit}>
+              <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center">
+                <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label>
+                <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-blue-400 shadow-inner">
+                  {previewImage ? (
+                    <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" />
+                  ) : (
+                    <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity">
+                      <i className="bi bi-image text-5xl mb-3"></i>
+                      <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span>
+                    </div>
+                  )}
+                  <label className="absolute bottom-4 left-4 bg-blue-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-blue-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all">
+                    <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Upload
+                    <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </label>
+                </div>
+              </div>
+              
+              <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase text-blue-600">Part Number (P/N)</label>
+                  <input type="text" name="partNumber" placeholder="e.g. PN-12345" className="w-full p-4 bg-blue-50/50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm focus:bg-white" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Part Name *</label>
+                  <input type="text" name="name" required placeholder="Part Name" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Model</label>
+                    <input type="text" name="model" placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label>
+                    
+                    {/* 🌟 CustomDropdown ตัวใหม่มาแทนที่ตรงนี้ครับ 🌟 */}
+                    <CustomDropdown 
+                      name="location" 
+                      defaultValue=""
+                      options={[
+                        { value: '', label: '-- Not specified --' },
+                        ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                      ]}
+                      placeholder="-- Not specified --"
+                    />
+                    {/* 🌟 จบการแทนที่ 🌟 */}
+
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Safety Buffer (Days) *</label>
+                  <div className="flex items-center shadow-sm rounded-xl">
+                    <input type="number" name="buffer" required defaultValue={7} className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm text-slate-700 z-10" />
+                    <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span>
+                  </div>
+                </div>
+                
+                <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-2 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50 text-[15px]">
+                  {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Uploading...</> : <><i className="bi bi-check-lg mr-2"></i>Create Part</>}
+                </button>
+              </div>
+            </form>
+            
+          </div>
+        </div>
+      )}
 
       {isEditPartModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Edit Part Details</h3> <button onClick={() => setEditPartModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="flex flex-col md:flex-row flex-1 overflow-y-auto bg-slate-50/30" onSubmit={handleEditPartSubmit}> <div className="w-full md:w-1/2 p-8 border-r border-slate-100 flex flex-col justify-center"> <label className="block text-xs font-bold text-slate-500 mb-3 uppercase tracking-wider text-center">Part Image</label> <div className="relative w-full h-64 bg-slate-100 border-2 border-dashed border-slate-300 rounded-3xl flex flex-col items-center justify-center overflow-hidden group transition-colors hover:border-indigo-400 shadow-inner"> {previewImage ? ( <img src={previewImage} alt="Preview" className="w-full h-full object-contain drop-shadow-md mix-blend-multiply" /> ) : ( <div className="text-slate-400 flex flex-col items-center opacity-70 group-hover:opacity-100 transition-opacity"> <i className="bi bi-image text-5xl mb-3"></i> <span className="font-extrabold text-sm tracking-wide">NO IMAGE</span> </div> )} <label className="absolute bottom-4 left-4 bg-indigo-600/90 backdrop-blur-md text-white px-5 py-2.5 rounded-xl shadow-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2 font-bold text-sm active:scale-95 transition-all"> <i className="bi bi-cloud-arrow-up-fill text-lg"></i> Change <input type="file" name="imageFile" accept="image/*" className="hidden" onChange={handleImageChange} /> </label> </div> </div> <div className="w-full md:w-1/2 p-8 space-y-5 flex flex-col justify-center bg-white"> 
         <div>
@@ -1232,13 +1396,17 @@ export default function MaintenanceDashboard() {
             <input type="text" name="model" defaultValue={editingPartData?.PartModel} placeholder="e.g. V2.0" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 shadow-sm" />
           </div> 
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label>
-            <div className="relative">
-              <select name="location" defaultValue={editingPartData?.Location} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm text-slate-700 appearance-none uppercase shadow-sm">
-                <option value="">-- Not specified --</option>
-                {locationsMaster.map(loc => <option key={loc.LocationName} value={loc.LocationName}>{loc.LocationName}</option>)}
-              </select>
-              <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Location</label>
+              <CustomDropdown 
+                name="location" 
+                defaultValue={editingPartData?.Location || ''}
+                options={[
+                  { value: '', label: '-- Not specified --' },
+                  ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                ]}
+                placeholder="-- Not specified --"
+              />
             </div>
           </div> 
         </div> 
@@ -1254,14 +1422,66 @@ export default function MaintenanceDashboard() {
       {isReceiveStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-emerald-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-box-arrow-in-down-right text-emerald-500 bg-emerald-50 p-2 rounded-lg"></i> Receive Stock</h3> <button onClick={() => setReceiveStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReceiveStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Receive Qty</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="1" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow hover:border-emerald-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> </div> <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-600/20"><i className="bi bi-plus-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
       {isReduceStockModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-indigo-500 bg-indigo-50 p-2 rounded-lg"></i> Adjust Stock</h3> <button onClick={() => setReduceStockModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleReduceStock}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Correct Balance</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="qty" min="0" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow hover:border-indigo-300 z-10 text-lg font-bold text-indigo-600" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Pcs</span> </div> <p className="text-xs text-slate-500 mt-2">Enter the exact new balance to overwrite existing data</p> </div> <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"><i className="bi bi-check-circle mr-2"></i>Update Stock</button> </form> </div> </div> )}
       {isLeadTimeModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-amber-500"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-clock-history text-amber-500 bg-amber-50 p-2 rounded-lg"></i> Update Lead Time</h3> <button onClick={() => setLeadTimeModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-6 bg-slate-50/30" onSubmit={handleUpdateLeadTime}> <p className="text-sm text-slate-500 mb-2 leading-relaxed">Update supplier lead time to improve AI prediction accuracy.</p> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Target Part</label> <div className="flex items-center gap-4 w-full p-4 bg-white border border-slate-200 rounded-xl shadow-sm"> <div className="w-14 h-14 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0"> {activeActionPartDetails.ImageURL ? <img src={activeActionPartDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply" /> : <i className="bi bi-image text-slate-300 text-xl"></i>} </div> <div> <div className="font-bold text-slate-800 text-[14px]">{activeActionPartDetails.PartName || selectedActionPart?.name}</div> <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span>{activeActionPartDetails.PartModel || '-'}</div> </div> </div> </div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">New Lead Time</label> <div className="flex items-center shadow-sm rounded-xl"> <input type="number" name="days" placeholder="e.g. 30" required className="flex-1 p-4 bg-white border border-slate-200 rounded-l-xl outline-none focus:ring-2 focus:ring-amber-500 transition-shadow hover:border-amber-300 z-10 text-lg font-bold" /> <span className="bg-slate-100 border border-slate-200 border-l-0 p-4 rounded-r-xl font-bold text-slate-500">Days</span> </div> </div> <button type="submit" className="w-full bg-amber-500 text-white font-bold py-4 rounded-xl mt-4 hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-500/20"><i className="bi bi-check-circle mr-2"></i>Save Lead Time</button> </form> </div> </div> )}
-      {isNewMachineModalOpen && ( <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine</h3> <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> </div> <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label><input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label><input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" /></div> <div> <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label> <div className="relative"><select name="line" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all"><option value="">-- Select Line --</option>{linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}</select><i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i></div> </div> <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]"><i className="bi bi-plus-lg mr-2"></i>Create Machine</button> </form> </div> </div> )}
+      {/* 🌟 Modal: Register New Machine 🌟 */}
+      {isNewMachineModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]">
+            
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className="bi bi-robot text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Register New Machine
+              </h3>
+              <button onClick={() => setNewMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95">
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            
+            <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleNewMachineSubmit}>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label>
+                <input type="text" name="id" required placeholder="e.g. M1001" className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold text-sm text-slate-800 shadow-sm transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label>
+                <input type="text" name="name" required className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" />
+              </div>
+              
+              {/* 🌟 CustomDropdown แทนที่ Select เดิม 🌟 */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line</label>
+                <CustomDropdown 
+                  name="line" 
+                  defaultValue=""
+                  options={[
+                    { value: '', label: '-- Select Line --' },
+                    ...linesMaster.map(line => ({ value: line.LineName, label: line.LineName }))
+                  ]}
+                  placeholder="-- Select Line --"
+                />
+              </div>
+
+              <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]">
+                <i className="bi bi-plus-lg mr-2"></i>Create Machine
+              </button>
+            </form>
+            
+          </div>
+        </div>
+      )}
+      {/* 🌟 Modal: Edit Machine 🌟 */}
       {isEditMachineModalOpen && editingMachineData && ( 
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200"> 
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col max-h-[90vh]"> 
+            
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0"> 
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-pencil-square text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Edit Machine</h3> 
-              <button onClick={() => setEditMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button> 
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className="bi bi-pencil-square text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Edit Machine
+              </h3> 
+              <button onClick={() => setEditMachineModalOpen(false)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95">
+                <i className="bi bi-x-lg"></i>
+              </button> 
             </div> 
+            
             <form className="p-8 space-y-5 bg-slate-50/30 overflow-y-auto" onSubmit={handleEditMachineSubmit}> 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine ID</label>
@@ -1272,20 +1492,28 @@ export default function MaintenanceDashboard() {
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Machine Name</label>
                 <input type="text" name="name" required defaultValue={editingMachineData.MachineName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 shadow-sm transition-all" />
               </div> 
+              
+              {/* 🌟 CustomDropdown มาแทนที่ตรงนี้ครับ 🌟 */}
               <div> 
-                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">Production Line (Current: {editingMachineData.LineName || '-'})</label> 
-                <div className="relative">
-                  <select name="line" required defaultValue={editingMachineData.LineName} className="w-full p-4 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm text-slate-800 appearance-none shadow-sm transition-all">
-                    <option value="">-- Select Line --</option>
-                    {linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}
-                  </select>
-                  <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
-                </div> 
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
+                  Production Line (Current: {editingMachineData.LineName || '-'})
+                </label> 
+                <CustomDropdown 
+                  name="line" 
+                  defaultValue={editingMachineData.LineName || ''}
+                  options={[
+                    { value: '', label: '-- Select Line --' },
+                    ...linesMaster.map(line => ({ value: line.LineName, label: line.LineName }))
+                  ]}
+                  placeholder="-- Select Line --"
+                />
               </div> 
+
               <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px]">
                 {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-save mr-2"></i>Save Changes</>}
               </button> 
             </form> 
+            
           </div> 
         </div> 
       )}
@@ -1737,21 +1965,31 @@ export default function MaintenanceDashboard() {
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center p-6 border-b border-slate-100 bg-white gap-4 flex-shrink-0">
                   <h2 className="font-bold text-slate-800 text-lg tracking-tight">Maintenance Schedule</h2>
                   
-                  <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
-                    <div className="relative flex-1 xl:flex-none min-w-[150px]">
-                      <select value={filterLine} onChange={(e) => { setFilterLine(e.target.value); setFilterMachine(''); }} className="w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm appearance-none hover:bg-white transition-all">
-                        <option value="">All Lines</option>
-                        {linesMaster.map(line => <option key={line.LineName} value={line.LineName}>{line.LineName}</option>)}
-                      </select>
-                      <i className="bi bi-funnel absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
-                    </div>
-                    <div className="relative flex-1 xl:flex-none min-w-[150px]">
-                      <select value={filterMachine} onChange={(e) => setFilterMachine(e.target.value)} disabled={!filterLine} className="w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm appearance-none disabled:opacity-50 hover:bg-white transition-all">
-                        <option value="">All Machines</option>
-                        {machines.filter(m => m.LineName === filterLine).map(m => <option key={m.MachineID} value={m.MachineID}>{m.MachineName}</option>)}
-                      </select>
-                      <i className="bi bi-robot absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
-                    </div>
+                    <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
+                      <div className="relative flex-1 xl:flex-none min-w-[150px]">
+                        <CustomDropdown 
+                          value={filterLine} 
+                          onChange={(val) => { setFilterLine(val); setFilterMachine(''); }} 
+                          options={[
+                            { value: '', label: 'All Lines' },
+                            ...linesMaster.map(line => ({ value: line.LineName, label: line.LineName }))
+                          ]}
+                          placeholder="All Lines"
+                          iconClass="bi bi-funnel"
+                        />
+                      </div>
+                      <div className="relative flex-1 xl:flex-none min-w-[150px]">
+                        <CustomDropdown 
+                          value={filterMachine} 
+                          onChange={setFilterMachine} 
+                          options={[
+                            { value: '', label: 'All Machines' },
+                            ...machines.filter(m => m.LineName === filterLine).map(m => ({ value: m.MachineID, label: m.MachineName }))
+                          ]}
+                          placeholder="All Machines"
+                          iconClass="bi bi-robot"
+                        />
+                      </div>
                     <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white shrink-0"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
                   </div>
                 </div> 
