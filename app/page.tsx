@@ -5,6 +5,7 @@ import { getSmartMaintenanceData } from '../lib/maintenanceLogic';
 import Image from 'next/image';
 import Papa from 'papaparse';
 import ShelfMapSelector from '../components/ShelfMapSelector';
+import CustomDropdown from '../components/CustomDropdown';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -1027,14 +1028,13 @@ export default function MaintenanceDashboard() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Department</label>
-              <div className="relative">
-                <i className="bi bi-building absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                <select value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)} required className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm font-bold text-slate-700 shadow-sm hover:border-blue-300 appearance-none">
-                  <option value="" disabled>-- Select your department --</option>
-                  {departments.map(d => <option key={d.DepartmentID} value={d.DepartmentID}>{d.DepartmentName}</option>)}
-                </select>
-                <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm"></i>
-              </div>
+              <CustomDropdown 
+                value={selectedDept} 
+                onChange={setSelectedDept} 
+                options={departments.map(d => ({ value: d.DepartmentID, label: d.DepartmentName }))}
+                placeholder="-- Select your department --"
+                iconClass="bi bi-building"
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 ml-1 uppercase tracking-wider">Username or Email</label>
