@@ -21,6 +21,9 @@ export default function RequestPartShoppingPage() {
   const [dictionary, setDictionary] = useState<any[]>([]);
   const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); 
   
+  // 🌟 State ใหม่สำหรับเก็บรายชื่อตู้
+  const [smartCabinets, setSmartCabinets] = useState<string[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,7 +54,6 @@ export default function RequestPartShoppingPage() {
   const [isReturnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedReturnReq, setSelectedReturnReq] = useState<any>(null);
 
-  // 🌟 State ใหม่สำหรับ ป๊อปอัพเลือกจุดติดตั้ง 🌟
   const [positionModal, setPositionModal] = useState<{ isOpen: boolean, itemId: string, itemName: string } | null>(null);
   const [tempPositionSearch, setTempPositionSearch] = useState('');
 
@@ -73,10 +75,6 @@ export default function RequestPartShoppingPage() {
 
   const handleChangeProfile = () => { setIsSetupComplete(false); fetchDepartmentsForSetup(); };
 
-  // 🌟 ดึงรายชื่อตู้จากตารางใหม่
-  const { data: cabData } = await supabase.from('SmartCabinets').select('CabinetID');
-      if (cabData) setSmartCabinets(cabData.map(c => c.CabinetID));
-
   const fetchInitialData = async (dept: string) => {
     setIsLoading(true);
     try {
@@ -86,6 +84,10 @@ export default function RequestPartShoppingPage() {
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept); setConsumables(consData || []);
       const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', dept); setFixtures(fixData || []);
       const { data: dictData } = await supabase.from('Dictionary').select('*'); setDictionary(dictData || []);
+
+      // 🌟 ย้ายมาไว้ตรงนี้ครับ! โหลดรายชื่อตู้จากตาราง SmartCabinets อย่างปลอดภัย
+      const { data: cabData } = await supabase.from('SmartCabinets').select('CabinetID');
+      if (cabData) setSmartCabinets(cabData.map(c => c.CabinetID));
 
       const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
       const posMap: Record<string, Set<string>> = {};
@@ -253,8 +255,6 @@ export default function RequestPartShoppingPage() {
           }
 
           // 🌟 เช็กว่า Location ของอะไหล่ชิ้นนี้ มีรายชื่ออยู่ในตาราง SmartCabinets ไหม?
-          // ถ้ามี (เป็นตู้) -> สั่ง ReadyToPick ให้ตู้เปิดเลย!
-          // ถ้าไม่มี (เป็นชั้นวางปกติ) -> ส่ง Pending ไปรอหัวหน้าอนุมัติ
           const autoStatus = smartCabinets.includes(itemLocation) ? 'ReadyToPick' : 'Pending';
 
           return {
@@ -265,43 +265,39 @@ export default function RequestPartShoppingPage() {
             Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
             Reason: cart[itemId].type === 'part' ? reason : cart[itemId].type === 'consumable' ? 'Consumable' : 'Borrow', 
             PickerName: pickerName, 
-            Status: autoStatus, // 👈 ยัดสถานะอัจฉริยะลงไปตรงนี้
+            Status: autoStatus, 
             DepartmentID: activeDept
           };
         });
         const { error } = await supabase.from('PartRequests').insert(insertData);
         if (error) throw error;
 
-        // 🌟 อัปเกรดข้อความแจ้งเตือนเบิกของ ให้อ่านง่ายเป็นข้อๆ 🌟
         try {
           const itemNames: string[] = [];
           const locations = new Set<string>();
 
           Object.keys(cart).forEach(itemId => {
-            // ดึงจำนวนของแต่ละชิ้นในตะกร้าออกมา
             const itemQty = cart[itemId].qty; 
 
             if(cart[itemId].type === 'part') {
                 const name = parts.find(p => p.PartID === itemId)?.PartName || itemId;
-                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); 
                 const loc = freshStocks?.find(s => s.PartID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else if(cart[itemId].type === 'consumable') {
                 const name = consumables.find(c => c.ItemID === itemId)?.ItemName || itemId;
-                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); 
                 const loc = freshCons?.find(c => c.ItemID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else {
                 const name = fixtures.find(f => f.FixtureNo === itemId)?.ModelName || itemId;
-                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); 
             }
           });
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
-          
-          // 🚨 เปลี่ยน .join(', ') เป็น .join('\n') เพื่อให้มันขึ้นบรรทัดใหม่
           const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
           const lineRes = await fetch('/api/send-line', { 
@@ -324,7 +320,6 @@ export default function RequestPartShoppingPage() {
           throw new Error(err.message || "ส่งไลน์ไม่สำเร็จ!"); 
         }
 
-        // ถ้ารอดจากด่านส่งไลน์มาได้ ค่อยขึ้นสีเขียว!
         showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success'); setCart({}); setIsCheckoutOpen(false); setSelectedLine(''); setSelectedMachine(''); fetchInitialData(activeDept); 
       } catch (error: any) { 
         showToast(error.message, 'error'); fetchInitialData(activeDept); 
@@ -343,6 +338,7 @@ export default function RequestPartShoppingPage() {
       processCheckout();
     }
   };
+
   const handleToggleGroupSelect = (group: any) => {
     setBatchReturnState(prev => {
       const isSelected = !prev[group.baseId]?.selected;
@@ -446,35 +442,27 @@ export default function RequestPartShoppingPage() {
       if (returnQty >= selectedReturnReq.Qty) { await supabase.from('PartRequests').update({ Status: 'Returned' }).eq('RequestID', selectedReturnReq.RequestID); } 
       else { await supabase.from('PartRequests').update({ Qty: selectedReturnReq.Qty - returnQty }).eq('RequestID', selectedReturnReq.RequestID); }
 
-      // =================================================================
-      // 🌟 เพิ่มโค้ดแจ้งเตือน LINE คืน Fixture ตรงนี้ 🌟
-      // =================================================================
       try {
         const fixtureName = fix.ModelName || fix.FixtureName || selectedReturnReq.PartID;
         const pickerName = selectedReturnReq.PickerName || 'ผู้เบิก (ไม่ระบุชื่อ)';
         
-        // จัดฟอร์แมตข้อความ
         let lineMsg = `🔄 มีการคืนอุปกรณ์ Fixture!\n👨‍🔧 ผู้คืน: ${pickerName}\n📦 รายการ: ${fixtureName} (${returnQty} ชิ้น)\n✅ อัปเดตยอดเข้าสต๊อกเรียบร้อย`;
         
-        // ถ้ามีของพัง ให้เติมข้อความแจ้งเตือนต่อท้าย
         if (brokenQty > 0) {
             lineMsg += `\n⚠️ ระบุว่าชำรุด/เสีย: ${brokenQty} ชิ้น!`;
         }
 
-        // ยิงเข้า API ส่งไลน์
         await fetch('/api/send-line', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
               message: lineMsg,
-              department: activeDept // ส่งแผนกไป เพื่อให้ส่งถูกกลุ่ม
+              department: activeDept
           })
         });
       } catch (lineErr) {
         console.error("Line Notify Return Failed:", lineErr);
-        // กรณีไลน์พังตอนคืนของ เราจะไม่ throw error เพราะถือว่าคืนในฐานข้อมูลสำเร็จแล้ว
       }
-      // =================================================================
 
       showToast('ทำรายการคืน Fixture สำเร็จ!', 'success'); setReturnModalOpen(false); fetchInitialData(activeDept);
     } catch (error: any) { showToast(`Error: ${error.message}`, 'error'); } 
@@ -520,7 +508,7 @@ export default function RequestPartShoppingPage() {
   return (
     <div className="h-[100dvh] flex flex-col bg-slate-50 font-sans text-slate-800 overflow-hidden relative">
       
-      {/* 🌟 Custom Confirm Dialog สุดโมเดิร์น 🌟 */}
+      {/* Custom Confirm Dialog */}
       {confirmDialog && confirmDialog.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-300 ease-out border border-white">
@@ -541,7 +529,7 @@ export default function RequestPartShoppingPage() {
 
       {toast && ( <div className="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[300] animate-in slide-in-from-top-5 fade-in duration-300"> <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border-l-4 bg-white/95 backdrop-blur-sm ${toast.type === 'success' ? 'border-emerald-500' : toast.type === 'error' ? 'border-red-500' : 'border-blue-500'}`}> <span className="font-bold text-slate-700 text-sm flex-1">{toast.message}</span> <button type="button" onClick={() => setToast(null)} className="ml-auto text-slate-400"><i className="bi bi-x-lg text-xs"></i></button> </div> </div> )}
 
-      {/* 🌟 Modal: เลือกจุดที่ติดตั้ง (Position Selection) 🌟 */}
+      {/* Modal: เลือกจุดที่ติดตั้ง */}
       {positionModal && positionModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-md rounded-t-[2rem] sm:rounded-3xl shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 flex flex-col max-h-[85vh]">
@@ -735,7 +723,7 @@ export default function RequestPartShoppingPage() {
             );
           })}
 
-          {/* FIXTURES (รายการปกติ) */}
+          {/* FIXTURES */}
           {activeCategory === 'fixtures' && fixtureTab === 'list' && filteredFixtures.map(fix => {
             const otherPendingQty = pendingRequests.filter(r => r.PartID === fix.FixtureNo && r.Status === 'Pending').reduce((s, r) => s + (r.Qty || 0), 0);
             const totalAvailable = (fix.TotalQty || 0) - (fix.BrokenQty || 0) - (fix.BorrowedQty || 0); const showAvailableQty = totalAvailable - otherPendingQty;
@@ -770,7 +758,7 @@ export default function RequestPartShoppingPage() {
             );
           })}
 
-          {/* 🌟 FIXTURES (รายการที่กำลังยืม/รอดำเนินการ แบบใหม่ จัดกลุ่ม!) 🌟 */}
+          {/* FIXTURES (รายการที่กำลังยืม) */}
           {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && groupedFixtureRequests.map(group => {
             const bState = batchReturnState[group.baseId] || { selected: false, items: {} };
             const isPending = group.status === 'Pending';
@@ -778,7 +766,6 @@ export default function RequestPartShoppingPage() {
             return (
               <div key={group.baseId} className={`bg-white rounded-[1.5rem] shadow-sm border ${bState.selected ? 'border-[#0f172a] shadow-lg shadow-slate-900/5' : 'border-slate-200'} flex flex-col transition-all duration-300 overflow-hidden`}>
                 
-                {/* ส่วนหัวของบิล */}
                 <div className={`p-4 flex justify-between items-center cursor-pointer select-none transition-colors ${bState.selected ? 'bg-slate-50' : 'hover:bg-slate-50'}`} onClick={() => handleToggleGroupSelect(group)}>
                   <div className="flex items-center gap-3.5">
                     <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${bState.selected ? 'bg-[#0f172a] border-[#0f172a] text-white' : 'border-slate-300 bg-white'}`}>
@@ -794,7 +781,6 @@ export default function RequestPartShoppingPage() {
                   </span>
                 </div>
 
-                {/* รายการในบิล */}
                 <div className={`flex flex-col ${bState.selected ? 'border-t border-slate-100' : ''}`}>
                   {group.items.map((req: any, index: number) => {
                     const fix = fixtures.find(f => f.FixtureNo === req.PartID) || {};
@@ -813,7 +799,6 @@ export default function RequestPartShoppingPage() {
                           </div>
                         </div>
 
-                        {/* 🌟 ช่องใส่จำนวน (โผล่มาเฉพาะบิลที่ถูกเลือก และบิลนั้นถูกอนุมัติแล้ว) */}
                         {bState.selected && !isPending && (
                           <div className="mt-3 pt-3 border-t border-slate-50 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
                             <div>
@@ -845,7 +830,6 @@ export default function RequestPartShoppingPage() {
             );
           })}
           
-          {/* Fallback no data */}
           {((activeCategory === 'parts' && filteredParts.length === 0) || 
             (activeCategory === 'consumables' && filteredConsumables.length === 0) || 
             (activeCategory === 'fixtures' && fixtureTab === 'list' && filteredFixtures.length === 0)) && (
@@ -864,7 +848,6 @@ export default function RequestPartShoppingPage() {
         </div>
       </main>
 
-      {/* แถบกดยืนยันคืน/ยกเลิกเครื่องมือรวดเดียว */}
       {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && Object.values(batchReturnState).some(s => s.selected) && (
         <div className="absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 animate-in slide-in-from-bottom-10">
           <button onClick={handleBatchReturnSubmit} disabled={isSubmitting} className="w-full bg-[#0f172a] text-white font-black py-4 rounded-xl shadow-xl shadow-slate-900/20 hover:bg-black active:scale-95 transition-all text-[15px] flex items-center justify-center gap-2">
@@ -873,7 +856,6 @@ export default function RequestPartShoppingPage() {
         </div>
       )}
 
-      {/* แถบตะกร้าสินค้าปกติ */}
       <div className={`absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 transition-transform duration-300 ${(activeCategory !== 'fixtures' || fixtureTab !== 'borrowed') && cartItemsCount > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -932,7 +914,6 @@ export default function RequestPartShoppingPage() {
                           <span className={`font-black px-2 py-0.5 rounded-md ${isPart ? 'text-blue-600 bg-blue-50' : isFix ? 'text-purple-600 bg-purple-50' : 'text-pink-600 bg-pink-50'}`}>x{cart[itemId].qty}</span>
                         </div>
                         
-                        {/* 🌟 อัปเกรดปุ่มระบุจุดติดตั้งเป็นป๊อปอัพ (Modal) แทนการพิมพ์ 🌟 */}
                         {isPart && (
                           <div className="mt-2">
                             <button 
@@ -974,7 +955,6 @@ export default function RequestPartShoppingPage() {
         </div>
       )}
 
-      {/* 🌟 แจ้งเตือนของติดจอง 🌟 */}
       {reservationModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[500] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100 flex flex-col gap-6">
