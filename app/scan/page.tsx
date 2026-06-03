@@ -245,53 +245,80 @@ export default function RequestPartShoppingPage() {
 
        const baseId = Date.now(); 
         const insertData: any[] = [];
-        const hardwareTickets: any[] = []; // 🌟 สร้างตะกร้าเก็บบัตรคิวเตรียมส่งให้ ESP32
+        const hardwareTickets: any[] = []; 
+        const consumableUpdates: any[] = []; // 🌟 ถังใหม่: เก็บข้อมูลเตรียมตัดสต๊อกของสิ้นเปลืองโดยตรง
 
         Object.keys(cart).forEach((itemId, idx) => {
+          const item = cart[itemId];
           
-          // ดึงพิกัด Location ของอะไหล่ที่กำลังจะเบิก
+          // ดึงพิกัด Location 
           let itemLocation = '-';
-          if (cart[itemId].type === 'part') {
+          if (item.type === 'part') {
              itemLocation = freshStocks?.find(s => s.PartID === itemId)?.Location || '-';
-          } else if (cart[itemId].type === 'consumable') {
+          } else if (item.type === 'consumable') {
              itemLocation = freshCons?.find(c => c.ItemID === itemId)?.Location || '-';
           }
 
-          // เช็กว่าพิกัดนี้ เป็นตู้ SmartCabinet ใช่หรือไม่?
+          // เช็กว่าเป็นตู้สมาร์ทไหม?
           const isSmartCabinet = smartCabinets.includes(itemLocation);
           const autoStatus = isSmartCabinet ? 'ReadyToPick' : 'Pending';
 
-          // 1. เตรียมข้อมูลจดลงสมุดบัญชีหลักของโรงงาน
-          insertData.push({
-            RequestID: `REQ-${baseId}-${idx + 1}`, 
-            MachineID: cart[itemId].type === 'part' ? selectedMachine : (selectedMachine || 'GENERAL'),
-            PartID: itemId, 
-            Qty: cart[itemId].qty,
-            Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
-            Reason: cart[itemId].type === 'part' ? reason : cart[itemId].type === 'consumable' ? 'Consumable' : 'Borrow', 
-            PickerName: pickerName, 
-            Status: autoStatus, 
-            DepartmentID: activeDept
-          });
+          // 🛑 แยกลอจิก! ถ้าเป็น "ของสิ้นเปลือง" ให้ข้าม PartRequests ไปเลย!
+          if (item.type === 'consumable') {
+             const currentBalance = freshCons?.find(c => c.ItemID === itemId)?.Balance || 0;
+             consumableUpdates.push({
+                ItemID: itemId,
+                NewBalance: Math.max(0, currentBalance - item.qty) // คำนวณสต๊อกใหม่รอไว้เลย
+             });
+             
+             // ถ้าสิ้นเปลืองชิ้นนี้อยู่ในตู้สมาร์ท ก็ยังต้องโยนบัตรคิวเปิดตู้นะ!
+             if (isSmartCabinet) {
+               // เช็กซ้ำเพื่อไม่ให้สร้างตั๋วตู้เดียวกันซ้ำซ้อน (เปิดครั้งเดียวพอ)
+               if (!hardwareTickets.some(t => t.CabinetID === itemLocation)) {
+                  hardwareTickets.push({ CabinetID: itemLocation, Status: 'ReadyToPick' });
+               }
+             }
+          } 
+          // ✅ ถ้าเป็น "อะไหล่" หรือ "Fixture" ลงบัญชี PartRequests ตามปกติ
+          else {
+             insertData.push({
+                RequestID: `REQ-${baseId}-${idx + 1}`, 
+                MachineID: item.type === 'part' ? selectedMachine : (selectedMachine || 'GENERAL'),
+                PartID: itemId, 
+                Qty: item.qty,
+                Position: item.type === 'part' ? item.position : '-',
+                Reason: item.type === 'part' ? reason : 'Borrow', 
+                PickerName: pickerName, 
+                Status: autoStatus, 
+                DepartmentID: activeDept
+             });
 
-          // 🌟 2. ถ้าเป็นตู้สมาร์ท ให้เขียนบัตรคิวแยกอีกใบ โยนลงกล่อง CabinetTickets ให้ ESP32
-          if (isSmartCabinet) {
-            hardwareTickets.push({
-              CabinetID: itemLocation,
-              Status: 'ReadyToPick'
-            });
+             if (isSmartCabinet) {
+               if (!hardwareTickets.some(t => t.CabinetID === itemLocation)) {
+                  hardwareTickets.push({ CabinetID: itemLocation, Status: 'ReadyToPick' });
+               }
+             }
           }
         });
 
-        // ยิงข้อมูลเข้าสมุดบัญชีหลัก
-        const { error } = await supabase.from('PartRequests').insert(insertData);
-        if (error) throw error;
+        // 🟢 1. ลงบัญชี PartRequests (เฉพาะอะไหล่และ Fixture)
+        if (insertData.length > 0) {
+           const { error } = await supabase.from('PartRequests').insert(insertData);
+           if (error) throw error;
+        }
 
-        // 🌟 ยิงบัตรคิวไปให้ ESP32 ทำงาน!
+        // 🟢 2. ตัดสต๊อก Consumable ทันที! (ไม่ลงประวัติเบิก)
+        if (consumableUpdates.length > 0) {
+           for (const update of consumableUpdates) {
+              await supabase.from('Consumable').update({ Balance: update.NewBalance }).eq('ItemID', update.ItemID);
+           }
+        }
+
+        // 🟢 3. โยนบัตรคิวให้ ESP32 เปิดตู้ (ทำงานทะลุฮาร์ดแวร์)
         if (hardwareTickets.length > 0) {
           await supabase.from('CabinetTickets').insert(hardwareTickets);
         }
-
+        
         try {
           const itemNames: string[] = [];
           const locations = new Set<string>();
