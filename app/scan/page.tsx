@@ -73,6 +73,10 @@ export default function RequestPartShoppingPage() {
 
   const handleChangeProfile = () => { setIsSetupComplete(false); fetchDepartmentsForSetup(); };
 
+  // 🌟 ดึงรายชื่อตู้จากตารางใหม่
+  const { data: cabData } = await supabase.from('SmartCabinets').select('CabinetID');
+      if (cabData) setSmartCabinets(cabData.map(c => c.CabinetID));
+
   const fetchInitialData = async (dept: string) => {
     setIsLoading(true);
     try {
@@ -238,15 +242,33 @@ export default function RequestPartShoppingPage() {
         }
 
         const baseId = Date.now(); 
-        const insertData = Object.keys(cart).map((itemId, idx) => ({
-          RequestID: `REQ-${baseId}-${idx + 1}`, 
-          MachineID: cart[itemId].type === 'part' ? selectedMachine : (selectedMachine || 'GENERAL'),
-          PartID: itemId, Qty: cart[itemId].qty,
-          Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
-          Reason: cart[itemId].type === 'part' ? reason : cart[itemId].type === 'consumable' ? 'Consumable' : 'Borrow', 
-          PickerName: pickerName, Status: 'Pending', DepartmentID: activeDept
-        }));
+        const insertData = Object.keys(cart).map((itemId, idx) => {
+          
+          // ดึงพิกัด Location ของอะไหล่ที่กำลังจะเบิก
+          let itemLocation = '-';
+          if (cart[itemId].type === 'part') {
+             itemLocation = freshStocks?.find(s => s.PartID === itemId)?.Location || '-';
+          } else if (cart[itemId].type === 'consumable') {
+             itemLocation = freshCons?.find(c => c.ItemID === itemId)?.Location || '-';
+          }
 
+          // 🌟 เช็กว่า Location ของอะไหล่ชิ้นนี้ มีรายชื่ออยู่ในตาราง SmartCabinets ไหม?
+          // ถ้ามี (เป็นตู้) -> สั่ง ReadyToPick ให้ตู้เปิดเลย!
+          // ถ้าไม่มี (เป็นชั้นวางปกติ) -> ส่ง Pending ไปรอหัวหน้าอนุมัติ
+          const autoStatus = smartCabinets.includes(itemLocation) ? 'ReadyToPick' : 'Pending';
+
+          return {
+            RequestID: `REQ-${baseId}-${idx + 1}`, 
+            MachineID: cart[itemId].type === 'part' ? selectedMachine : (selectedMachine || 'GENERAL'),
+            PartID: itemId, 
+            Qty: cart[itemId].qty,
+            Position: cart[itemId].type === 'part' ? cart[itemId].position : '-',
+            Reason: cart[itemId].type === 'part' ? reason : cart[itemId].type === 'consumable' ? 'Consumable' : 'Borrow', 
+            PickerName: pickerName, 
+            Status: autoStatus, // 👈 ยัดสถานะอัจฉริยะลงไปตรงนี้
+            DepartmentID: activeDept
+          };
+        });
         const { error } = await supabase.from('PartRequests').insert(insertData);
         if (error) throw error;
 
