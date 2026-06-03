@@ -243,8 +243,11 @@ export default function RequestPartShoppingPage() {
           if (available < item.qty) throw new Error(`ของไม่พอ! มีคนเบิก/ยืม "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
         }
 
-        const baseId = Date.now(); 
-        const insertData = Object.keys(cart).map((itemId, idx) => {
+       const baseId = Date.now(); 
+        const insertData: any[] = [];
+        const hardwareTickets: any[] = []; // 🌟 สร้างตะกร้าเก็บบัตรคิวเตรียมส่งให้ ESP32
+
+        Object.keys(cart).forEach((itemId, idx) => {
           
           // ดึงพิกัด Location ของอะไหล่ที่กำลังจะเบิก
           let itemLocation = '-';
@@ -254,10 +257,12 @@ export default function RequestPartShoppingPage() {
              itemLocation = freshCons?.find(c => c.ItemID === itemId)?.Location || '-';
           }
 
-          // 🌟 เช็กว่า Location ของอะไหล่ชิ้นนี้ มีรายชื่ออยู่ในตาราง SmartCabinets ไหม?
-          const autoStatus = smartCabinets.includes(itemLocation) ? 'ReadyToPick' : 'Pending';
+          // เช็กว่าพิกัดนี้ เป็นตู้ SmartCabinet ใช่หรือไม่?
+          const isSmartCabinet = smartCabinets.includes(itemLocation);
+          const autoStatus = isSmartCabinet ? 'ReadyToPick' : 'Pending';
 
-          return {
+          // 1. เตรียมข้อมูลจดลงสมุดบัญชีหลักของโรงงาน
+          insertData.push({
             RequestID: `REQ-${baseId}-${idx + 1}`, 
             MachineID: cart[itemId].type === 'part' ? selectedMachine : (selectedMachine || 'GENERAL'),
             PartID: itemId, 
@@ -267,10 +272,25 @@ export default function RequestPartShoppingPage() {
             PickerName: pickerName, 
             Status: autoStatus, 
             DepartmentID: activeDept
-          };
+          });
+
+          // 🌟 2. ถ้าเป็นตู้สมาร์ท ให้เขียนบัตรคิวแยกอีกใบ โยนลงกล่อง CabinetTickets ให้ ESP32
+          if (isSmartCabinet) {
+            hardwareTickets.push({
+              CabinetID: itemLocation,
+              Status: 'ReadyToPick'
+            });
+          }
         });
+
+        // ยิงข้อมูลเข้าสมุดบัญชีหลัก
         const { error } = await supabase.from('PartRequests').insert(insertData);
         if (error) throw error;
+
+        // 🌟 ยิงบัตรคิวไปให้ ESP32 ทำงาน!
+        if (hardwareTickets.length > 0) {
+          await supabase.from('CabinetTickets').insert(hardwareTickets);
+        }
 
         try {
           const itemNames: string[] = [];
