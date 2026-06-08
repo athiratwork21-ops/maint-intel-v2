@@ -262,6 +262,10 @@ export default function RequestPartShoppingPage() {
           // เช็กว่าเป็นตู้สมาร์ทไหม?
           const isSmartCabinet = smartCabinets.includes(itemLocation);
           const autoStatus = isSmartCabinet ? 'ReadyToPick' : 'Pending';
+          // 👇 เพิ่มแค่ 3 บรรทัดนี้เพื่อจับผี!
+          console.log(`พิกัดของอะไหล่ชิ้นนี้: "${itemLocation}"`);
+          console.log(`รายชื่อตู้สมาร์ททั้งหมด:`, smartCabinets);
+          console.log(`ตรงกันไหม (isSmartCabinet) ?:`, isSmartCabinet);
 
           // 🛑 แยกลอจิก! ถ้าเป็น "ของสิ้นเปลือง" ให้ข้าม PartRequests ไปเลย!
           if (item.type === 'consumable') {
