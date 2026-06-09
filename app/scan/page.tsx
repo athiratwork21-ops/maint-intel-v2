@@ -251,39 +251,42 @@ export default function RequestPartShoppingPage() {
         Object.keys(cart).forEach((itemId, idx) => {
           const item = cart[itemId];
           
-          // ดึงพิกัด Location 
+          // 1. ดึงพิกัด Location (เช็ก Fixture ให้ครบตามที่แก้บั๊กไว้)
           let itemLocation = '-';
           if (item.type === 'part') {
              itemLocation = freshStocks?.find(s => s.PartID === itemId)?.Location || '-';
           } else if (item.type === 'consumable') {
              itemLocation = freshCons?.find(c => c.ItemID === itemId)?.Location || '-';
+          } else if (item.type === 'fixture') {
+             itemLocation = freshFixs?.find(f => f.FixtureNo === itemId)?.Location || '-';
           }
 
-          // เช็กว่าเป็นตู้สมาร์ทไหม?
-          const isSmartCabinet = smartCabinets.includes(itemLocation);
+          // 2. ล้างช่องว่าง และเช็กว่าเป็นตู้สมาร์ทไหม (แบบยืดหยุ่น)
+          const cleanItemLocation = itemLocation.trim();
+          const isSmartCabinet = smartCabinets.some(cabId => cleanItemLocation.includes(cabId));
+          
+          // 🌟 สับสวิตช์อัตโนมัติ: ถ้าตู้สมาร์ท = ReadyToPick ทันที / ถ้าตู้ธรรมดา = Pending
           const autoStatus = isSmartCabinet ? 'ReadyToPick' : 'Pending';
-          // 👇 เพิ่มแค่ 3 บรรทัดนี้เพื่อจับผี!
-          console.log(`พิกัดของอะไหล่ชิ้นนี้: "${itemLocation}"`);
-          console.log(`รายชื่อตู้สมาร์ททั้งหมด:`, smartCabinets);
-          console.log(`ตรงกันไหม (isSmartCabinet) ?:`, isSmartCabinet);
 
-          // 🛑 แยกลอจิก! ถ้าเป็น "ของสิ้นเปลือง" ให้ข้าม PartRequests ไปเลย!
+          // 🛑 แยกลอจิก! ของสิ้นเปลือง ข้าม PartRequests ไปเลย
           if (item.type === 'consumable') {
              const currentBalance = freshCons?.find(c => c.ItemID === itemId)?.Balance || 0;
              consumableUpdates.push({
                 ItemID: itemId,
-                NewBalance: Math.max(0, currentBalance - item.qty) // คำนวณสต๊อกใหม่รอไว้เลย
+                NewBalance: Math.max(0, currentBalance - item.qty) 
              });
              
-             // ถ้าสิ้นเปลืองชิ้นนี้อยู่ในตู้สมาร์ท ก็ยังต้องโยนบัตรคิวเปิดตู้นะ!
+             // โยนตั๋วให้ฮาร์ดแวร์ตู้สมาร์ท
              if (isSmartCabinet) {
-               // เช็กซ้ำเพื่อไม่ให้สร้างตั๋วตู้เดียวกันซ้ำซ้อน (เปิดครั้งเดียวพอ)
-               if (!hardwareTickets.some(t => t.CabinetID === itemLocation)) {
-                  hardwareTickets.push({ CabinetID: itemLocation, Status: 'ReadyToPick' });
-               }
+               const matchedCabinets = smartCabinets.filter(cabId => cleanItemLocation.includes(cabId));
+               matchedCabinets.forEach(targetCab => {
+                 if (!hardwareTickets.some(t => t.CabinetID === targetCab)) {
+                    hardwareTickets.push({ CabinetID: targetCab, Status: 'ReadyToPick' });
+                 }
+               });
              }
           } 
-          // ✅ ถ้าเป็น "อะไหล่" หรือ "Fixture" ลงบัญชี PartRequests ตามปกติ
+          // ✅ อะไหล่ หรือ Fixture ลงบัญชี PartRequests
           else {
              insertData.push({
                 RequestID: `REQ-${baseId}-${idx + 1}`, 
@@ -293,14 +296,17 @@ export default function RequestPartShoppingPage() {
                 Position: item.type === 'part' ? item.position : '-',
                 Reason: item.type === 'part' ? reason : 'Borrow', 
                 PickerName: pickerName, 
-                Status: autoStatus, 
+                Status: autoStatus, // 👈 สับสวิตช์สถานะอัตโนมัติตรงนี้
                 DepartmentID: activeDept
              });
 
              if (isSmartCabinet) {
-               if (!hardwareTickets.some(t => t.CabinetID === itemLocation)) {
-                  hardwareTickets.push({ CabinetID: itemLocation, Status: 'ReadyToPick' });
-               }
+               const matchedCabinets = smartCabinets.filter(cabId => cleanItemLocation.includes(cabId));
+               matchedCabinets.forEach(targetCab => {
+                 if (!hardwareTickets.some(t => t.CabinetID === targetCab)) {
+                    hardwareTickets.push({ CabinetID: targetCab, Status: 'ReadyToPick' });
+                 }
+               });
              }
           }
         });
