@@ -266,15 +266,14 @@ export default function RequestPartShoppingPage() {
           if (available < item.qty) throw new Error(`ของไม่พอ! มีคนเบิก/ยืม "${name}" ตัดหน้าไปแล้วครับ (เหลือ ${Math.max(0, available)} ชิ้น)`);
         }
 
-       const baseId = Date.now(); 
+        const baseId = Date.now(); 
         const insertData: any[] = [];
-        const hardwareTickets: any[] = []; 
-        const consumableUpdates: any[] = []; // 🌟 ถังใหม่: เก็บข้อมูลเตรียมตัดสต๊อกของสิ้นเปลืองโดยตรง
+        const hardwareTickets: any[] = [];
+        const consumableUpdates: any[] = [];
 
         Object.keys(cart).forEach((itemId, idx) => {
           const item = cart[itemId];
           
-          // 1. ดึงพิกัด Location (เช็ก Fixture ให้ครบตามที่แก้บั๊กไว้)
           let itemLocation = '-';
           if (item.type === 'part') {
              itemLocation = freshStocks?.find(s => s.PartID === itemId)?.Location || '-';
@@ -284,14 +283,9 @@ export default function RequestPartShoppingPage() {
              itemLocation = freshFixs?.find(f => f.FixtureNo === itemId)?.Location || '-';
           }
 
-          // 2. ล้างช่องว่าง และเช็กว่าเป็นตู้สมาร์ทไหม (แบบยืดหยุ่น)
           const cleanItemLocation = itemLocation.trim();
           const isSmartCabinet = smartCabinets.some(cabId => cleanItemLocation.includes(cabId));
-          
-          // 🌟 สับสวิตช์อัตโนมัติ: ถ้าตู้สมาร์ท = ReadyToPick ทันที / ถ้าตู้ธรรมดา = Pending
-          const autoStatus = isSmartCabinet ? 'ReadyToPick' : 'Pending';
 
-          // 🛑 แยกลอจิก! ของสิ้นเปลือง ข้าม PartRequests ไปเลย
           if (item.type === 'consumable') {
              const currentBalance = freshCons?.find(c => c.ItemID === itemId)?.Balance || 0;
              consumableUpdates.push({
@@ -299,7 +293,6 @@ export default function RequestPartShoppingPage() {
                 NewBalance: Math.max(0, currentBalance - item.qty) 
              });
              
-             // โยนตั๋วให้ฮาร์ดแวร์ตู้สมาร์ท
              if (isSmartCabinet) {
                const matchedCabinets = smartCabinets.filter(cabId => cleanItemLocation.includes(cabId));
                matchedCabinets.forEach(targetCab => {
@@ -309,7 +302,6 @@ export default function RequestPartShoppingPage() {
                });
              }
           } 
-          // ✅ อะไหล่ หรือ Fixture ลงบัญชี PartRequests
           else {
              insertData.push({
                 RequestID: `REQ-${baseId}-${idx + 1}`, 
@@ -317,9 +309,9 @@ export default function RequestPartShoppingPage() {
                 PartID: itemId, 
                 Qty: item.qty,
                 Position: item.type === 'part' ? item.position : '-',
-                Reason: item.type === 'part' ? reason : 'Borrow', 
+                Reason: item.type === 'part' ? reason : item.type === 'consumable' ? 'Consumable' : 'Borrow', 
                 PickerName: pickerName, 
-                Status: autoStatus, // 👈 สับสวิตช์สถานะอัตโนมัติตรงนี้
+                Status: 'Pending', // 👈 บังคับเป็น Pending เพื่อให้แอดมินเห็นในระบบ
                 DepartmentID: activeDept
              });
 
@@ -334,20 +326,20 @@ export default function RequestPartShoppingPage() {
           }
         });
 
-        // 🟢 1. ลงบัญชี PartRequests (เฉพาะอะไหล่และ Fixture)
+        // 🟢 1. ลงบัญชี PartRequests
         if (insertData.length > 0) {
            const { error } = await supabase.from('PartRequests').insert(insertData);
            if (error) throw error;
         }
 
-        // 🟢 2. ตัดสต๊อก Consumable ทันที! (ไม่ลงประวัติเบิก)
+        // 🟢 2. ตัดสต๊อก Consumable
         if (consumableUpdates.length > 0) {
            for (const update of consumableUpdates) {
               await supabase.from('Consumable').update({ Balance: update.NewBalance }).eq('ItemID', update.ItemID);
            }
         }
 
-        // 🟢 3. โยนบัตรคิวให้ ESP32 เปิดตู้ (ทำงานทะลุฮาร์ดแวร์)
+        // 🟢 3. โยนตั๋วฮาร์ดแวร์ให้ตู้
         if (hardwareTickets.length > 0) {
           await supabase.from('CabinetTickets').insert(hardwareTickets);
         }
@@ -378,6 +370,7 @@ export default function RequestPartShoppingPage() {
           });
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
+          
           const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
           const lineRes = await fetch('/api/send-line', { 
