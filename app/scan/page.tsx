@@ -91,6 +91,23 @@ export default function RequestPartShoppingPage() {
       const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', dept); setFixtures(fixData || []);
       const { data: dictData } = await supabase.from('Dictionary').select('*'); setDictionary(dictData || []);
 
+      const fetchInitialData = async (dept: string) => {
+    setIsLoading(true);
+    try {
+      const data = await getSmartMaintenanceData(dept);
+      setMachines(data.rawMachines.filter((m: any) => m.Active !== false)); setLines(data.rawLines); setParts(data.rawParts); setStockAllocations(data.allocations);
+      const { data: reqData } = await supabase.from('PartRequests').select('*').in('Status', ['Pending', 'Approved']).eq('DepartmentID', dept); setPendingRequests(reqData || []);
+      const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept); setConsumables(consData || []);
+      const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', dept); setFixtures(fixData || []);
+      const { data: dictData } = await supabase.from('Dictionary').select('*'); setDictionary(dictData || []);
+
+      // 👇 2. เติม 2 บรรทัดนี้ เพื่อไปดูดชื่อตู้สมาร์ทจาก Supabase มาเก็บไว้!
+      const { data: cabData } = await supabase.from('SmartCabinets').select('CabinetID');
+      if (cabData) setSmartCabinets(cabData.map((c: any) => c.CabinetID));
+
+      const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
+      // ... (โค้ดเดิม) ...
+
       // 🌟 ย้ายมาไว้ตรงนี้ครับ! โหลดรายชื่อตู้จากตาราง SmartCabinets อย่างปลอดภัย
       const { data: cabData } = await supabase.from('SmartCabinets').select('CabinetID');
       if (cabData) setSmartCabinets(cabData.map(c => c.CabinetID));
