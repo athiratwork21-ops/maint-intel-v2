@@ -51,6 +51,12 @@ export default function RequestPartShoppingPage() {
   const [isReturnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedReturnReq, setSelectedReturnReq] = useState<any>(null);
 
+  const [dictionary, setDictionary] = useState<any[]>([]);
+  const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); 
+  
+  // 👇 1. เติมบรรทัดนี้กลับเข้าไปครับ! (ตัวแปรเก็บรายชื่อตู้)
+  const [smartCabinets, setSmartCabinets] = useState<string[]>([]);
+
   // 🌟 State ใหม่สำหรับ ป๊อปอัพเลือกจุดติดตั้ง 🌟
   const [positionModal, setPositionModal] = useState<{ isOpen: boolean, itemId: string, itemName: string } | null>(null);
   const [tempPositionSearch, setTempPositionSearch] = useState('');
@@ -82,6 +88,10 @@ export default function RequestPartShoppingPage() {
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept); setConsumables(consData || []);
       const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', dept); setFixtures(fixData || []);
       const { data: dictData } = await supabase.from('Dictionary').select('*'); setDictionary(dictData || []);
+
+      // 👇 2. เติม 2 บรรทัดนี้ เพื่อไปดูดชื่อตู้สมาร์ทจาก Supabase มาเก็บไว้!
+      const { data: cabData } = await supabase.from('SmartCabinets').select('CabinetID');
+      if (cabData) setSmartCabinets(cabData.map((c: any) => c.CabinetID));
 
       const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
       const posMap: Record<string, Set<string>> = {};
@@ -238,12 +248,10 @@ export default function RequestPartShoppingPage() {
         }
 
         const baseId = Date.now(); 
-        // 🌟 ก้อนใหม่: เช็กตู้สมาร์ท โยนตั๋วทันที แต่บิลให้เป็น Pending
         const insertData: any[] = [];
         const hardwareTickets: any[] = [];
         const consumableUpdates: any[] = [];
-        
-        // 🌟 1. เช็กพิกัดของทีละชิ้นในตะกร้า
+
         Object.keys(cart).forEach((itemId, idx) => {
           const item = cart[itemId];
           
@@ -259,7 +267,6 @@ export default function RequestPartShoppingPage() {
           const cleanItemLocation = itemLocation.trim();
           const isSmartCabinet = smartCabinets.some(cabId => cleanItemLocation.includes(cabId));
 
-          // 🛑 ถ้าเป็นของสิ้นเปลือง (ข้าม PartRequest)
           if (item.type === 'consumable') {
              const currentBalance = freshCons?.find(c => c.ItemID === itemId)?.Balance || 0;
              consumableUpdates.push({
@@ -267,7 +274,6 @@ export default function RequestPartShoppingPage() {
                 NewBalance: Math.max(0, currentBalance - item.qty) 
              });
              
-             // 💥 ยิงตั๋วเข้าตู้ทันที!
              if (isSmartCabinet) {
                const matchedCabinets = smartCabinets.filter(cabId => cleanItemLocation.includes(cabId));
                matchedCabinets.forEach(targetCab => {
@@ -277,7 +283,6 @@ export default function RequestPartShoppingPage() {
                });
              }
           } 
-          // ✅ อะไหล่ หรือ Fixture
           else {
              insertData.push({
                 RequestID: `REQ-${baseId}-${idx + 1}`, 
@@ -285,13 +290,12 @@ export default function RequestPartShoppingPage() {
                 PartID: itemId, 
                 Qty: item.qty,
                 Position: item.type === 'part' ? item.position : '-',
-                Reason: item.type === 'part' ? reason : 'Borrow', 
+                Reason: item.type === 'part' ? reason : item.type === 'consumable' ? 'Consumable' : 'Borrow', 
                 PickerName: pickerName, 
-                Status: 'Pending', // 👈 บังคับให้เป็น Pending เสมอ! แอดมินจะได้กด Approve ได้!
+                Status: 'Pending', // 👈 บังคับเป็น Pending เพื่อให้แอดมินเห็นในระบบ
                 DepartmentID: activeDept
              });
 
-             // 💥 แต่ตู้สมาร์ท ก็ยิงตั๋วไปเปิดตู้ให้ช่างหยิบได้เลยทันที!
              if (isSmartCabinet) {
                const matchedCabinets = smartCabinets.filter(cabId => cleanItemLocation.includes(cabId));
                matchedCabinets.forEach(targetCab => {
@@ -303,54 +307,51 @@ export default function RequestPartShoppingPage() {
           }
         });
 
-        // 🟢 2. ลงบัญชี PartRequests (เฉพาะอะไหล่และ Fixture) - รอแอดมินมา Approve ภายหลัง
+        // 🟢 1. ลงบัญชี PartRequests
         if (insertData.length > 0) {
            const { error } = await supabase.from('PartRequests').insert(insertData);
            if (error) throw error;
         }
 
-        // 🟢 3. ตัดสต๊อก Consumable ทันที! (ไม่ลงประวัติเบิก)
+        // 🟢 2. ตัดสต๊อก Consumable
         if (consumableUpdates.length > 0) {
            for (const update of consumableUpdates) {
               await supabase.from('Consumable').update({ Balance: update.NewBalance }).eq('ItemID', update.ItemID);
            }
         }
 
-        // 🟢 4. โยนบัตรคิวให้ ESP32 เปิดตู้ (ทำงานทะลุฮาร์ดแวร์ทันที ไม่ต้องรอแอดมิน!)
+        // 🟢 3. โยนตั๋วฮาร์ดแวร์ให้ตู้
         if (hardwareTickets.length > 0) {
           await supabase.from('CabinetTickets').insert(hardwareTickets);
         }
-
-        // 🌟 อัปเกรดข้อความแจ้งเตือนเบิกของ ให้อ่านง่ายเป็นข้อๆ 🌟
+        
         try {
           const itemNames: string[] = [];
           const locations = new Set<string>();
 
           Object.keys(cart).forEach(itemId => {
-            // ดึงจำนวนของแต่ละชิ้นในตะกร้าออกมา
             const itemQty = cart[itemId].qty; 
 
             if(cart[itemId].type === 'part') {
                 const name = parts.find(p => p.PartID === itemId)?.PartName || itemId;
-                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); 
                 const loc = freshStocks?.find(s => s.PartID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else if(cart[itemId].type === 'consumable') {
                 const name = consumables.find(c => c.ItemID === itemId)?.ItemName || itemId;
-                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); 
                 const loc = freshCons?.find(c => c.ItemID === itemId)?.Location;
                 if (loc && loc !== '-') locations.add(loc);
             }
             else {
                 const name = fixtures.find(f => f.FixtureNo === itemId)?.ModelName || itemId;
-                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); // จัดฟอร์แมต
+                itemNames.push(`- ${name} (${itemQty} ชิ้น)`); 
             }
           });
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
           
-          // 🚨 เปลี่ยน .join(', ') เป็น .join('\n') เพื่อให้มันขึ้นบรรทัดใหม่
           const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
           
           const lineRes = await fetch('/api/send-line', { 
@@ -373,7 +374,6 @@ export default function RequestPartShoppingPage() {
           throw new Error(err.message || "ส่งไลน์ไม่สำเร็จ!"); 
         }
 
-        // ถ้ารอดจากด่านส่งไลน์มาได้ ค่อยขึ้นสีเขียว!
         showToast('ส่งคำขอสำเร็จ! รอรับของที่ Center', 'success'); setCart({}); setIsCheckoutOpen(false); setSelectedLine(''); setSelectedMachine(''); fetchInitialData(activeDept); 
       } catch (error: any) { 
         showToast(error.message, 'error'); fetchInitialData(activeDept); 
