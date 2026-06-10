@@ -23,6 +23,12 @@ export default function RequestPartShoppingPage() {
   
   // 🌟 State ใหม่สำหรับเก็บรายชื่อตู้
   const [smartCabinets, setSmartCabinets] = useState<string[]>([]);
+
+  const [dictionary, setDictionary] = useState<any[]>([]);
+  const [historicalPositions, setHistoricalPositions] = useState<Record<string, string[]>>({}); 
+  
+  // 👇 1. เติมบรรทัดนี้กลับเข้าไปครับ! (ตัวแปรเก็บรายชื่อตู้)
+  const [smartCabinets, setSmartCabinets] = useState<string[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
