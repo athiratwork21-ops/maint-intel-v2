@@ -1,8 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { supabaseServiceWork } from '../../lib/supabase-servicework'; // 🌟 ดึงตัวแปร Supabase มาใช้งานจริง
+import { supabaseServiceWork } from '../../lib/supabase-servicework'; 
 
-// ตัวแปรจำลองข้อมูลพนักงานเริ่มต้น (เพิ่มรหัสพนักงานเข้าไปด้วย)
 const initialEmployees = [
   { id: '86125806', name: 'Example#1', icon: '👨‍🔧' },
   { id: '86129121', name: 'Example#3', icon: '👩‍💼' },
@@ -14,7 +13,7 @@ type ScheduleState = Record<string, CellData>;
 type HolidayState = Record<number, string>; 
 
 export default function ShiftRosterPro() {
-  const [currentDate, setCurrentDate] = useState(new Date(2023, 4, 1)); // เดือน 5 (พฤษภาคม) 2023 ให้ตรงกับในรูป
+  const [currentDate, setCurrentDate] = useState(new Date(2023, 4, 1)); 
   const [employees, setEmployees] = useState(initialEmployees);
   const [schedule, setSchedule] = useState<ScheduleState>({});
   const [holidays, setHolidays] = useState<HolidayState>({ 1: 'วันแรงงาน', 2: 'วันหยุดพิเศษ', 3: 'วันหยุดพิเศษ', 4: 'ฉัตรมงคล' });
@@ -22,13 +21,16 @@ export default function ShiftRosterPro() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // แถบเครื่องมือพู่กันทาสี
+  // แถบเครื่องมือพู่กัน
   const [activeTool, setActiveTool] = useState<'D' | 'N' | 'O' | 'OT' | 'ERASE'>('D');
   const [isDragging, setIsDragging] = useState(false);
   
-  // ฟิลด์รับข้อมูลรหัสพนักงาน และชื่อ
   const [newEmpId, setNewEmpId] = useState('');
   const [newEmpName, setNewEmpName] = useState('');
+
+  // 🌟 ฟีเจอร์ใหม่: State สำหรับเลือกคน Export และ ตรวจจับคนทำผิดกฎ 6 วัน
+  const [selectedForExport, setSelectedForExport] = useState<string[]>(initialEmployees.map(e => e.id));
+  const [violations, setViolations] = useState<string[]>([]);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
@@ -41,7 +43,6 @@ export default function ShiftRosterPro() {
     return { dayName, isSunday, isWeekend };
   };
 
-  // ลอจิกการระบายสีแบบรีด Performance (ไม่ Re-render ซ้ำซ้อน)
   const applyToolToCell = (empId: string, day: number) => {
     if (!isEditMode) return; 
 
@@ -87,13 +88,44 @@ export default function ShiftRosterPro() {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // ฟังก์ชันเพิ่มพนักงานพร้อมรหัสพนักงาน
+  // 🌟 ฟีเจอร์ใหม่: ตรวจจับคนทำงานเกิน 6 วัน (ทำงานทุกครั้งที่ตารางอัปเดต)
+  useEffect(() => {
+    const newViolations: string[] = [];
+
+    employees.forEach(emp => {
+      let consecutiveWorkDays = 0;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = schedule[`${emp.id}_${day}`];
+        // เช็กว่าวันนั้นได้ทำงานไหม (เป็น D หรือ N)
+        if (cell && (cell.shift === 'D' || cell.shift === 'N')) {
+          consecutiveWorkDays++;
+          if (consecutiveWorkDays > 6) {
+            if (!newViolations.includes(emp.id)) newViolations.push(emp.id);
+          }
+        } else {
+          // ถ้าเป็น O (วันหยุด) หรือ ช่องว่าง ให้รีเซ็ตคูลดาวน์กลับไปเป็น 0
+          consecutiveWorkDays = 0;
+        }
+      }
+    });
+
+    // แจ้งเตือน Alert (เด้งเฉพาะคนใหม่ที่เพิ่งทำผิดกฎเพิ่มเข้ามา ป้องกันการเด้งซ้ำซ้อน)
+    if (newViolations.length > violations.length) {
+      const newlyViolated = newViolations.filter(id => !violations.includes(id));
+      const violatedNames = newlyViolated.map(id => employees.find(e => e.id === id)?.name).join(', ');
+      alert(`🚨 แจ้งเตือนกฎหมายแรงงาน!\n\nพนักงาน: ${violatedNames}\nทำงานติดต่อกันเกิน 6 วันแล้ว กรุณาจัดวันหยุด (O) ให้พนักงานด้วยครับบอส!`);
+    }
+
+    setViolations(newViolations);
+  }, [schedule, employees, daysInMonth]);
+
   const handleAddEmployee = () => {
     if (!newEmpId.trim() || !newEmpName.trim()) return alert('กรุณากรอกรหัสและชื่อพนักงานให้ครบถ้วนครับบอส');
     if (employees.some(e => e.id === newEmpId.trim())) return alert('รหัสพนักงานนี้มีในระบบแล้วครับบอส');
 
     const newEmp = { id: newEmpId.trim().toUpperCase(), name: newEmpName.trim(), icon: '👷' };
     setEmployees([...employees, newEmp]);
+    setSelectedForExport(prev => [...prev, newEmp.id]); // ติ๊กถูกให้อัตโนมัติเวลาเพิ่มคนใหม่
     setNewEmpId('');
     setNewEmpName('');
   };
@@ -102,6 +134,7 @@ export default function ShiftRosterPro() {
     if (!isEditMode) return;
     if (confirm(`⚠️ ยืนยันการลบพนักงาน "${empName}" (${empId}) ออกจากตาราง?`)) {
       setEmployees(employees.filter(e => e.id !== empId));
+      setSelectedForExport(prev => prev.filter(id => id !== empId));
       setSchedule(prev => {
         const newState = { ...prev };
         Object.keys(newState).forEach(key => { if (key.startsWith(`${empId}_`)) delete newState[key]; });
@@ -110,7 +143,6 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // ตั้งค่าวันหยุดโรงงาน
   const handleToggleHoliday = (day: number) => {
     if (!isEditMode) return;
     const currentName = holidays[day] || '';
@@ -126,7 +158,6 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // คำนวณสรุปยอดรายเดือน
   const calculateSummary = (empId: string) => {
     let d = 0, n = 0, ot = 0, off = 0;
     for (let day = 1; day <= daysInMonth; day++) {
@@ -141,7 +172,17 @@ export default function ShiftRosterPro() {
     return { d, n, off, ot };
   };
 
-  // 🌟 ระบบบันทึกข้อมูลยิงตรงเข้าตารางฐานข้อมูล Supabase
+  // 🌟 ฟังก์ชันจัดการ Checkbox เลือกคน Export
+  const handleToggleSelectAll = () => {
+    if (selectedForExport.length === employees.length) setSelectedForExport([]);
+    else setSelectedForExport(employees.map(e => e.id));
+  };
+
+  const handleToggleSelectEmp = (empId: string) => {
+    if (selectedForExport.includes(empId)) setSelectedForExport(prev => prev.filter(id => id !== empId));
+    else setSelectedForExport(prev => [...prev, empId]);
+  };
+
   const handleSaveToSupabase = async () => {
     if (Object.keys(schedule).length === 0) return alert('ไม่มีข้อมูลตารางงานให้บันทึกครับบอส');
     
@@ -177,53 +218,71 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // 📥 ฟังก์ชัน Export ออกมาเป็น Excel (CSV) Template สำหรับ HR (ดัก D/N เป็นค่าว่างแล้ว)
-  const handleExportHR = () => {
+  // 📥 🌟 ฟังก์ชันอัปเกรด Export ออกมาเป็น Excel แท้ๆ (.xls) 🌟
+  const handleExportExcel = () => {
+    if (selectedForExport.length === 0) return alert('กรุณาเลือกพนักงานอย่างน้อย 1 คนเพื่อส่งออกครับบอส!');
+
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-    const headers = ['empid', 'name'];
+    
+    // สร้างโครงสร้าง HTML Table ที่ Excel อ่านออก
+    let tableHtml = `
+      <style>
+        th { background-color: #f3f4f6; border: 1px solid #cbd5e1; padding: 5px; font-weight: bold; }
+        td { border: 1px solid #cbd5e1; padding: 5px; text-align: center; }
+        .text-left { text-align: left; }
+        .holiday { background-color: #bae6fd; } /* สีฟ้าอ่อนสำหรับวันหยุดตามแบบ Excel */
+      </style>
+      <tr>
+        <th class="text-left">empid</th>
+        <th class="text-left">name</th>
+    `;
 
-    // 1. หัวตารางรูปแบบ YYYY/MM/DD
     for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}/${month}/${String(day).padStart(2, '0')}`;
-      headers.push(dateStr);
+      tableHtml += `<th>${year}/${month}/${String(day).padStart(2, '0')}</th>`;
     }
+    tableHtml += '</tr>';
 
-    const csvRows = [headers.join(',')];
+    employees
+      .filter(emp => selectedForExport.includes(emp.id))
+      .forEach(emp => {
+        tableHtml += `<tr><td class="text-left">${emp.id}</td><td class="text-left">${emp.name}</td>`;
+        for (let day = 1; day <= daysInMonth; day++) {
+          let cellValue = '';
+          let cssClass = '';
 
-    // 2. เติมข้อมูลแถวพนักงาน
-    employees.forEach(emp => {
-      const rowData = [emp.id, emp.name];
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        let cellValue = ''; // ค่าเริ่มต้นคือว่าง
-
-        if (holidays[day]) {
-          cellValue = 'H'; // วันหยุดโรงงาน
-        } else {
-          const cell = schedule[`${emp.id}_${day}`];
-          if (cell) {
-            if (cell.shift === 'O') {
-              cellValue = 'O'; // วันหยุดปกติ
-            } else {
-              // กะทำงาน (D, N) จะถูกปล่อยเป็นค่าว่าง ('') เพื่อให้ตรงเป๊ะตามไฟล์ของ HR 
-              cellValue = ''; 
+          if (holidays[day]) {
+            cellValue = 'H';
+            cssClass = 'class="holiday"';
+          } else {
+            const cell = schedule[`${emp.id}_${day}`];
+            if (cell) {
+              if (cell.shift === 'O') cellValue = 'O';
             }
           }
+          tableHtml += `<td ${cssClass}>${cellValue}</td>`;
         }
-        rowData.push(cellValue);
-      }
-      csvRows.push(rowData.join(','));
-    });
+        tableHtml += '</tr>';
+      });
 
-    // 3. ปั้นและโหลดไฟล์ (ใส่ \uFEFF ให้ Excel รองรับภาษาไทยได้สมบูรณ์)
-    const csvContent = "\uFEFF" + csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // ห่อตารางด้วยแท็กเฉพาะของ Microsoft Office
+    const excelContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Roster</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+      </head>
+      <body>
+        <table>${tableHtml}</table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([excelContent], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `HR_Roster_${year}_${month}.csv`);
+    link.setAttribute('download', `HR_Roster_${year}_${month}.xls`); // 👈 เซฟเป็น .xls 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -243,7 +302,6 @@ export default function ShiftRosterPro() {
 
         <div className="flex flex-wrap items-center gap-4">
           
-          {/* สวิตช์สลับโหมด ดู/แก้ไข */}
           <div className="flex items-center bg-[#1e293b] p-1.5 rounded-xl border border-slate-700 shadow-inner">
             <button onClick={() => setIsEditMode(false)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${!isEditMode ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
               <i className="bi bi-eye-fill"></i> โหมดดูข้อมูล
@@ -255,7 +313,6 @@ export default function ShiftRosterPro() {
 
           <div className="w-px h-8 bg-slate-700 hidden md:block"></div>
 
-          {/* ฟอร์มเพิ่มคนพร้อมรหัสพนักงาน (โชว์เฉพาะโหมดแก้ไข) */}
           {isEditMode && (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
               <input 
@@ -274,13 +331,13 @@ export default function ShiftRosterPro() {
             </div>
           )}
 
-          {/* ปุ่ม Export และ บันทึกข้อมูล */}
           <div className="flex items-center gap-2">
+            {/* ปุ่ม Export Excel แบบใหม่ */}
             <button 
-              onClick={handleExportHR} 
+              onClick={handleExportExcel} 
               className="bg-[#1e293b] hover:bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95"
             >
-              <i className="bi bi-file-earmark-excel-fill text-lg"></i> ส่งออกให้ HR
+              <i className="bi bi-file-earmark-excel-fill text-lg"></i> ส่งออก Excel
             </button>
             
             <button 
@@ -295,7 +352,6 @@ export default function ShiftRosterPro() {
         </div>
       </div>
 
-      {/* 🌟 Paint Brush Toolbar (ซ่อนอัตโนมัติถ้าไม่ใช่โหมดแก้ไข) */}
       <div className={`max-w-[1500px] w-full mx-auto flex items-center gap-3 shrink-0 bg-[#1e293b]/50 p-2 rounded-xl border border-slate-700/50 transition-all duration-300 overflow-hidden ${isEditMode ? 'mb-4 opacity-100 max-h-20' : 'mb-0 opacity-0 max-h-0 border-transparent py-0'}`}>
         <span className="text-xs font-bold text-slate-400 px-3 uppercase tracking-widest flex items-center gap-2"><i className="bi bi-brush-fill"></i> เลือกพู่กัน:</span>
         <button onClick={() => setActiveTool('D')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-black transition-all ${activeTool === 'D' ? 'bg-emerald-500 text-white shadow-lg' : 'bg-[#0f172a] text-slate-400 hover:text-emerald-400'}`}><div className="w-3 h-3 rounded-sm bg-emerald-400"></div> เช้า (D)</button>
@@ -306,19 +362,30 @@ export default function ShiftRosterPro() {
         <button onClick={() => setActiveTool('ERASE')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-black transition-all border ${activeTool === 'ERASE' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:text-red-400'}`}><i className="bi bi-eraser-fill"></i> ยางลบ</button>
       </div>
 
-      {/* 🌟 Main Calendar Table */}
       <div className="max-w-[1500px] w-full mx-auto bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl flex-1 flex flex-col overflow-hidden shadow-2xl relative">
         <div className="overflow-auto custom-scrollbar flex-1 relative">
           <table className="w-full min-w-max border-collapse border-spacing-0">
             
             <thead className="sticky top-0 z-30">
               <tr className="bg-[#0f172a]/95 backdrop-blur-md text-slate-400 text-xs border-b border-slate-700 shadow-sm">
-                <th className="sticky left-0 z-40 bg-[#0f172a]/95 backdrop-blur-md p-4 text-left font-bold min-w-[260px] border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
-                  รหัส & พนักงาน ({employees.length} คน)
+                <th className="sticky left-0 z-40 bg-[#0f172a]/95 backdrop-blur-md p-4 text-left font-bold min-w-[280px] border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
+                  
+                  {/* 🌟 ฟีเจอร์ใหม่: Checkbox เลือกทั้งหมด */}
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="checkbox" 
+                      title="เลือกทั้งหมด"
+                      checked={selectedForExport.length === employees.length && employees.length > 0} 
+                      onChange={handleToggleSelectAll} 
+                      className="w-4 h-4 rounded cursor-pointer accent-emerald-500" 
+                    />
+                    <span>รหัส & พนักงาน ({employees.length} คน)</span>
+                  </div>
+
                 </th>
-                <th className="sticky left-[260px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-emerald-400">Day</th>
-                <th className="sticky left-[316px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-orange-400">Night</th>
-                <th className="sticky left-[372px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[4px_0_5px_rgba(0,0,0,0.2)] text-center w-14 text-amber-400 border-r-2 border-r-amber-500/20">OT</th>
+                <th className="sticky left-[280px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-emerald-400">Day</th>
+                <th className="sticky left-[336px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-orange-400">Night</th>
+                <th className="sticky left-[392px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[4px_0_5px_rgba(0,0,0,0.2)] text-center w-14 text-amber-400 border-r-2 border-r-amber-500/20">OT</th>
 
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
                   const { dayName, isSunday, isWeekend } = getDayDetails(day);
@@ -351,20 +418,33 @@ export default function ShiftRosterPro() {
             <tbody>
               {employees.map((emp) => {
                 const summary = calculateSummary(emp.id);
+                const isViolating = violations.includes(emp.id);
 
                 return (
-                  <tr key={emp.id} className="border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors group">
+                  <tr key={emp.id} className={`border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors group ${isViolating ? 'bg-red-500/5' : ''}`}>
                     
-                    {/* ข้อมูลพนักงาน */}
                     <td className="sticky left-0 z-20 bg-[#1e293b] p-3 text-xs text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                       <div className="flex items-center justify-between">
+                        
+                        {/* 🌟 ฟีเจอร์ใหม่: Checkbox รายบุคคล */}
                         <div className="flex items-center gap-3">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedForExport.includes(emp.id)} 
+                            onChange={() => handleToggleSelectEmp(emp.id)} 
+                            className="w-4 h-4 rounded cursor-pointer accent-emerald-500 shrink-0" 
+                          />
                           <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-lg shadow-inner shrink-0">{emp.icon}</div>
                           <div className="min-w-0">
-                            <div className="font-black text-slate-200 text-sm truncate">{emp.name}</div>
+                            <div className="font-black text-slate-200 text-sm truncate flex items-center gap-1.5">
+                              {emp.name}
+                              {/* 🌟 แสดงไอคอนเตือนถ้าทำงานเกิน 6 วัน */}
+                              {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse" title="แจ้งเตือน: ทำงานต่อเนื่องเกิน 6 วันแล้ว!"></i>}
+                            </div>
                             <div className="font-mono text-cyan-400 font-bold text-[10px] tracking-wider mt-0.5">{emp.id}</div>
                           </div>
                         </div>
+
                         {isEditMode && (
                           <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 w-7 h-7 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
                             <i className="bi bi-trash-fill"></i>
@@ -373,12 +453,10 @@ export default function ShiftRosterPro() {
                       </div>
                     </td>
 
-                    {/* สรุปยอดสะสมรายเดือน */}
-                    <td className="sticky left-[260px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-emerald-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.d || '-'}</td>
-                    <td className="sticky left-[316px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-orange-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.n || '-'}</td>
-                    <td className="sticky left-[372px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-amber-400 text-sm shadow-[4px_0_5px_rgba(0,0,0,0.2)] bg-amber-500/5 border-r-2 border-r-amber-500/20">{summary.ot || '-'}</td>
+                    <td className="sticky left-[280px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-emerald-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.d || '-'}</td>
+                    <td className="sticky left-[336px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-orange-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.n || '-'}</td>
+                    <td className="sticky left-[392px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-amber-400 text-sm shadow-[4px_0_5px_rgba(0,0,0,0.2)] bg-amber-500/5 border-r-2 border-r-amber-500/20">{summary.ot || '-'}</td>
 
-                    {/* ตารางปฏิทินกะรายวัน */}
                     {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
                       const { isSunday, isWeekend } = getDayDetails(day);
                       const isHoliday = !!holidays[day];
