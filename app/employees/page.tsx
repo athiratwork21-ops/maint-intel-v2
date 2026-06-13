@@ -16,11 +16,12 @@ type HolidayState = Record<number, string>;
 // =========================================================================
 // 🚀 TURBO UPGRADE: แยกแถวพนักงานออกมาแล้วครอบด้วย React.memo 
 // =========================================================================
-const EmployeeRow = React.memo(({
+// 🚀 เปลี่ยนเป็น function EmployeeRow แบบนี้ เส้นแดงจะหายวับครับ!
+const EmployeeRow = React.memo(function EmployeeRow({
   emp, schedule, monthDaysDetails, holidays, isEditMode,
   isSelected, isViolating,
   handleToggleSelectEmp, handleDeleteEmployee, handleMouseDown, handleMouseEnter
-}: any) => {
+}: any) {
 
   // คำนวณยอดสรุป (ทำสดๆ เฉพาะในแถวของตัวเอง ประหยัดพลังงานมาก)
   let d = 0, n = 0, ot = 0, off = 0;
@@ -497,7 +498,7 @@ export default function ShiftRosterPro() {
                   </td>
                 </tr>
               ) : (
-                employees.map(emp => (
+                employees.map((emp: any) => (
                   <EmployeeRow 
                     key={emp.id} 
                     emp={emp} 
