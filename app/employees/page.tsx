@@ -1,197 +1,197 @@
 "use client";
-import { useState } from "react";
+import React, { useState, useEffect, MouseEvent } from 'react';
 
-// 🔄 ระบบ Toggle วนลูปกะงาน
-const SHIFT_CYCLE = ["D", "N", "O"];
-const SHIFT_COLORS: Record<string, string> = {
-  D: "bg-emerald-500 text-white shadow-emerald-500/50",
-  N: "bg-orange-500 text-white shadow-orange-500/50",
-  O: "bg-slate-500 text-white shadow-slate-500/50",
-  "": "bg-slate-800 hover:bg-slate-700 text-slate-600 border border-slate-700", // ช่องว่าง
-};
+// 🌟 ตัวแปรจำลองข้อมูลพนักงาน (Mock Data)
+const initialEmployees = [
+  { id: 'E01', name: 'สมชาย ยอดขยัน', icon: '👨‍🔧' },
+  { id: 'E02', name: 'สมหญิง รักงาน', icon: '👩‍💼' },
+  { id: 'E03', name: 'ช่างใหญ่ ไอที', icon: '👨‍💻' },
+];
 
-// ชื่อวันภาษาไทย (ตัวย่อ)
-const DAY_NAMES = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
+export default function ShiftRosterPro() {
+  // 🌟 State สำหรับจัดการตาราง (เดือน/ปี)
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 1)); // เริ่มต้นที่ มิถุนายน 2026
+  const [employees, setEmployees] = useState(initialEmployees);
+  
+  // 🌟 State หลักสำหรับเก็บตารางงาน: format { "E01_1": "D", "E01_2": "N" }
+  const [schedule, setSchedule] = useState<Record<string, string>>({});
+  
+  // 🌟 State สำหรับลอจิก "ลากเมาส์เพื่อทาสี (Drag to Paint)"
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState<string | null>(null);
 
-export default function MonthlyRoster() {
-  // 🗓️ ตั้งค่าเดือน/ปี ปัจจุบัน (เช่น มิถุนายน 2026)
-  const currentYear = 2026;
-  const currentMonth = 5; // 0 = ม.ค., 5 = มิ.ย.
-  const daysInMonthCount = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const daysInMonth = Array.from({ length: daysInMonthCount }, (_, i) => i + 1);
+  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
 
-  // 📦 State เก็บข้อมูล
-  const [employees, setEmployees] = useState([
-    { id: "1", name: "👨‍🔧 สมชาย ยอดขยัน" },
-    { id: "2", name: "👩‍💼 สมหญิง รักงาน" },
-    { id: "3", name: "👨‍💻 ช่างใหญ่ ไอที" },
-  ]);
-  const [newEmpName, setNewEmpName] = useState("");
-  const [schedules, setSchedules] = useState<Record<string, string>>({});
-
-  // ⚡ ฟังก์ชันเปลี่ยนกะ
-  const toggleShift = (empId: string, day: number) => {
-    const key = `${empId}-${day}`;
-    const currentShift = schedules[key] || "";
-    const currentIndex = SHIFT_CYCLE.indexOf(currentShift);
-    const nextShift = currentIndex === -1 
-      ? SHIFT_CYCLE[0] 
-      : SHIFT_CYCLE[(currentIndex + 1) % SHIFT_CYCLE.length];
-
-    setSchedules((prev) => ({ ...prev, [key]: nextShift }));
+  // ฟังก์ชันหาชื่อวันย่อ (จ., อ., พ., ...)
+  const getDayName = (day: number) => {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return date.toLocaleString('th-TH', { weekday: 'short' });
   };
 
-  // ➕ ฟังก์ชันเพิ่มพนักงาน
-  const handleAddEmployee = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEmpName.trim()) return;
-    setEmployees([...employees, { id: Date.now().toString(), name: `👤 ${newEmpName}` }]);
-    setNewEmpName("");
+  // 🌟 ลอจิกการกดปุ่มสลับกะ (Empty -> D -> N -> O -> Empty)
+  const getNextShift = (currentShift: string | undefined): string | null => {
+    if (!currentShift) return 'D';
+    if (currentShift === 'D') return 'N';
+    if (currentShift === 'N') return 'O';
+    return null;
   };
 
-  // 🗑️ ฟังก์ชันลบพนักงาน
-  const handleRemoveEmployee = (id: string, name: string) => {
-    if (window.confirm(`บอสแน่ใจนะว่าจะลบ "${name}" ออกจากตาราง?`)) {
-      setEmployees(employees.filter(emp => emp.id !== id));
-      setSchedules(prev => {
-        const newSchedules = { ...prev };
-        Object.keys(newSchedules).forEach(key => {
-          if (key.startsWith(`${id}-`)) delete newSchedules[key];
-        });
-        return newSchedules;
-      });
+  // 🖱️ Event: เมื่อเริ่มคลิกเมาส์ที่ช่อง
+  const handleMouseDown = (empId: string, day: number, currentShift: string | undefined) => {
+    const nextValue = getNextShift(currentShift);
+    setIsDragging(true);
+    setDragValue(nextValue);
+    updateCell(empId, day, nextValue);
+  };
+
+  // 🖱️ Event: เมื่อลากเมาส์ผ่านช่องอื่น (ระบายสี)
+  const handleMouseEnter = (empId: string, day: number) => {
+    if (isDragging) {
+      updateCell(empId, day, dragValue);
     }
   };
 
-  // 🎨 ฟังก์ชันดึงชื่อวันและเช็คว่าเป็นวันหยุดเสาร์-อาทิตย์ไหม
-  const getDayInfo = (day: number) => {
-    const dateObj = new Date(currentYear, currentMonth, day);
-    const dayOfWeek = dateObj.getDay(); // 0 = วันอาทิตย์, 6 = วันเสาร์
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    
-    return {
-      name: DAY_NAMES[dayOfWeek],
-      isWeekend,
-      // ถ้าเป็นเสาร์-อาทิตย์ ให้สีพื้นหลังเข้มขึ้นนิดนึงเพื่อแยกโซน
-      bgClass: isWeekend ? "bg-slate-700/40" : "bg-transparent",
-      // ไฮไลท์สีตัวหนังสือวันเสาร์(สีฟ้า) อาทิตย์(สีแดง) เพื่อความชัดเจน
-      textClass: dayOfWeek === 0 ? "text-red-400" : dayOfWeek === 6 ? "text-sky-400" : "text-slate-400"
-    };
+  // 🖱️ Event: เมื่อปล่อยคลิกเมาส์
+  useEffect(() => {
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  const updateCell = (empId: string, day: number, value: string | null) => {
+    const key = `${empId}_${day}`;
+    setSchedule(prev => {
+      const newState = { ...prev };
+      if (value === null) delete newState[key];
+      else newState[key] = value;
+      return newState;
+    });
+  };
+
+  const handleSave = () => {
+    console.log("💾 บันทึกข้อมูลลง Database:", schedule);
+    alert('บันทึกตารางงานเรียบร้อยแล้ว! (เช็ก Console)');
+  };
+
+  // 🎨 ฟังก์ชันคืนค่าสีของแต่ละกะ
+  const getShiftStyle = (shift: string | undefined) => {
+    if (shift === 'D') return 'bg-emerald-500 text-white border-emerald-600 font-black shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)]';
+    if (shift === 'N') return 'bg-orange-500 text-white border-orange-600 font-black shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)]';
+    if (shift === 'O') return 'bg-slate-500 text-white border-slate-600 font-black shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)]';
+    return 'bg-[#1e293b] text-slate-600 border-slate-700/50 hover:bg-[#334155] cursor-pointer';
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-8 font-sans">
-      <div className="max-w-[1600px] mx-auto">
-        
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
-          <div>
-            <h1 className="text-4xl font-bold text-emerald-400 mb-2">🗓️ Shift Roster Pro</h1>
-            <p className="text-slate-400">
-              ตารางกะประจำเดือน: <strong className="text-slate-200">มิถุนายน 2026</strong>
-            </p>
-          </div>
-          
-          <div className="flex gap-4">
-            <form onSubmit={handleAddEmployee} className="flex gap-2 bg-slate-800/50 p-2 rounded-lg border border-slate-700">
-              <input 
-                type="text" 
-                placeholder="ชื่อพนักงานใหม่..." 
-                value={newEmpName}
-                onChange={(e) => setNewEmpName(e.target.value)}
-                className="bg-[#0f172a] text-sm text-slate-200 px-3 py-2 rounded border border-slate-600 focus:outline-none focus:border-emerald-500 w-48"
-              />
-              <button type="submit" className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-semibold transition-colors flex items-center gap-1">
-                ➕ เพิ่มคน
-              </button>
-            </form>
-            <button className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 shadow-lg shadow-emerald-500/20">
-              💾 บันทึกตาราง
-            </button>
-          </div>
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-6 font-sans select-none">
+      
+      {/* 🌟 Header Section */}
+      <div className="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-3xl font-black flex items-center gap-3 tracking-tight text-white">
+            <i className="bi bi-calendar-month text-emerald-400"></i> Shift Roster <span className="text-emerald-400">Pro</span>
+          </h1>
+          <p className="text-slate-400 mt-1 font-medium">
+            ตารางกะประจำเดือน: <span className="text-white font-bold">{monthName}</span>
+          </p>
         </div>
 
-        {/* ตาราง Monthly View */}
-        <div className="overflow-x-auto rounded-xl border border-slate-700 bg-[#1e293b] shadow-2xl custom-scrollbar">
-          <table className="w-full border-collapse">
-            <thead className="bg-slate-800">
-              <tr>
-                <th className="sticky left-0 z-20 bg-slate-800 p-4 text-left border-b border-r border-slate-700 min-w-[280px] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative flex-1 md:flex-none">
+            <input 
+              type="text" 
+              placeholder="ชื่อพนักงานใหม่..." 
+              className="w-full md:w-64 bg-[#1e293b] border border-slate-700 text-white text-sm rounded-lg px-4 py-2.5 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+            />
+          </div>
+          <button className="bg-[#334155] hover:bg-[#475569] text-white px-4 py-2.5 rounded-lg text-sm font-bold border border-slate-600 transition-colors flex items-center gap-2">
+            <i className="bi bi-person-plus-fill"></i> เพิ่มคน
+          </button>
+          <button onClick={handleSave} className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-lg text-sm font-black transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2 active:scale-95">
+            <i className="bi bi-save-fill"></i> บันทึกตาราง
+          </button>
+        </div>
+      </div>
+
+      {/* 🌟 Main Calendar Table */}
+      <div className="max-w-[1400px] mx-auto bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full min-w-max border-collapse">
+            
+            {/* Table Header */}
+            <thead>
+              <tr className="bg-[#0f172a]/80 text-slate-400 text-xs border-b border-slate-700">
+                <th className="sticky left-0 z-20 bg-[#0f172a] p-4 text-left font-bold min-w-[200px] border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                   พนักงาน ({employees.length} คน)
                 </th>
-                {daysInMonth.map((day) => {
-                  const { name, bgClass, textClass } = getDayInfo(day);
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                  const dayName = getDayName(day);
+                  const isWeekend = dayName.includes('ส.') || dayName.includes('อา.');
                   return (
-                    <th key={day} className={`p-2 border-b border-slate-700 text-center min-w-[56px] ${bgClass}`}>
-                      <div className="flex flex-col items-center justify-center">
-                        {/* แสดงชื่อวัน (จ., อ., พ.) */}
-                        <span className={`text-xs font-bold mb-1 ${textClass}`}>{name}</span>
-                        {/* แสดงวันที่ (1, 2, 3) */}
-                        <span className="text-sm font-medium text-slate-200">{day}</span>
-                      </div>
+                    <th key={day} className={`p-2 text-center border-r border-slate-700/30 min-w-[50px] ${isWeekend ? 'text-rose-400 bg-rose-500/5' : ''}`}>
+                      <div className="font-medium mb-1">{dayName}</div>
+                      <div className={`font-black text-sm ${isWeekend ? 'text-rose-400' : 'text-slate-300'}`}>{day}</div>
                     </th>
                   );
                 })}
               </tr>
             </thead>
+
+            {/* Table Body */}
             <tbody>
-              {employees.length === 0 ? (
-                <tr>
-                  <td colSpan={daysInMonthCount + 1} className="text-center p-8 text-slate-500">
-                    ยังไม่มีพนักงานในระบบ บอสเพิ่มคนใหม่ได้ที่มุมขวาบนเลยครับ ☝️
+              {employees.map((emp) => (
+                <tr key={emp.id} className="border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors">
+                  
+                  {/* Sticky Column: ชื่อพนักงาน */}
+                  <td className="sticky left-0 z-10 bg-[#1e293b] p-4 font-bold text-sm text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-lg shadow-inner">
+                      {emp.icon}
+                    </div>
+                    {emp.name}
                   </td>
-                </tr>
-              ) : (
-                employees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-700/30 transition-colors group border-b border-slate-700/50">
-                    <td className="sticky left-0 z-10 bg-[#1e293b] group-hover:bg-[#233147] p-3 border-r border-slate-700 font-medium shadow-[4px_0_8px_-4px_rgba(0,0,0,0.5)] transition-colors">
-                      <div className="flex justify-between items-center">
-                        <span className="truncate">{emp.name}</span>
-                        <button 
-                          onClick={() => handleRemoveEmployee(emp.id, emp.name)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-1.5 rounded transition-all"
-                          title="ลบพนักงาน"
-                        >
-                          ❌
-                        </button>
-                      </div>
-                    </td>
+
+                  {/* ลูปสร้างช่องตารางรายวัน */}
+                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                    const shift = schedule[`${emp.id}_${day}`];
                     
-                    {daysInMonth.map((day) => {
-                      const shift = schedules[`${emp.id}-${day}`] || "";
-                      const { bgClass } = getDayInfo(day);
-                      return (
-                        <td key={day} className={`p-1 border-dashed border-slate-700/30 border-r ${bgClass}`}>
-                          <button
-                            onClick={() => toggleShift(emp.id, day)}
-                            className={`w-full h-12 rounded-md font-bold text-sm transition-all duration-200 transform hover:scale-105 active:scale-95 ${SHIFT_COLORS[shift]}`}
-                          >
-                            {shift || "+"}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))
-              )}
+                    return (
+                      <td key={day} className="p-1 border-r border-slate-700/30">
+                        <div
+                          onMouseDown={() => handleMouseDown(emp.id, day, shift)}
+                          onMouseEnter={() => handleMouseEnter(emp.id, day)}
+                          className={`w-full h-11 rounded-md flex items-center justify-center transition-all ${getShiftStyle(shift)}`}
+                        >
+                          {shift ? shift : <span className="opacity-20">+</span>}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
+
           </table>
         </div>
-
-        {/* Legend อธิบายสี */}
-        <div className="mt-6 p-4 bg-slate-800/50 rounded-xl inline-flex gap-6 border border-slate-700">
-          <span className="flex items-center gap-2 font-medium text-slate-300">
-            <div className="w-5 h-5 bg-emerald-500 rounded shadow-sm shadow-emerald-500/50"></div> D = Day (เช้า)
-          </span>
-          <span className="flex items-center gap-2 font-medium text-slate-300">
-            <div className="w-5 h-5 bg-orange-500 rounded shadow-sm shadow-orange-500/50"></div> N = Night (ดึก)
-          </span>
-          <span className="flex items-center gap-2 font-medium text-slate-300">
-            <div className="w-5 h-5 bg-slate-500 rounded shadow-sm shadow-slate-500/50"></div> O = Off (หยุด)
-          </span>
-        </div>
-
       </div>
+
+      {/* 🌟 Legend (คำอธิบายสี) */}
+      <div className="max-w-[1400px] mx-auto mt-6 flex gap-4">
+        <div className="flex items-center gap-4 bg-[#1e293b]/50 border border-slate-700/50 px-5 py-3 rounded-xl shadow-lg">
+          <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-emerald-500"></div><span className="text-sm font-bold text-slate-300">D = Day (เช้า)</span></div>
+          <div className="w-px h-4 bg-slate-700"></div>
+          <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-orange-500"></div><span className="text-sm font-bold text-slate-300">N = Night (ดึก)</span></div>
+          <div className="w-px h-4 bg-slate-700"></div>
+          <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-slate-500"></div><span className="text-sm font-bold text-slate-300">O = Off (หยุด)</span></div>
+        </div>
+      </div>
+
+      {/* สไตล์สำหรับ Scrollbar ให้ดูเนียนเข้ากับ Dark Mode */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar { height: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; border-radius: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; border: 2px solid #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+      `}} />
     </div>
   );
 }
