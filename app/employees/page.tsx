@@ -179,6 +179,65 @@ export default function ShiftRosterPro() {
     }
   };
 
+  // 📥 ฟังก์ชัน Export ออกมาเป็น Excel (CSV) Template สำหรับ HR
+  const handleExportHR = () => {
+    // 1. สร้าง Header แถวบนสุด (empid, name, 2026/06/01, ...)
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const headers = ['empid', 'name'];
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      // จัดฟอร์แมตวันที่ให้เป็น YYYY/MM/DD เป๊ะๆ ตามที่ HR ต้องการ
+      const dateStr = `${year}/${month}/${String(day).padStart(2, '0')}`;
+      headers.push(dateStr);
+    }
+
+    // 2. สร้างข้อมูลแต่ละแถว
+    const csvRows = [headers.join(',')];
+
+    employees.forEach(emp => {
+      const rowData = [emp.id, emp.name];
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        let cellValue = '';
+
+        // เช็กก่อนว่าเป็นวันหยุดโรงงาน (H) ไหม?
+        if (holidays[day]) {
+          cellValue = 'H';
+        } else {
+          // ถ้าไม่ใช่วันหยุดโรงงาน ให้ไปดูตารางกะ
+          const cell = schedule[`${emp.id}_${day}`];
+          if (cell) {
+            if (cell.shift === 'O') {
+              cellValue = 'O'; // วันหยุดพักผ่อน
+            } else {
+              // 🚨 ตรงนี้! ถ้า HR ต้องการให้วันทำงาน (D, N) เป็นช่องว่าง ให้เปลี่ยนเป็น cellValue = '';
+              // แต่ถ้าอยากให้แสดง D, N ด้วย ก็ใช้บรรทัดด้านล่างนี้ได้เลยครับ:
+              cellValue = cell.shift; 
+            }
+          }
+        }
+        rowData.push(cellValue);
+      }
+      // ยัดข้อมูลแต่ละแถวลง Array
+      csvRows.push(rowData.join(','));
+    });
+
+    // 3. ปั้นไฟล์ CSV และสั่งดาวน์โหลด
+    // ใส่ \uFEFF ด้านหน้าเพื่อให้ Excel รู้ว่าเป็น UTF-8 (ภาษาไทยจะได้ไม่เป็นภาษาต่างดาว)
+    const csvContent = "\uFEFF" + csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    // จำลองการคลิกดาวน์โหลดไฟล์
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `HR_Roster_${year}_${month}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 p-6 font-sans select-none flex flex-col h-screen overflow-hidden">
       
@@ -224,15 +283,23 @@ export default function ShiftRosterPro() {
             </div>
           )}
 
-          {/* ปุ่มบันทึกข้อมูล */}
-          <button 
-            onClick={handleSaveToSupabase} 
-            disabled={!isEditMode || isSaving} 
-            className={`px-6 py-2.5 rounded-lg text-sm font-black transition-colors shadow-lg flex items-center gap-2 ${isEditMode && !isSaving ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}
-          >
-            {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังบันทึก...</> : <><i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตารางงาน</>}
-          </button>
-        </div>
+          {/* ปุ่ม Export และ บันทึกข้อมูล */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleExportHR} 
+              className="bg-[#1e293b] hover:bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95"
+            >
+              <i className="bi bi-file-earmark-excel-fill text-lg"></i> ส่งออกให้ HR
+            </button>
+            
+            <button 
+              onClick={handleSaveToSupabase} 
+              disabled={!isEditMode || isSaving} 
+              className={`px-6 py-2.5 rounded-lg text-sm font-black transition-colors shadow-lg flex items-center gap-2 ${isEditMode && !isSaving ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}
+            >
+              {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังบันทึก...</> : <><i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตารางงาน</>}
+            </button>
+          </div>
       </div>
 
       {/* 🌟 Paint Brush Toolbar (ซ่อนอัตโนมัติถ้าไม่ใช่โหมดแก้ไข) */}
