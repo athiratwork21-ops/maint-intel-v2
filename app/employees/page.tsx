@@ -204,8 +204,7 @@ export default function ShiftRosterPro() {
     
     setIsSaving(true);
     try {
-      const mechanicDept = localStorage.getItem('mechanicDept') || 'GENERAL';
-
+      // 🚨 1. จัดฟอร์แมตชื่อคอลัมน์ให้ตรงกับ SQL แบบเป๊ะๆ (ตัวพิมพ์เล็กทั้งหมด)
       const upsertData = Object.entries(schedule).map(([key, value]) => {
         const [empId, dayStr] = key.split('_');
         const day = parseInt(dayStr);
@@ -221,8 +220,9 @@ export default function ShiftRosterPro() {
         };
       });
 
-      // 🚨 หมายเหตุจากช่างใหญ่: ตรวจสอบให้แน่ใจว่าชื่อตารางใน DB เป็น 'Schedules' หรือ 'schedules' นะครับ
-      const { error } = await supabaseServiceWork.from('Schedules').upsert(upsertData, { onConflict: 'EmployeeID,Date' });
+      // 🚨 2. เปลี่ยนชื่อตารางเป็น 'schedules' (พิมพ์เล็ก) และจับคู่ onConflict ให้ถูกต้อง
+      const { error } = await supabaseServiceWork.from('schedules').upsert(upsertData, { onConflict: 'employee_id, work_date' });
+      
       if (error) throw error;
 
       alert('💾 บันทึกตารางงานลงระบบฐานข้อมูล Supabase สำเร็จเรียบร้อยครับบอส! 🔥');
