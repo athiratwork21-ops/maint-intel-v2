@@ -214,11 +214,10 @@ export default function ShiftRosterPro() {
         const dateStr = `${year}-${month}-${String(day).padStart(2, '0')}`;
         
         return {
-          EmployeeID: empId,
-          Date: dateStr,
-          Shift: value.shift,
-          IsOT: value.isOT,
-          DepartmentID: mechanicDept
+          employee_id: empId,      // 👈 แก้ให้ตรง DB
+          work_date: dateStr,      // 👈 แก้ให้ตรง DB
+          shift_code: value.shift, // 👈 แก้ให้ตรง DB
+          is_ot: value.isOT        // 👈 แก้ให้ตรง DB
         };
       });
 
