@@ -14,7 +14,7 @@ type ScheduleState = Record<string, CellData>;
 type HolidayState = Record<number, string>; 
 
 export default function ShiftRosterPro() {
-  // 🌟 ฟีเจอร์ใหม่: เซ็ตค่าเริ่มต้นเป็น "เดือนปัจจุบัน" อัตโนมัติ!
+  // 🌟 เซ็ตเดือนปัจจุบัน & เลือกเดือนได้
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -33,10 +33,12 @@ export default function ShiftRosterPro() {
   const [newEmpId, setNewEmpId] = useState('');
   const [newEmpName, setNewEmpName] = useState('');
 
+  // สำหรับ Export และแจ้งเตือน
   const [selectedForExport, setSelectedForExport] = useState<string[]>(initialEmployees.map(e => e.id));
   const [violations, setViolations] = useState<string[]>([]);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
 
   const getDayDetails = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
@@ -46,18 +48,17 @@ export default function ShiftRosterPro() {
     return { dayName, isSunday, isWeekend };
   };
 
-  // 🌟 ฟังก์ชันจัดการตอนบอสเปลี่ยนเดือน
+  // 🌟 ฟังก์ชันเปลี่ยนเดือน
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.value) return;
     const [year, month] = e.target.value.split('-');
     
-    // ดักเตือนถ้ามีการแก้ไขค้างไว้แล้วลืมเซฟ
     if (Object.keys(schedule).length > 0) {
       if (!confirm('ข้อมูลตารางที่จัดไว้ในเดือนนี้ยังไม่ได้บันทึก ยืนยันที่จะเปลี่ยนเดือนหรือไม่? (ข้อมูลที่ยังไม่เซฟจะหายไป)')) return;
     }
 
     setCurrentDate(new Date(parseInt(year), parseInt(month) - 1, 1));
-    setSchedule({}); // เคลียร์ตารางเป็นหน้าว่างสำหรับเดือนใหม่
+    setSchedule({});
     setViolations([]);
     setHolidays({});
   };
@@ -107,6 +108,7 @@ export default function ShiftRosterPro() {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
+  // 🌟 ตรวจจับทำงานเกิน 6 วัน
   useEffect(() => {
     const newViolations: string[] = [];
 
@@ -161,7 +163,7 @@ export default function ShiftRosterPro() {
   const handleToggleHoliday = (day: number) => {
     if (!isEditMode) return;
     const currentName = holidays[day] || '';
-    const newHolidayName = prompt(`ตั้งชื่อวันหยุดโรงงาน สำหรับวันที่ ${day}:\n(ลบข้อความออกเพื่อยกเลิกวันหยุด)`, currentName);
+    const newHolidayName = prompt(`ตั้งชื่อวันหยุดพิเศษ สำหรับวันที่ ${day} ${monthName}:\n(ลบข้อความออกและกด OK เพื่อยกเลิก)`, currentName);
     
     if (newHolidayName !== null) {
       setHolidays(prev => {
@@ -232,6 +234,7 @@ export default function ShiftRosterPro() {
     }
   };
 
+  // 🌟 ฟังก์ชัน Export Excel แท้ๆ
   const handleExportExcel = () => {
     if (selectedForExport.length === 0) return alert('กรุณาเลือกพนักงานอย่างน้อย 1 คนเพื่อส่งออกครับบอส!');
 
@@ -282,14 +285,14 @@ export default function ShiftRosterPro() {
             <i className="bi bi-calendar3 text-emerald-400"></i> Roster <span className="text-emerald-400">Pro</span>
           </h1>
           
-          {/* 🌟 ฟีเจอร์ใหม่: กล่องเลือกเดือน-ปี (Month Picker) */}
+          {/* กล่องเลือกเดือน-ปี */}
           <div className="flex items-center gap-3 mt-2">
-            <p className="text-slate-400 font-medium">จัดการตารางของเดือน:</p>
+            <p className="text-slate-400 font-medium text-sm">จัดการตารางของเดือน:</p>
             <input 
               type="month" 
               value={`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`}
               onChange={handleMonthChange}
-              className="bg-[#1e293b] border border-slate-700 text-white font-black px-3 py-1.5 rounded-lg outline-none focus:border-emerald-500 cursor-pointer shadow-inner"
+              className="bg-[#1e293b] border border-slate-700 text-white font-black px-3 py-1.5 rounded-lg outline-none focus:border-emerald-500 cursor-pointer shadow-inner text-sm"
             />
           </div>
         </div>
@@ -338,7 +341,7 @@ export default function ShiftRosterPro() {
               disabled={!isEditMode || isSaving} 
               className={`px-6 py-2.5 rounded-lg text-sm font-black transition-colors shadow-lg flex items-center gap-2 ${isEditMode && !isSaving ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}
             >
-              {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังบันทึก...</> : <><i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตารางงาน</>}
+              {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังบันทึก...</> : <><i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตาราง</>}
             </button>
           </div>
           
