@@ -134,7 +134,7 @@ export default function ShiftRosterPro() {
     }
 
     setViolations(newViolations);
-  }, [schedule, employees, daysInMonth]);
+  }, [schedule, employees, daysInMonth, violations]);
 
   const handleAddEmployee = () => {
     if (!newEmpId.trim() || !newEmpName.trim()) return alert('กรุณากรอกรหัสและชื่อพนักงานให้ครบถ้วนครับบอส');
@@ -222,6 +222,7 @@ export default function ShiftRosterPro() {
         };
       });
 
+      // 🚨 หมายเหตุจากช่างใหญ่: ตรวจสอบให้แน่ใจว่าชื่อตารางใน DB เป็น 'Schedules' หรือ 'schedules' นะครับ
       const { error } = await supabaseServiceWork.from('Schedules').upsert(upsertData, { onConflict: 'EmployeeID,Date' });
       if (error) throw error;
 
@@ -262,6 +263,8 @@ export default function ShiftRosterPro() {
             const cell = schedule[`${emp.id}_${day}`];
             if (cell && cell.shift === 'O') {
               cellValue = 'O'; 
+            } else if (cell) {
+              cellValue = cell.shift + (cell.isOT ? ' (OT)' : '');
             }
           }
           rowData.push(cellValue);
