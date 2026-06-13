@@ -1,12 +1,12 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { supabaseServiceWork } from '../../lib/supabase-servicework'; // 🌟 เปลี่ยนมาใช้ Instance ของ Service Work ตามสั่งครับ!
+import { supabaseServiceWork } from '../../lib/supabase-servicework'; // 🌟 ดึงตัวแปร Supabase มาใช้งานจริง
 
 // ตัวแปรจำลองข้อมูลพนักงานเริ่มต้น (เพิ่มรหัสพนักงานเข้าไปด้วย)
 const initialEmployees = [
-  { id: 'EMP-001', name: 'สมชาย ยอดขยัน', icon: '👨‍🔧' },
-  { id: 'EMP-002', name: 'สมหญิง รักงาน', icon: '👩‍💼' },
-  { id: 'EMP-003', name: 'ช่างใหญ่ ไอที', icon: '👨‍💻' },
+  { id: '86125806', name: 'Example#1', icon: '👨‍🔧' },
+  { id: '86129121', name: 'Example#3', icon: '👩‍💼' },
+  { id: '86130049', name: 'Example#5', icon: '👨‍💻' },
 ];
 
 type CellData = { shift: 'D' | 'N' | 'O'; isOT: boolean };
@@ -14,10 +14,10 @@ type ScheduleState = Record<string, CellData>;
 type HolidayState = Record<number, string>; 
 
 export default function ShiftRosterPro() {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 1)); // มิถุนายน 2026
+  const [currentDate, setCurrentDate] = useState(new Date(2023, 4, 1)); // เดือน 5 (พฤษภาคม) 2023 ให้ตรงกับในรูป
   const [employees, setEmployees] = useState(initialEmployees);
   const [schedule, setSchedule] = useState<ScheduleState>({});
-  const [holidays, setHolidays] = useState<HolidayState>({ 15: 'วันหยุดโรงงาน' });
+  const [holidays, setHolidays] = useState<HolidayState>({ 1: 'วันแรงงาน', 2: 'วันหยุดพิเศษ', 3: 'วันหยุดพิเศษ', 4: 'ฉัตรมงคล' });
   
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -90,7 +90,6 @@ export default function ShiftRosterPro() {
   // ฟังก์ชันเพิ่มพนักงานพร้อมรหัสพนักงาน
   const handleAddEmployee = () => {
     if (!newEmpId.trim() || !newEmpName.trim()) return alert('กรุณากรอกรหัสและชื่อพนักงานให้ครบถ้วนครับบอส');
-    
     if (employees.some(e => e.id === newEmpId.trim())) return alert('รหัสพนักงานนี้มีในระบบแล้วครับบอส');
 
     const newEmp = { id: newEmpId.trim().toUpperCase(), name: newEmpName.trim(), icon: '👷' };
@@ -142,7 +141,7 @@ export default function ShiftRosterPro() {
     return { d, n, off, ot };
   };
 
-  // 🌟 ระบบบันทึกข้อมูลยิงตรงเข้าตารางฐานข้อมูล Supabase (Service Work)
+  // 🌟 ระบบบันทึกข้อมูลยิงตรงเข้าตารางฐานข้อมูล Supabase
   const handleSaveToSupabase = async () => {
     if (Object.keys(schedule).length === 0) return alert('ไม่มีข้อมูลตารางงานให้บันทึกครับบอส');
     
@@ -166,7 +165,6 @@ export default function ShiftRosterPro() {
         };
       });
 
-      // 🌟 เปลี่ยนคำสั่งชี้ไปที่ตัวแปร supabaseServiceWork ตามที่บอสต้องการ
       const { error } = await supabaseServiceWork.from('Schedules').upsert(upsertData, { onConflict: 'EmployeeID,Date' });
       if (error) throw error;
 
@@ -179,57 +177,50 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // 📥 ฟังก์ชัน Export ออกมาเป็น Excel (CSV) Template สำหรับ HR
+  // 📥 ฟังก์ชัน Export ออกมาเป็น Excel (CSV) Template สำหรับ HR (ดัก D/N เป็นค่าว่างแล้ว)
   const handleExportHR = () => {
-    // 1. สร้าง Header แถวบนสุด (empid, name, 2026/06/01, ...)
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
     const headers = ['empid', 'name'];
 
+    // 1. หัวตารางรูปแบบ YYYY/MM/DD
     for (let day = 1; day <= daysInMonth; day++) {
-      // จัดฟอร์แมตวันที่ให้เป็น YYYY/MM/DD เป๊ะๆ ตามที่ HR ต้องการ
       const dateStr = `${year}/${month}/${String(day).padStart(2, '0')}`;
       headers.push(dateStr);
     }
 
-    // 2. สร้างข้อมูลแต่ละแถว
     const csvRows = [headers.join(',')];
 
+    // 2. เติมข้อมูลแถวพนักงาน
     employees.forEach(emp => {
       const rowData = [emp.id, emp.name];
 
       for (let day = 1; day <= daysInMonth; day++) {
-        let cellValue = '';
+        let cellValue = ''; // ค่าเริ่มต้นคือว่าง
 
-        // เช็กก่อนว่าเป็นวันหยุดโรงงาน (H) ไหม?
         if (holidays[day]) {
-          cellValue = 'H';
+          cellValue = 'H'; // วันหยุดโรงงาน
         } else {
-          // ถ้าไม่ใช่วันหยุดโรงงาน ให้ไปดูตารางกะ
           const cell = schedule[`${emp.id}_${day}`];
           if (cell) {
             if (cell.shift === 'O') {
-              cellValue = 'O'; // วันหยุดพักผ่อน
+              cellValue = 'O'; // วันหยุดปกติ
             } else {
-              // 🚨 ตรงนี้! ถ้า HR ต้องการให้วันทำงาน (D, N) เป็นช่องว่าง ให้เปลี่ยนเป็น cellValue = '';
-              // แต่ถ้าอยากให้แสดง D, N ด้วย ก็ใช้บรรทัดด้านล่างนี้ได้เลยครับ:
-              cellValue = cell.shift; 
+              // กะทำงาน (D, N) จะถูกปล่อยเป็นค่าว่าง ('') เพื่อให้ตรงเป๊ะตามไฟล์ของ HR 
+              cellValue = ''; 
             }
           }
         }
         rowData.push(cellValue);
       }
-      // ยัดข้อมูลแต่ละแถวลง Array
       csvRows.push(rowData.join(','));
     });
 
-    // 3. ปั้นไฟล์ CSV และสั่งดาวน์โหลด
-    // ใส่ \uFEFF ด้านหน้าเพื่อให้ Excel รู้ว่าเป็น UTF-8 (ภาษาไทยจะได้ไม่เป็นภาษาต่างดาว)
+    // 3. ปั้นและโหลดไฟล์ (ใส่ \uFEFF ให้ Excel รองรับภาษาไทยได้สมบูรณ์)
     const csvContent = "\uFEFF" + csvRows.join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     
-    // จำลองการคลิกดาวน์โหลดไฟล์
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `HR_Roster_${year}_${month}.csv`);
@@ -300,6 +291,8 @@ export default function ShiftRosterPro() {
               {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังบันทึก...</> : <><i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตารางงาน</>}
             </button>
           </div>
+          
+        </div>
       </div>
 
       {/* 🌟 Paint Brush Toolbar (ซ่อนอัตโนมัติถ้าไม่ใช่โหมดแก้ไข) */}
@@ -362,7 +355,7 @@ export default function ShiftRosterPro() {
                 return (
                   <tr key={emp.id} className="border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors group">
                     
-                    {/* ข้อมูลพนักงาน (โชว์รหัสพนักงานเด่นชัดด้านล่างชื่อ) */}
+                    {/* ข้อมูลพนักงาน */}
                     <td className="sticky left-0 z-20 bg-[#1e293b] p-3 text-xs text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
