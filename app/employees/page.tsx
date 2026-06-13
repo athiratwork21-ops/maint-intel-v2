@@ -3,27 +3,22 @@ import React, { useState, useEffect } from 'react';
 import { supabaseServiceWork } from '../../lib/supabase-servicework';
 import * as XLSX from 'xlsx';
 
-const initialEmployees = [
-  { id: '86125806', name: 'Example#1', icon: '👨‍🔧' },
-  { id: '86129121', name: 'Example#3', icon: '👩‍💼' },
-  { id: '86130049', name: 'Example#5', icon: '👨‍💻' },
-];
-
 type CellData = { shift: 'D' | 'N' | 'O'; isOT: boolean };
 type ScheduleState = Record<string, CellData>;
 type HolidayState = Record<number, string>; 
 
 export default function ShiftRosterPro() {
-  // 🌟 เซ็ตเดือนปัจจุบัน & เลือกเดือนได้
+  // 🌟 State จัดการเดือนปัจจุบัน
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   }); 
 
-  const [employees, setEmployees] = useState(initialEmployees);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<ScheduleState>({});
   const [holidays, setHolidays] = useState<HolidayState>({});
   
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -33,12 +28,58 @@ export default function ShiftRosterPro() {
   const [newEmpId, setNewEmpId] = useState('');
   const [newEmpName, setNewEmpName] = useState('');
 
-  // สำหรับ Export และแจ้งเตือน
-  const [selectedForExport, setSelectedForExport] = useState<string[]>(initialEmployees.map(e => e.id));
+  const [selectedForExport, setSelectedForExport] = useState<string[]>([]);
   const [violations, setViolations] = useState<string[]>([]);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
+
+  // 🌟 1. ดึงข้อมูลพนักงานและตารางงานเมื่อเปิดหน้าเว็บ หรือเปลี่ยนเดือน
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setIsLoading(true);
+      try {
+        // ดึงพนักงาน
+        const { data: empData, error: empErr } = await supabaseServiceWork.from('employees').select('*').order('id');
+        if (empErr) throw empErr;
+        const loadedEmps = empData || [];
+        setEmployees(loadedEmps);
+        setSelectedForExport(loadedEmps.map(e => e.id)); // Default เลือกทุกคนสำหรับ Export
+
+        // ดึงตารางงานของเดือนปัจจุบัน
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const startDate = `${year}-${month}-01`;
+        const endDate = `${year}-${month}-${daysInMonth}`;
+
+        const { data: schedData, error: schedErr } = await supabaseServiceWork
+          .from('schedules')
+          .select('*')
+          .gte('work_date', startDate)
+          .lte('work_date', endDate);
+
+        if (schedErr) throw schedErr;
+
+        const loadedSchedule: ScheduleState = {};
+        if (schedData) {
+          schedData.forEach(row => {
+            const day = parseInt(row.work_date.split('-')[2], 10);
+            loadedSchedule[`${row.employee_id}_${day}`] = {
+              shift: row.shift_code as 'D'|'N'|'O',
+              isOT: row.is_ot
+            };
+          });
+        }
+        setSchedule(loadedSchedule);
+      } catch (error: any) {
+        console.error("Error loading data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadInitialData();
+  }, [currentDate, daysInMonth]);
 
   const getDayDetails = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
@@ -48,21 +89,18 @@ export default function ShiftRosterPro() {
     return { dayName, isSunday, isWeekend };
   };
 
-  // 🌟 ฟังก์ชันเปลี่ยนเดือน
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.value) return;
     const [year, month] = e.target.value.split('-');
-    
-    if (Object.keys(schedule).length > 0) {
-      if (!confirm('ข้อมูลตารางที่จัดไว้ในเดือนนี้ยังไม่ได้บันทึก ยืนยันที่จะเปลี่ยนเดือนหรือไม่? (ข้อมูลที่ยังไม่เซฟจะหายไป)')) return;
+    if (isEditMode && Object.keys(schedule).length > 0) {
+      if (!confirm('ยืนยันที่จะเปลี่ยนเดือนหรือไม่? (ข้อมูลที่ยังไม่เซฟอาจสูญหาย)')) return;
     }
-
     setCurrentDate(new Date(parseInt(year), parseInt(month) - 1, 1));
-    setSchedule({});
     setViolations([]);
     setHolidays({});
   };
 
+  // 🌟 2. ลอจิกระบายสีพู่กัน
   const applyToolToCell = (empId: string, day: number) => {
     if (!isEditMode) return; 
 
@@ -108,7 +146,7 @@ export default function ShiftRosterPro() {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // 🌟 ตรวจจับทำงานเกิน 6 วัน
+  // 🌟 3. ตรวจจับการทำงานเกิน 6 วัน
   useEffect(() => {
     const newViolations: string[] = [];
 
@@ -130,33 +168,52 @@ export default function ShiftRosterPro() {
     if (newViolations.length > violations.length) {
       const newlyViolated = newViolations.filter(id => !violations.includes(id));
       const violatedNames = newlyViolated.map(id => employees.find(e => e.id === id)?.name).join(', ');
-      alert(`🚨 แจ้งเตือนกฎหมายแรงงาน!\n\nพนักงาน: ${violatedNames}\nทำงานติดต่อกันเกิน 6 วันแล้ว กรุณาจัดวันหยุด (O) ให้พนักงานด้วยครับบอส!`);
+      alert(`🚨 แจ้งเตือนกฎหมายแรงงาน!\n\nพนักงาน: ${violatedNames}\nทำงานติดต่อกันเกิน 6 วันแล้ว กรุณาจัดวันหยุด (O) ด้วยครับ!`);
     }
 
     setViolations(newViolations);
   }, [schedule, employees, daysInMonth, violations]);
 
-  const handleAddEmployee = () => {
-    if (!newEmpId.trim() || !newEmpName.trim()) return alert('กรุณากรอกรหัสและชื่อพนักงานให้ครบถ้วนครับบอส');
-    if (employees.some(e => e.id === newEmpId.trim())) return alert('รหัสพนักงานนี้มีในระบบแล้วครับบอส');
+  // 🌟 4. ฟังก์ชันเพิ่ม-ลบพนักงาน (ยิงตรงเข้า DB ทันที)
+  const handleAddEmployee = async () => {
+    if (!newEmpId.trim() || !newEmpName.trim()) return alert('กรุณากรอกรหัสและชื่อพนักงานให้ครบ');
+    if (employees.some(e => e.id === newEmpId.trim())) return alert('รหัสพนักงานนี้มีในระบบแล้ว');
 
-    const newEmp = { id: newEmpId.trim().toUpperCase(), name: newEmpName.trim(), icon: '👷' };
-    setEmployees([...employees, newEmp]);
-    setSelectedForExport(prev => [...prev, newEmp.id]);
-    setNewEmpId('');
-    setNewEmpName('');
+    try {
+      const { error } = await supabaseServiceWork.from('employees').insert({
+        id: newEmpId.trim(),
+        name: newEmpName.trim(),
+        role: 'Staff'
+      });
+      if (error) throw error;
+
+      const newEmp = { id: newEmpId.trim(), name: newEmpName.trim() };
+      setEmployees([...employees, newEmp]);
+      setSelectedForExport(prev => [...prev, newEmp.id]);
+      setNewEmpId('');
+      setNewEmpName('');
+    } catch (err: any) {
+      alert(`❌ เพิ่มพนักงานพัง: ${err.message}`);
+    }
   };
 
-  const handleDeleteEmployee = (empId: string, empName: string) => {
+  const handleDeleteEmployee = async (empId: string, empName: string) => {
     if (!isEditMode) return;
-    if (confirm(`⚠️ ยืนยันการลบพนักงาน "${empName}" (${empId}) ออกจากตาราง?`)) {
-      setEmployees(employees.filter(e => e.id !== empId));
-      setSelectedForExport(prev => prev.filter(id => id !== empId));
-      setSchedule(prev => {
-        const newState = { ...prev };
-        Object.keys(newState).forEach(key => { if (key.startsWith(`${empId}_`)) delete newState[key]; });
-        return newState;
-      });
+    if (confirm(`⚠️ ยืนยันการลบพนักงาน "${empName}" (${empId}) ออกจากระบบถาวร?\n(ข้อมูลกะทั้งหมดจะถูกลบด้วย)`)) {
+      try {
+        const { error } = await supabaseServiceWork.from('employees').delete().eq('id', empId);
+        if (error) throw error;
+
+        setEmployees(employees.filter(e => e.id !== empId));
+        setSelectedForExport(prev => prev.filter(id => id !== empId));
+        setSchedule(prev => {
+          const newState = { ...prev };
+          Object.keys(newState).forEach(key => { if (key.startsWith(`${empId}_`)) delete newState[key]; });
+          return newState;
+        });
+      } catch (err: any) {
+        alert(`❌ ลบพนักงานไม่สำเร็จ: ${err.message}`);
+      }
     }
   };
 
@@ -199,12 +256,11 @@ export default function ShiftRosterPro() {
     else setSelectedForExport(prev => [...prev, empId]);
   };
 
+  // 🌟 5. บันทึกตารางงานกะเข้า Database
   const handleSaveToSupabase = async () => {
     if (Object.keys(schedule).length === 0) return alert('ไม่มีข้อมูลตารางงานให้บันทึกครับบอส');
-    
     setIsSaving(true);
     try {
-      // 🚨 1. จัดฟอร์แมตชื่อคอลัมน์ให้ตรงกับ SQL แบบเป๊ะๆ (ตัวพิมพ์เล็กทั้งหมด)
       const upsertData = Object.entries(schedule).map(([key, value]) => {
         const [empId, dayStr] = key.split('_');
         const day = parseInt(dayStr);
@@ -213,19 +269,19 @@ export default function ShiftRosterPro() {
         const dateStr = `${year}-${month}-${String(day).padStart(2, '0')}`;
         
         return {
-          employee_id: empId,      // 👈 แก้ให้ตรง DB
-          work_date: dateStr,      // 👈 แก้ให้ตรง DB
-          shift_code: value.shift, // 👈 แก้ให้ตรง DB
-          is_ot: value.isOT        // 👈 แก้ให้ตรง DB
+          employee_id: empId,
+          work_date: dateStr,
+          shift_code: value.shift,
+          is_ot: value.isOT
         };
       });
 
-      // 🚨 2. เปลี่ยนชื่อตารางเป็น 'schedules' (พิมพ์เล็ก) และจับคู่ onConflict ให้ถูกต้อง
+      // ใช้ schedules ตัวพิมพ์เล็กให้ตรงกับ DB
       const { error } = await supabaseServiceWork.from('schedules').upsert(upsertData, { onConflict: 'employee_id, work_date' });
-      
       if (error) throw error;
 
       alert('💾 บันทึกตารางงานลงระบบฐานข้อมูล Supabase สำเร็จเรียบร้อยครับบอส! 🔥');
+      setIsEditMode(false); // เซฟเสร็จออกจากโหมด Edit ให้เลย
     } catch (error: any) {
       console.error(error);
       alert(`❌ บันทึกไม่สำเร็จ: ${error.message}`);
@@ -234,7 +290,7 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // 🌟 ฟังก์ชัน Export Excel แท้ๆ
+  // 🌟 6. ส่งออก Excel
   const handleExportExcel = () => {
     if (selectedForExport.length === 0) return alert('กรุณาเลือกพนักงานอย่างน้อย 1 คนเพื่อส่งออกครับบอส!');
 
@@ -252,10 +308,8 @@ export default function ShiftRosterPro() {
       .filter(emp => selectedForExport.includes(emp.id))
       .forEach(emp => {
         const rowData = [emp.id, emp.name];
-
         for (let day = 1; day <= daysInMonth; day++) {
           let cellValue = '';
-          
           if (holidays[day]) {
             cellValue = 'H';
           } else {
@@ -273,9 +327,17 @@ export default function ShiftRosterPro() {
 
     const worksheet = XLSX.utils.aoa_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "swap");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Roster");
     XLSX.writeFile(workbook, `HR_Roster_${year}_${month}.xlsx`);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-emerald-400">
+        <i className="bi bi-arrow-repeat animate-spin text-5xl"></i>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 p-6 font-sans select-none flex flex-col h-screen overflow-hidden">
@@ -287,7 +349,6 @@ export default function ShiftRosterPro() {
             <i className="bi bi-calendar3 text-emerald-400"></i> Roster <span className="text-emerald-400">Pro</span>
           </h1>
           
-          {/* กล่องเลือกเดือน-ปี */}
           <div className="flex items-center gap-3 mt-2">
             <p className="text-slate-400 font-medium text-sm">จัดการตารางของเดือน:</p>
             <input 
@@ -300,7 +361,6 @@ export default function ShiftRosterPro() {
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
-          
           <div className="flex items-center bg-[#1e293b] p-1.5 rounded-xl border border-slate-700 shadow-inner">
             <button onClick={() => setIsEditMode(false)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${!isEditMode ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
               <i className="bi bi-eye-fill"></i> โหมดดูข้อมูล
@@ -316,8 +376,8 @@ export default function ShiftRosterPro() {
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
               <input 
                 type="text" value={newEmpId} onChange={e => setNewEmpId(e.target.value)}
-                placeholder="รหัสพนักงาน (เช่น EMP-004)" 
-                className="w-44 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 transition-all font-bold"
+                placeholder="รหัส..." 
+                className="w-24 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 transition-all font-bold"
               />
               <input 
                 type="text" value={newEmpName} onChange={e => setNewEmpName(e.target.value)}
@@ -346,7 +406,6 @@ export default function ShiftRosterPro() {
               {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังบันทึก...</> : <><i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตาราง</>}
             </button>
           </div>
-          
         </div>
       </div>
 
@@ -367,7 +426,6 @@ export default function ShiftRosterPro() {
             <thead className="sticky top-0 z-30">
               <tr className="bg-[#0f172a]/95 backdrop-blur-md text-slate-400 text-xs border-b border-slate-700 shadow-sm">
                 <th className="sticky left-0 z-40 bg-[#0f172a]/95 backdrop-blur-md p-4 text-left font-bold min-w-[280px] border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
-                  
                   <div className="flex items-center gap-3">
                     <input 
                       type="checkbox" 
@@ -378,7 +436,6 @@ export default function ShiftRosterPro() {
                     />
                     <span>รหัส & พนักงาน ({employees.length} คน)</span>
                   </div>
-
                 </th>
                 <th className="sticky left-[280px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-emerald-400">Day</th>
                 <th className="sticky left-[336px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-orange-400">Night</th>
@@ -413,79 +470,86 @@ export default function ShiftRosterPro() {
             </thead>
 
             <tbody>
-              {employees.map((emp) => {
-                const summary = calculateSummary(emp.id);
-                const isViolating = violations.includes(emp.id);
+              {employees.length === 0 ? (
+                <tr>
+                  <td colSpan={daysInMonth + 4} className="p-10 text-center text-slate-500 font-bold">
+                    <i className="bi bi-people-fill text-4xl mb-3 block opacity-50"></i>
+                    ยังไม่มีพนักงานในระบบ กรุณากดโหมดแก้ไขและเพิ่มพนักงาน
+                  </td>
+                </tr>
+              ) : (
+                employees.map((emp) => {
+                  const summary = calculateSummary(emp.id);
+                  const isViolating = violations.includes(emp.id);
 
-                return (
-                  <tr key={emp.id} className={`border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors group ${isViolating ? 'bg-red-500/5' : ''}`}>
-                    
-                    <td className="sticky left-0 z-20 bg-[#1e293b] p-3 text-xs text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
-                      <div className="flex items-center justify-between">
-                        
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedForExport.includes(emp.id)} 
-                            onChange={() => handleToggleSelectEmp(emp.id)} 
-                            className="w-4 h-4 rounded cursor-pointer accent-emerald-500 shrink-0" 
-                          />
-                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-lg shadow-inner shrink-0">{emp.icon}</div>
-                          <div className="min-w-0">
-                            <div className="font-black text-slate-200 text-sm truncate flex items-center gap-1.5">
-                              {emp.name}
-                              {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse" title="แจ้งเตือน: ทำงานต่อเนื่องเกิน 6 วันแล้ว!"></i>}
-                            </div>
-                            <div className="font-mono text-cyan-400 font-bold text-[10px] tracking-wider mt-0.5">{emp.id}</div>
-                          </div>
-                        </div>
-
-                        {isEditMode && (
-                          <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 w-7 h-7 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
-                            <i className="bi bi-trash-fill"></i>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="sticky left-[280px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-emerald-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.d || '-'}</td>
-                    <td className="sticky left-[336px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-orange-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.n || '-'}</td>
-                    <td className="sticky left-[392px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-amber-400 text-sm shadow-[4px_0_5px_rgba(0,0,0,0.2)] bg-amber-500/5 border-r-2 border-r-amber-500/20">{summary.ot || '-'}</td>
-
-                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                      const { isSunday, isWeekend } = getDayDetails(day);
-                      const isHoliday = !!holidays[day];
-                      const cell = schedule[`${emp.id}_${day}`];
-                      
-                      const borderRightClass = isSunday ? 'border-r-4 border-r-slate-600/60' : 'border-r border-slate-700/30';
-                      const colBg = isHoliday ? 'bg-rose-500/5' : (isWeekend ? 'bg-white/[0.01]' : '');
-
-                      let cellBg = 'bg-[#1e293b] border-slate-700/50';
-                      if (isEditMode) cellBg += ' hover:bg-[#334155]'; 
-                      if (cell?.shift === 'D') cellBg = 'bg-emerald-500 border-emerald-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
-                      if (cell?.shift === 'N') cellBg = 'bg-orange-500 border-orange-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
-                      if (cell?.shift === 'O') cellBg = 'bg-slate-500 border-slate-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
-
-                      return (
-                        <td key={day} className={`p-1 relative ${borderRightClass} ${colBg}`}>
-                          <div
-                            onMouseDown={() => handleMouseDown(emp.id, day)}
-                            onMouseEnter={() => handleMouseEnter(emp.id, day)}
-                            className={`w-full h-11 rounded-md flex flex-col items-center justify-center border ${cellBg} relative overflow-hidden ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}
-                          >
-                            {cell?.shift ? <span className="font-black text-sm">{cell.shift}</span> : (isEditMode && <span className="opacity-0 group-hover:opacity-10 text-xs">+</span>)}
-                            {cell?.isOT && (
-                              <div className="absolute -bottom-1 -right-1 bg-amber-400 text-amber-900 text-[8px] font-black px-1.5 py-0.5 rounded-tl-md border-t border-l border-amber-300">
-                                +OT
+                  return (
+                    <tr key={emp.id} className={`border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors group ${isViolating ? 'bg-red-500/5' : ''}`}>
+                      <td className="sticky left-0 z-20 bg-[#1e293b] p-3 text-xs text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedForExport.includes(emp.id)} 
+                              onChange={() => handleToggleSelectEmp(emp.id)} 
+                              className="w-4 h-4 rounded cursor-pointer accent-emerald-500 shrink-0" 
+                            />
+                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-lg shadow-inner shrink-0">👷</div>
+                            <div className="min-w-0">
+                              <div className="font-black text-slate-200 text-sm truncate flex items-center gap-1.5">
+                                {emp.name}
+                                {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse" title="เตือน: ทำงานเกิน 6 วัน!"></i>}
                               </div>
-                            )}
+                              <div className="font-mono text-cyan-400 font-bold text-[10px] tracking-wider mt-0.5">{emp.id}</div>
+                            </div>
                           </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+
+                          {isEditMode && (
+                            <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 w-7 h-7 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
+                              <i className="bi bi-trash-fill"></i>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="sticky left-[280px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-emerald-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.d || '-'}</td>
+                      <td className="sticky left-[336px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-orange-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.n || '-'}</td>
+                      <td className="sticky left-[392px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-amber-400 text-sm shadow-[4px_0_5px_rgba(0,0,0,0.2)] bg-amber-500/5 border-r-2 border-r-amber-500/20">{summary.ot || '-'}</td>
+
+                      {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                        const { isSunday, isWeekend } = getDayDetails(day);
+                        const isHoliday = !!holidays[day];
+                        const cell = schedule[`${emp.id}_${day}`];
+                        
+                        const borderRightClass = isSunday ? 'border-r-4 border-r-slate-600/60' : 'border-r border-slate-700/30';
+                        const colBg = isHoliday ? 'bg-rose-500/5' : (isWeekend ? 'bg-white/[0.01]' : '');
+
+                        let cellBg = 'bg-[#1e293b] border-slate-700/50';
+                        if (isEditMode) cellBg += ' hover:bg-[#334155]'; 
+                        if (cell?.shift === 'D') cellBg = 'bg-emerald-500 border-emerald-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
+                        if (cell?.shift === 'N') cellBg = 'bg-orange-500 border-orange-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
+                        if (cell?.shift === 'O') cellBg = 'bg-slate-500 border-slate-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
+
+                        return (
+                          <td key={day} className={`p-1 relative ${borderRightClass} ${colBg}`}>
+                            <div
+                              onMouseDown={() => handleMouseDown(emp.id, day)}
+                              onMouseEnter={() => handleMouseEnter(emp.id, day)}
+                              className={`w-full h-11 rounded-md flex flex-col items-center justify-center border ${cellBg} relative overflow-hidden ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}
+                            >
+                              {cell?.shift ? <span className="font-black text-sm">{cell.shift}</span> : (isEditMode && <span className="opacity-0 group-hover:opacity-10 text-xs">+</span>)}
+                              {cell?.isOT && (
+                                <div className="absolute -bottom-1 -right-1 bg-amber-400 text-amber-900 text-[8px] font-black px-1.5 py-0.5 rounded-tl-md border-t border-l border-amber-300">
+                                  +OT
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })
+              )}
               <tr className="h-10"></tr>
             </tbody>
           </table>
