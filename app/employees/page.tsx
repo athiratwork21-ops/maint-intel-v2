@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { supabaseServiceWork } from '../../lib/supabase-servicework'; 
+import { supabaseServiceWork } from '../../lib/supabase-servicework';
+import * as XLSX from 'xlsx';
 
 const initialEmployees = [
   { id: '86125806', name: 'Example#1', icon: '👨‍🔧' },
@@ -13,27 +14,29 @@ type ScheduleState = Record<string, CellData>;
 type HolidayState = Record<number, string>; 
 
 export default function ShiftRosterPro() {
-  const [currentDate, setCurrentDate] = useState(new Date(2023, 4, 1)); 
+  // 🌟 ฟีเจอร์ใหม่: เซ็ตค่าเริ่มต้นเป็น "เดือนปัจจุบัน" อัตโนมัติ!
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }); 
+
   const [employees, setEmployees] = useState(initialEmployees);
   const [schedule, setSchedule] = useState<ScheduleState>({});
-  const [holidays, setHolidays] = useState<HolidayState>({ 1: 'วันแรงงาน', 2: 'วันหยุดพิเศษ', 3: 'วันหยุดพิเศษ', 4: 'ฉัตรมงคล' });
+  const [holidays, setHolidays] = useState<HolidayState>({});
   
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // แถบเครื่องมือพู่กัน
   const [activeTool, setActiveTool] = useState<'D' | 'N' | 'O' | 'OT' | 'ERASE'>('D');
   const [isDragging, setIsDragging] = useState(false);
   
   const [newEmpId, setNewEmpId] = useState('');
   const [newEmpName, setNewEmpName] = useState('');
 
-  // 🌟 ฟีเจอร์ใหม่: State สำหรับเลือกคน Export และ ตรวจจับคนทำผิดกฎ 6 วัน
   const [selectedForExport, setSelectedForExport] = useState<string[]>(initialEmployees.map(e => e.id));
   const [violations, setViolations] = useState<string[]>([]);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
 
   const getDayDetails = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
@@ -41,6 +44,22 @@ export default function ShiftRosterPro() {
     const isSunday = date.getDay() === 0; 
     const isWeekend = isSunday || date.getDay() === 6; 
     return { dayName, isSunday, isWeekend };
+  };
+
+  // 🌟 ฟังก์ชันจัดการตอนบอสเปลี่ยนเดือน
+  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.value) return;
+    const [year, month] = e.target.value.split('-');
+    
+    // ดักเตือนถ้ามีการแก้ไขค้างไว้แล้วลืมเซฟ
+    if (Object.keys(schedule).length > 0) {
+      if (!confirm('ข้อมูลตารางที่จัดไว้ในเดือนนี้ยังไม่ได้บันทึก ยืนยันที่จะเปลี่ยนเดือนหรือไม่? (ข้อมูลที่ยังไม่เซฟจะหายไป)')) return;
+    }
+
+    setCurrentDate(new Date(parseInt(year), parseInt(month) - 1, 1));
+    setSchedule({}); // เคลียร์ตารางเป็นหน้าว่างสำหรับเดือนใหม่
+    setViolations([]);
+    setHolidays({});
   };
 
   const applyToolToCell = (empId: string, day: number) => {
@@ -88,7 +107,6 @@ export default function ShiftRosterPro() {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // 🌟 ฟีเจอร์ใหม่: ตรวจจับคนทำงานเกิน 6 วัน (ทำงานทุกครั้งที่ตารางอัปเดต)
   useEffect(() => {
     const newViolations: string[] = [];
 
@@ -96,20 +114,17 @@ export default function ShiftRosterPro() {
       let consecutiveWorkDays = 0;
       for (let day = 1; day <= daysInMonth; day++) {
         const cell = schedule[`${emp.id}_${day}`];
-        // เช็กว่าวันนั้นได้ทำงานไหม (เป็น D หรือ N)
         if (cell && (cell.shift === 'D' || cell.shift === 'N')) {
           consecutiveWorkDays++;
           if (consecutiveWorkDays > 6) {
             if (!newViolations.includes(emp.id)) newViolations.push(emp.id);
           }
         } else {
-          // ถ้าเป็น O (วันหยุด) หรือ ช่องว่าง ให้รีเซ็ตคูลดาวน์กลับไปเป็น 0
           consecutiveWorkDays = 0;
         }
       }
     });
 
-    // แจ้งเตือน Alert (เด้งเฉพาะคนใหม่ที่เพิ่งทำผิดกฎเพิ่มเข้ามา ป้องกันการเด้งซ้ำซ้อน)
     if (newViolations.length > violations.length) {
       const newlyViolated = newViolations.filter(id => !violations.includes(id));
       const violatedNames = newlyViolated.map(id => employees.find(e => e.id === id)?.name).join(', ');
@@ -125,7 +140,7 @@ export default function ShiftRosterPro() {
 
     const newEmp = { id: newEmpId.trim().toUpperCase(), name: newEmpName.trim(), icon: '👷' };
     setEmployees([...employees, newEmp]);
-    setSelectedForExport(prev => [...prev, newEmp.id]); // ติ๊กถูกให้อัตโนมัติเวลาเพิ่มคนใหม่
+    setSelectedForExport(prev => [...prev, newEmp.id]);
     setNewEmpId('');
     setNewEmpName('');
   };
@@ -146,7 +161,7 @@ export default function ShiftRosterPro() {
   const handleToggleHoliday = (day: number) => {
     if (!isEditMode) return;
     const currentName = holidays[day] || '';
-    const newHolidayName = prompt(`ตั้งชื่อวันหยุดพิเศษ สำหรับวันที่ ${day} ${monthName}:`, currentName);
+    const newHolidayName = prompt(`ตั้งชื่อวันหยุดโรงงาน สำหรับวันที่ ${day}:\n(ลบข้อความออกเพื่อยกเลิกวันหยุด)`, currentName);
     
     if (newHolidayName !== null) {
       setHolidays(prev => {
@@ -172,7 +187,6 @@ export default function ShiftRosterPro() {
     return { d, n, off, ot };
   };
 
-  // 🌟 ฟังก์ชันจัดการ Checkbox เลือกคน Export
   const handleToggleSelectAll = () => {
     if (selectedForExport.length === employees.length) setSelectedForExport([]);
     else setSelectedForExport(employees.map(e => e.id));
@@ -218,74 +232,44 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // 📥 🌟 ฟังก์ชันอัปเกรด Export ออกมาเป็น Excel แท้ๆ (.xls) 🌟
   const handleExportExcel = () => {
     if (selectedForExport.length === 0) return alert('กรุณาเลือกพนักงานอย่างน้อย 1 คนเพื่อส่งออกครับบอส!');
 
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, '0');
     
-    // สร้างโครงสร้าง HTML Table ที่ Excel อ่านออก
-    let tableHtml = `
-      <style>
-        th { background-color: #f3f4f6; border: 1px solid #cbd5e1; padding: 5px; font-weight: bold; }
-        td { border: 1px solid #cbd5e1; padding: 5px; text-align: center; }
-        .text-left { text-align: left; }
-        .holiday { background-color: #bae6fd; } /* สีฟ้าอ่อนสำหรับวันหยุดตามแบบ Excel */
-      </style>
-      <tr>
-        <th class="text-left">empid</th>
-        <th class="text-left">name</th>
-    `;
-
+    const headers = ['empid', 'name'];
     for (let day = 1; day <= daysInMonth; day++) {
-      tableHtml += `<th>${year}/${month}/${String(day).padStart(2, '0')}</th>`;
+      headers.push(`${year}/${month}/${String(day).padStart(2, '0')}`);
     }
-    tableHtml += '</tr>';
+
+    const excelData = [headers];
 
     employees
       .filter(emp => selectedForExport.includes(emp.id))
       .forEach(emp => {
-        tableHtml += `<tr><td class="text-left">${emp.id}</td><td class="text-left">${emp.name}</td>`;
+        const rowData = [emp.id, emp.name];
+
         for (let day = 1; day <= daysInMonth; day++) {
           let cellValue = '';
-          let cssClass = '';
-
+          
           if (holidays[day]) {
             cellValue = 'H';
-            cssClass = 'class="holiday"';
           } else {
             const cell = schedule[`${emp.id}_${day}`];
-            if (cell) {
-              if (cell.shift === 'O') cellValue = 'O';
+            if (cell && cell.shift === 'O') {
+              cellValue = 'O'; 
             }
           }
-          tableHtml += `<td ${cssClass}>${cellValue}</td>`;
+          rowData.push(cellValue);
         }
-        tableHtml += '</tr>';
+        excelData.push(rowData);
       });
 
-    // ห่อตารางด้วยแท็กเฉพาะของ Microsoft Office
-    const excelContent = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Roster</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-      </head>
-      <body>
-        <table>${tableHtml}</table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([excelContent], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `HR_Roster_${year}_${month}.xls`); // 👈 เซฟเป็น .xls 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "swap");
+    XLSX.writeFile(workbook, `HR_Roster_${year}_${month}.xlsx`);
   };
 
   return (
@@ -297,7 +281,17 @@ export default function ShiftRosterPro() {
           <h1 className="text-3xl font-black flex items-center gap-3 tracking-tight text-white">
             <i className="bi bi-calendar3 text-emerald-400"></i> Roster <span className="text-emerald-400">Pro</span>
           </h1>
-          <p className="text-slate-400 mt-1 font-medium">ตารางประจำเดือน: <span className="text-white font-bold">{monthName}</span></p>
+          
+          {/* 🌟 ฟีเจอร์ใหม่: กล่องเลือกเดือน-ปี (Month Picker) */}
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-slate-400 font-medium">จัดการตารางของเดือน:</p>
+            <input 
+              type="month" 
+              value={`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`}
+              onChange={handleMonthChange}
+              className="bg-[#1e293b] border border-slate-700 text-white font-black px-3 py-1.5 rounded-lg outline-none focus:border-emerald-500 cursor-pointer shadow-inner"
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
@@ -332,7 +326,6 @@ export default function ShiftRosterPro() {
           )}
 
           <div className="flex items-center gap-2">
-            {/* ปุ่ม Export Excel แบบใหม่ */}
             <button 
               onClick={handleExportExcel} 
               className="bg-[#1e293b] hover:bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95"
@@ -370,7 +363,6 @@ export default function ShiftRosterPro() {
               <tr className="bg-[#0f172a]/95 backdrop-blur-md text-slate-400 text-xs border-b border-slate-700 shadow-sm">
                 <th className="sticky left-0 z-40 bg-[#0f172a]/95 backdrop-blur-md p-4 text-left font-bold min-w-[280px] border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                   
-                  {/* 🌟 ฟีเจอร์ใหม่: Checkbox เลือกทั้งหมด */}
                   <div className="flex items-center gap-3">
                     <input 
                       type="checkbox" 
@@ -426,7 +418,6 @@ export default function ShiftRosterPro() {
                     <td className="sticky left-0 z-20 bg-[#1e293b] p-3 text-xs text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                       <div className="flex items-center justify-between">
                         
-                        {/* 🌟 ฟีเจอร์ใหม่: Checkbox รายบุคคล */}
                         <div className="flex items-center gap-3">
                           <input 
                             type="checkbox" 
@@ -438,7 +429,6 @@ export default function ShiftRosterPro() {
                           <div className="min-w-0">
                             <div className="font-black text-slate-200 text-sm truncate flex items-center gap-1.5">
                               {emp.name}
-                              {/* 🌟 แสดงไอคอนเตือนถ้าทำงานเกิน 6 วัน */}
                               {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse" title="แจ้งเตือน: ทำงานต่อเนื่องเกิน 6 วันแล้ว!"></i>}
                             </div>
                             <div className="font-mono text-cyan-400 font-bold text-[10px] tracking-wider mt-0.5">{emp.id}</div>
