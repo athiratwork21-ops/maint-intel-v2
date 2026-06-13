@@ -99,7 +99,7 @@ const EmployeeRow = React.memo(({
       })}
     </tr>
   );
-}, (prev, next) => {
+}, (prev: any, next: any) => {
   // 🧠 สมองกล: เช็กว่าข้อมูลแถวนี้เปลี่ยนไหม ถ้าไม่เปลี่ยน สั่ง React "ข้ามการ Render!" (นี่คือท่าแก้หน่วง 100%)
   if (prev.isEditMode !== next.isEditMode) return false;
   if (prev.isSelected !== next.isSelected) return false;
