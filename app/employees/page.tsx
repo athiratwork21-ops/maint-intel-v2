@@ -8,32 +8,41 @@ const initialEmployees = [
   { id: 'E03', name: 'ช่างใหญ่ ไอที', icon: '👨‍💻' },
 ];
 
-// โครงสร้างข้อมูลตารางแบบใหม่ (เก็บกะ และ สถานะ OT แยกกัน)
 type CellData = { shift: 'D' | 'N' | 'O'; isOT: boolean };
 type ScheduleState = Record<string, CellData>;
+// เก็บข้อมูลวันหยุดพิเศษ { วันที่: 'ชื่อวันหยุด' }
+type HolidayState = Record<number, string>; 
 
 export default function ShiftRosterPro() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 1)); // มิถุนายน 2026
   const [employees, setEmployees] = useState(initialEmployees);
   const [schedule, setSchedule] = useState<ScheduleState>({});
+  const [holidays, setHolidays] = useState<HolidayState>({ 15: 'วันหยุดโรงงาน' }); // ลองจำลองว่าวันที่ 15 เป็นวันหยุด
   
-  // 🌟 ฟีเจอร์ใหม่: แถบเครื่องมือ "พู่กันทาสี" (D, N, O, OT, ERASE)
+  // 🌟 ฟีเจอร์ใหม่: สวิตช์โหมด ดู/แก้ไข
+  const [isEditMode, setIsEditMode] = useState(true);
+
+  // แถบเครื่องมือ "พู่กันทาสี"
   const [activeTool, setActiveTool] = useState<'D' | 'N' | 'O' | 'OT' | 'ERASE'>('D');
   const [isDragging, setIsDragging] = useState(false);
-
-  // State สำหรับจัดการพนักงานใหม่
   const [newEmpName, setNewEmpName] = useState('');
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
 
-  const getDayName = (day: number) => {
+  // ฟังก์ชันหาชื่อวัน
+  const getDayDetails = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-    return date.toLocaleString('th-TH', { weekday: 'short' });
+    const dayName = date.toLocaleString('th-TH', { weekday: 'short' });
+    const isSunday = date.getDay() === 0; // วันอาทิตย์ = 0
+    const isWeekend = isSunday || date.getDay() === 6; // เสาร์-อาทิตย์
+    return { dayName, isSunday, isWeekend };
   };
 
-  // 🖱️ ลอจิกการใช้ "พู่กัน" ระบายลงช่อง
+  // 🖱️ ลอจิกการทาสี (ทำงานเฉพาะตอนอยู่ โหมดแก้ไข เท่านั้น)
   const applyToolToCell = (empId: string, day: number) => {
+    if (!isEditMode) return; // 🛑 ล็อกไว้ ถ้าอยู่โหมดดู ห้ามแก้!
+
     const key = `${empId}_${day}`;
     setSchedule(prev => {
       const newState = { ...prev };
@@ -42,28 +51,25 @@ export default function ShiftRosterPro() {
       if (activeTool === 'ERASE') {
         delete newState[key];
       } else if (activeTool === 'OT') {
-        // ให้บวก OT ได้เฉพาะกะ D หรือ N เท่านั้น (วันหยุด O ห้ามทำ OT)
         if (currentCell && (currentCell.shift === 'D' || currentCell.shift === 'N')) {
-          newState[key] = { ...currentCell, isOT: true }; // ถ้าลากซ้ำก็ให้ OT ค้างไว้
+          newState[key] = { ...currentCell, isOT: true }; 
         }
       } else {
-        // ถ้าทาสี D, N, O ปกติ (เก็บค่า OT เดิมไว้ถ้ามี)
         newState[key] = { shift: activeTool as 'D'|'N'|'O', isOT: currentCell?.isOT || false };
-        if (activeTool === 'O') newState[key].isOT = false; // วันหยุดตัด OT ทิ้ง
+        if (activeTool === 'O') newState[key].isOT = false; 
       }
       return newState;
     });
   };
 
-  // Event: คลิกเมาส์
   const handleMouseDown = (empId: string, day: number) => {
+    if (!isEditMode) return;
     setIsDragging(true);
     applyToolToCell(empId, day);
   };
 
-  // Event: ลากผ่าน
   const handleMouseEnter = (empId: string, day: number) => {
-    if (isDragging) {
+    if (isDragging && isEditMode) {
       applyToolToCell(empId, day);
     }
   };
@@ -74,7 +80,7 @@ export default function ShiftRosterPro() {
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // 👥 ฟังก์ชันเพิ่มพนักงาน
+  // 👥 จัดการพนักงาน
   const handleAddEmployee = () => {
     if (!newEmpName.trim()) return alert('กรุณากรอกชื่อพนักงาน');
     const newEmp = { id: `E0${Date.now()}`, name: newEmpName, icon: '👷' };
@@ -82,11 +88,10 @@ export default function ShiftRosterPro() {
     setNewEmpName('');
   };
 
-  // 👥 ฟังก์ชันลบพนักงาน
   const handleDeleteEmployee = (empId: string, empName: string) => {
-    if (confirm(`⚠️ ยืนยันการลบพนักงาน "${empName}" ออกจากตาราง?\n(ข้อมูลกะของเดือนนี้จะหายไปด้วย)`)) {
+    if (!isEditMode) return;
+    if (confirm(`⚠️ ยืนยันการลบพนักงาน "${empName}" ออกจากตาราง?`)) {
       setEmployees(employees.filter(e => e.id !== empId));
-      // ล้างข้อมูลกะของคนนี้ทิ้ง
       setSchedule(prev => {
         const newState = { ...prev };
         Object.keys(newState).forEach(key => { if (key.startsWith(`${empId}_`)) delete newState[key]; });
@@ -95,7 +100,23 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // 📊 ฟังก์ชันคำนวณสรุปยอดรายเดือน
+  // 🗓️ จัดการวันหยุดโรงงาน (กดที่หัวตาราง)
+  const handleToggleHoliday = (day: number) => {
+    if (!isEditMode) return;
+    const currentName = holidays[day] || '';
+    const newHolidayName = prompt(`ตั้งชื่อวันหยุดพิเศษ สำหรับวันที่ ${day} ${monthName}\n(ลบข้อความออกและกด OK เพื่อยกเลิกวันหยุด):`, currentName);
+    
+    if (newHolidayName !== null) {
+      setHolidays(prev => {
+        const newState = { ...prev };
+        if (newHolidayName.trim() === '') delete newState[day];
+        else newState[day] = newHolidayName.trim();
+        return newState;
+      });
+    }
+  };
+
+  // 📊 สรุปยอด
   const calculateSummary = (empId: string) => {
     let d = 0, n = 0, ot = 0, off = 0;
     for (let day = 1; day <= daysInMonth; day++) {
@@ -122,25 +143,42 @@ export default function ShiftRosterPro() {
           <p className="text-slate-400 mt-1 font-medium">ตารางประจำเดือน: <span className="text-white font-bold">{monthName}</span></p>
         </div>
 
-        {/* ฟอร์มเพิ่มพนักงาน */}
-        <div className="flex items-center gap-2">
-          <input 
-            type="text" value={newEmpName} onChange={e => setNewEmpName(e.target.value)}
-            placeholder="พิมพ์ชื่อพนักงานใหม่..." 
-            className="w-48 bg-[#1e293b] border border-slate-700 text-white text-sm rounded-lg px-4 py-2.5 outline-none focus:border-emerald-500 transition-all"
-          />
-          <button onClick={handleAddEmployee} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold border border-slate-600 transition-colors flex items-center gap-2">
-            <i className="bi bi-person-plus-fill"></i> เพิ่มคน
-          </button>
-          <div className="w-px h-8 bg-slate-700 mx-2"></div>
-          <button className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-lg text-sm font-black transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2">
-            <i className="bi bi-cloud-arrow-up-fill"></i> บันทึก
+        <div className="flex flex-wrap items-center gap-4">
+          
+          {/* 🌟 สวิตช์สลับโหมด ดู/แก้ไข 🌟 */}
+          <div className="flex items-center bg-[#1e293b] p-1.5 rounded-xl border border-slate-700 shadow-inner">
+            <button onClick={() => setIsEditMode(false)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${!isEditMode ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+              <i className="bi bi-eye-fill"></i> โหมดดู
+            </button>
+            <button onClick={() => setIsEditMode(true)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${isEditMode ? 'bg-amber-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+              <i className="bi bi-pencil-square"></i> โหมดแก้ไข
+            </button>
+          </div>
+
+          <div className="w-px h-8 bg-slate-700 hidden md:block"></div>
+
+          {/* ฟอร์มเพิ่มคน (ซ่อนถ้าไม่ใช่โหมดแก้ไข) */}
+          {isEditMode && (
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+              <input 
+                type="text" value={newEmpName} onChange={e => setNewEmpName(e.target.value)}
+                placeholder="ชื่อพนักงานใหม่..." 
+                className="w-40 bg-[#1e293b] border border-slate-700 text-white text-sm rounded-lg px-4 py-2.5 outline-none focus:border-emerald-500 transition-all"
+              />
+              <button onClick={handleAddEmployee} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold border border-slate-600 transition-colors flex items-center gap-2">
+                <i className="bi bi-person-plus-fill"></i> เพิ่มคน
+              </button>
+            </div>
+          )}
+
+          <button className={`px-6 py-2.5 rounded-lg text-sm font-black transition-colors shadow-lg flex items-center gap-2 ${isEditMode ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20' : 'bg-slate-700 text-slate-300 cursor-not-allowed'}`}>
+            <i className="bi bi-cloud-arrow-up-fill"></i> บันทึกตาราง
           </button>
         </div>
       </div>
 
-      {/* 🌟 Paint Brush Toolbar (แถบเครื่องมือทาสี) */}
-      <div className="max-w-[1500px] w-full mx-auto mb-4 flex items-center gap-3 shrink-0 bg-[#1e293b]/50 p-2 rounded-xl border border-slate-700/50">
+      {/* 🌟 Paint Brush Toolbar (ซ่อนถ้าไม่ใช่โหมดแก้ไข) */}
+      <div className={`max-w-[1500px] w-full mx-auto flex items-center gap-3 shrink-0 bg-[#1e293b]/50 p-2 rounded-xl border border-slate-700/50 transition-all duration-300 overflow-hidden ${isEditMode ? 'mb-4 opacity-100 max-h-20' : 'mb-0 opacity-0 max-h-0 border-transparent py-0'}`}>
         <span className="text-xs font-bold text-slate-400 px-3 uppercase tracking-widest flex items-center gap-2"><i className="bi bi-brush-fill"></i> เลือกพู่กัน:</span>
         <button onClick={() => setActiveTool('D')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-black transition-all ${activeTool === 'D' ? 'bg-emerald-500 text-white shadow-lg' : 'bg-[#0f172a] text-slate-400 hover:text-emerald-400'}`}><div className="w-3 h-3 rounded-sm bg-emerald-400"></div> เช้า (D)</button>
         <button onClick={() => setActiveTool('N')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-black transition-all ${activeTool === 'N' ? 'bg-orange-500 text-white shadow-lg' : 'bg-[#0f172a] text-slate-400 hover:text-orange-400'}`}><div className="w-3 h-3 rounded-sm bg-orange-400"></div> ดึก (N)</button>
@@ -166,18 +204,37 @@ export default function ShiftRosterPro() {
                 <th className="sticky left-0 z-40 bg-[#0f172a]/95 backdrop-blur-md p-4 text-left font-bold min-w-[220px] border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                   พนักงาน ({employees.length} คน)
                 </th>
-                {/* 🌟 คอลัมน์สรุปยอด (Sticky ติดชื่อพนักงาน) */}
-                <th className="sticky left-[220px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-16 text-emerald-400">Day</th>
-                <th className="sticky left-[284px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-16 text-orange-400">Night</th>
-                <th className="sticky left-[348px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[4px_0_5px_rgba(0,0,0,0.2)] text-center w-16 text-amber-400 border-r-2 border-r-amber-500/20">OT</th>
+                <th className="sticky left-[220px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-emerald-400">Day</th>
+                <th className="sticky left-[276px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)] text-center w-14 text-orange-400">Night</th>
+                <th className="sticky left-[332px] z-40 bg-slate-900/95 backdrop-blur-md p-2 border-r border-slate-700 shadow-[4px_0_5px_rgba(0,0,0,0.2)] text-center w-14 text-amber-400 border-r-2 border-r-amber-500/20">OT</th>
 
                 {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                  const dayName = getDayName(day);
-                  const isWeekend = dayName.includes('ส.') || dayName.includes('อา.');
+                  const { dayName, isSunday, isWeekend } = getDayDetails(day);
+                  const holidayName = holidays[day];
+                  const isHoliday = !!holidayName;
+                  
+                  // 🌟 เส้นคั่นสัปดาห์: ถ้าเป็นวันอาทิตย์ ให้เส้นขวาหนาขึ้น
+                  const borderRightClass = isSunday ? 'border-r-4 border-r-slate-600/60' : 'border-r border-slate-700/30';
+                  // 🌟 สีพื้นหลังพิเศษสำหรับวันหยุด
+                  const bgClass = isHoliday ? 'bg-rose-500/20' : (isWeekend ? 'bg-slate-800/40' : '');
+
                   return (
-                    <th key={day} className={`p-2 text-center border-r border-slate-700/30 min-w-[55px] ${isWeekend ? 'bg-rose-500/5' : ''}`}>
-                      <div className="font-medium mb-1">{dayName}</div>
-                      <div className={`font-black text-sm ${isWeekend ? 'text-rose-400' : 'text-slate-300'}`}>{day}</div>
+                    <th 
+                      key={day} 
+                      onClick={() => handleToggleHoliday(day)}
+                      title={isEditMode ? "คลิกเพื่อตั้งค่าวันหยุดโรงงาน" : holidayName || ""}
+                      className={`p-1.5 text-center min-w-[60px] relative transition-colors ${borderRightClass} ${bgClass} ${isEditMode ? 'cursor-pointer hover:bg-white/10' : ''}`}
+                    >
+                      <div className={`font-medium mb-0.5 text-[11px] ${isHoliday ? 'text-rose-300' : 'text-slate-400'}`}>{dayName}</div>
+                      <div className={`font-black text-sm ${isHoliday ? 'text-rose-400' : isWeekend ? 'text-slate-300' : 'text-white'}`}>{day}</div>
+                      
+                      {/* Badge วันหยุดโรงงาน */}
+                      {isHoliday && (
+                        <div className="mt-1 flex flex-col items-center">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse mb-0.5"></div>
+                          <div className="text-[8px] font-black text-rose-300 bg-rose-900/50 px-1 py-0.5 rounded truncate max-w-[50px] leading-none border border-rose-500/30">{holidayName}</div>
+                        </div>
+                      )}
                     </th>
                   );
                 })}
@@ -191,44 +248,53 @@ export default function ShiftRosterPro() {
                 return (
                   <tr key={emp.id} className="border-b border-slate-700/50 hover:bg-white/[0.02] transition-colors group">
                     
-                    {/* ชื่อพนักงาน + ปุ่มลบ */}
+                    {/* ชื่อพนักงาน */}
                     <td className="sticky left-0 z-20 bg-[#1e293b] p-3 text-sm text-slate-200 border-r border-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 font-bold">
                           <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-lg shadow-inner">{emp.icon}</div>
                           <span className="truncate max-w-[120px]">{emp.name}</span>
                         </div>
-                        <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 w-7 h-7 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
-                          <i className="bi bi-trash-fill"></i>
-                        </button>
+                        {isEditMode && (
+                          <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 w-7 h-7 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
+                            <i className="bi bi-trash-fill"></i>
+                          </button>
+                        )}
                       </div>
                     </td>
 
-                    {/* 🌟 ข้อมูลสรุปยอด */}
-                    <td className="sticky left-[220px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-emerald-400 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.d || '-'}</td>
-                    <td className="sticky left-[284px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-orange-400 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.n || '-'}</td>
-                    <td className="sticky left-[348px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-amber-400 shadow-[4px_0_5px_rgba(0,0,0,0.2)] bg-amber-500/5 border-r-2 border-r-amber-500/20">{summary.ot || '-'}</td>
+                    {/* สรุปยอด */}
+                    <td className="sticky left-[220px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-emerald-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.d || '-'}</td>
+                    <td className="sticky left-[276px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-orange-400 text-sm shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{summary.n || '-'}</td>
+                    <td className="sticky left-[332px] z-20 bg-slate-800 p-2 border-r border-slate-700 text-center font-black text-amber-400 text-sm shadow-[4px_0_5px_rgba(0,0,0,0.2)] bg-amber-500/5 border-r-2 border-r-amber-500/20">{summary.ot || '-'}</td>
 
                     {/* ช่องตาราง */}
                     {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                      const { isSunday, isWeekend } = getDayDetails(day);
+                      const isHoliday = !!holidays[day];
                       const cell = schedule[`${emp.id}_${day}`];
                       
-                      let baseBg = 'bg-[#1e293b] border-slate-700/50 hover:bg-[#334155]';
-                      if (cell?.shift === 'D') baseBg = 'bg-emerald-500 border-emerald-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
-                      if (cell?.shift === 'N') baseBg = 'bg-orange-500 border-orange-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
-                      if (cell?.shift === 'O') baseBg = 'bg-slate-500 border-slate-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
+                      // 🌟 เส้นคั่นสัปดาห์
+                      const borderRightClass = isSunday ? 'border-r-4 border-r-slate-600/60' : 'border-r border-slate-700/30';
+                      // 🌟 สีพื้นหลังคอลัมน์
+                      const colBg = isHoliday ? 'bg-rose-500/5' : (isWeekend ? 'bg-white/[0.01]' : '');
+
+                      let cellBg = 'bg-[#1e293b] border-slate-700/50';
+                      if (isEditMode) cellBg += ' hover:bg-[#334155]'; // โฮเวอร์เฉพาะตอนโหมดแก้
+                      if (cell?.shift === 'D') cellBg = 'bg-emerald-500 border-emerald-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
+                      if (cell?.shift === 'N') cellBg = 'bg-orange-500 border-orange-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
+                      if (cell?.shift === 'O') cellBg = 'bg-slate-500 border-slate-600 shadow-[inset_0_-2px_4px_rgba(0,0,0,0.2)] text-white';
 
                       return (
-                        <td key={day} className="p-1 border-r border-slate-700/30 relative">
+                        <td key={day} className={`p-1 relative ${borderRightClass} ${colBg}`}>
                           <div
                             onMouseDown={() => handleMouseDown(emp.id, day)}
                             onMouseEnter={() => handleMouseEnter(emp.id, day)}
-                            className={`w-full h-11 rounded-md flex flex-col items-center justify-center transition-all cursor-pointer border ${baseBg} relative overflow-hidden`}
+                            className={`w-full h-11 rounded-md flex flex-col items-center justify-center transition-all border ${cellBg} relative overflow-hidden ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}
                           >
-                            {/* ตัวอักษร D, N, O */}
-                            {cell?.shift ? <span className="font-black text-sm">{cell.shift}</span> : <span className="opacity-0 group-hover:opacity-10 text-xs">+</span>}
+                            {cell?.shift ? <span className="font-black text-sm">{cell.shift}</span> : (isEditMode && <span className="opacity-0 group-hover:opacity-10 text-xs">+</span>)}
                             
-                            {/* 🌟 Badge แสดง OT (ถ้ามี) */}
+                            {/* Badge แสดง OT */}
                             {cell?.isOT && (
                               <div className="absolute -bottom-1 -right-1 bg-amber-400 text-amber-900 text-[8px] font-black px-1.5 py-0.5 rounded-tl-md border-t border-l border-amber-300">
                                 +OT
@@ -241,8 +307,6 @@ export default function ShiftRosterPro() {
                   </tr>
                 );
               })}
-              
-              {/* แถวว่างเผื่อ Scroll */}
               <tr className="h-10"></tr>
             </tbody>
           </table>
