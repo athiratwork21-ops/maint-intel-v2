@@ -129,7 +129,7 @@ export default function MobileEmployeeRoster() {
 
       if (error) throw error;
       
-      alert('✅ ส่งคำขอลางานสำเร็จ ระบบจะส่งให้หัวหน้าอนุมัติต่อไป');
+      alert('✅ ส่งคำขอลางานสำเร็จ');
       setIsLeaveModalOpen(false);
       setLeaveForm({ type: 'ลากิจ', reason: '' });
       loadScheduleData(); // รีเฟรชข้อมูล
@@ -340,9 +340,7 @@ export default function MobileEmployeeRoster() {
                       onChange={(e) => setLeaveForm({...leaveForm, type: e.target.value})}
                       className="w-full p-3.5 bg-[#0f172a] border border-slate-600 rounded-xl outline-none focus:border-blue-500 text-white font-bold appearance-none"
                     >
-                      <option value="ลากิจ">ลากิจ</option>
-                      <option value="ลาป่วย">ลาป่วย</option>
-                      <option value="ลาพักร้อน">ลาพักร้อน</option>
+                      <option value="ลา">ลา</option>
                     </select>
                     <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
                   </div>
