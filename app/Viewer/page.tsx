@@ -139,6 +139,30 @@ export default function MobileEmployeeRoster() {
       setIsSubmitting(false);
     }
   };
+  // ==========================================
+  // 3.5 ระบบยกเลิกคำขอลางาน
+  // ==========================================
+  const handleCancelLeave = async (leaveId: string) => {
+    if (!confirm('ต้องการยกเลิกคำขอลางานนี้ใช่หรือไม่?')) return;
+    setIsSubmitting(true);
+    try {
+      // สั่งลบข้อมูลการลาออกจากฐานข้อมูล
+      const { error } = await supabaseServiceWork
+        .from('leave_requests')
+        .delete()
+        .eq('id', leaveId);
+
+      if (error) throw error;
+      
+      alert('✅ ยกเลิกคำขอลางานเรียบร้อยแล้ว');
+      setIsLeaveModalOpen(false);
+      loadScheduleData(); // รีเฟรชปฏิทินให้กลับมาเป็นปกติ
+    } catch (err) {
+      alert('❌ เกิดข้อผิดพลาดในการยกเลิก');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // ==========================================
   // หน้าจอ 1: Login Screen
@@ -324,43 +348,70 @@ export default function MobileEmployeeRoster() {
               </div>
             </div>
 
-            {leaveRequests.find(l => new Date(l.leave_date).getDate() === selectedDay) ? (
-              <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl text-center">
-                <i className="bi bi-hourglass-split text-2xl text-amber-400 mb-2 block"></i>
-                <p className="text-sm font-bold text-amber-400 mb-1">คุณส่งคำขอลางานไปแล้ว</p>
-                <p className="text-xs text-slate-400">อยู่ระหว่างรอหัวหน้างานอนุมัติในระบบ</p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmitLeave} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">ประเภทการลา</label>
-                  <div className="relative">
-                    <select 
-                      value={leaveForm.type}
-                      onChange={(e) => setLeaveForm({...leaveForm, type: e.target.value})}
-                      className="w-full p-3.5 bg-[#0f172a] border border-slate-600 rounded-xl outline-none focus:border-blue-500 text-white font-bold appearance-none"
-                    >
-                      <option value="ลา">ลา</option>
-                    </select>
-                    <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+            {/* เช็กสถานะการลาและแสดงปุ่มยกเลิก */}
+            {(() => {
+              const existingLeave = leaveRequests.find(l => new Date(l.leave_date).getDate() === selectedDay);
+              
+              if (existingLeave) {
+                return (
+                  <div className="bg-amber-500/10 border border-amber-500/30 p-5 rounded-2xl text-center">
+                    <i className="bi bi-hourglass-split text-3xl text-amber-400 mb-3 block animate-pulse"></i>
+                    <p className="text-base font-bold text-amber-400 mb-1">คุณส่งคำขอลางานไปแล้ว</p>
+                    <p className="text-sm text-slate-400 mb-5">
+                      สถานะ: {existingLeave.status === 'Pending' ? 'รออนุมัติ' : existingLeave.status}
+                    </p>
+
+                    {/* ถ้าสถานะยังเป็น Pending ถึงจะยอมให้กดยกเลิกได้ */}
+                    {existingLeave.status === 'Pending' && (
+                      <button
+                        onClick={() => handleCancelLeave(existingLeave.id)}
+                        disabled={isSubmitting}
+                        className="w-full bg-[#0f172a] hover:bg-rose-500/20 text-rose-400 font-bold py-3.5 rounded-xl transition-all border border-rose-500/30 flex items-center justify-center gap-2"
+                      >
+                        {isSubmitting ? (
+                          <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังยกเลิก...</>
+                        ) : (
+                          <><i className="bi bi-trash3-fill"></i> ยกเลิกคำขอลางานนี้</>
+                        )}
+                      </button>
+                    )}
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">เหตุผล (ระบุให้ชัดเจน)</label>
-                  <textarea 
-                    rows={3} 
-                    required
-                    value={leaveForm.reason}
-                    onChange={(e) => setLeaveForm({...leaveForm, reason: e.target.value})}
-                    placeholder="เช่น ไปทำธุระติดต่อราชการ..." 
-                    className="w-full p-3.5 bg-[#0f172a] border border-slate-600 rounded-xl outline-none focus:border-blue-500 text-white text-sm resize-none"
-                  ></textarea>
-                </div>
-                <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl mt-2 transition-colors active:scale-95 shadow-lg shadow-blue-600/20">
-                  {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>กำลังส่งคำขอ...</> : <><i className="bi bi-send-fill mr-2"></i>ยืนยันการลางาน</>}
-                </button>
-              </form>
-            )}
+                );
+              }
+
+              // ถ้ายังไม่เคยลา ให้โชว์ฟอร์มกรอกข้อมูลลางานตามปกติ
+              return (
+                <form onSubmit={handleSubmitLeave} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">ประเภทการลา</label>
+                    <div className="relative">
+                      <select 
+                        value={leaveForm.type}
+                        onChange={(e) => setLeaveForm({...leaveForm, type: e.target.value})}
+                        className="w-full p-3.5 bg-[#0f172a] border border-slate-600 rounded-xl outline-none focus:border-blue-500 text-white font-bold appearance-none"
+                      >
+                        <option value="ลากิจ">ลากิจ</option>
+                      </select>
+                      <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">เหตุผล (ระบุให้ชัดเจน)</label>
+                    <textarea 
+                      rows={3} 
+                      required
+                      value={leaveForm.reason}
+                      onChange={(e) => setLeaveForm({...leaveForm, reason: e.target.value})}
+                      placeholder="เช่น ไปทำธุระติดต่อราชการ..." 
+                      className="w-full p-3.5 bg-[#0f172a] border border-slate-600 rounded-xl outline-none focus:border-blue-500 text-white text-sm resize-none"
+                    ></textarea>
+                  </div>
+                  <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl mt-2 transition-colors active:scale-95 shadow-lg shadow-blue-600/20 flex items-center justify-center">
+                    {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>กำลังส่งคำขอ...</> : <><i className="bi bi-send-fill mr-2"></i>ยืนยันการลางาน</>}
+                  </button>
+                </form>
+              );
+            })()}
           </div>
         </div>
       )}

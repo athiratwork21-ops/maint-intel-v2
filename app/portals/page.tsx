@@ -13,6 +13,17 @@ const externalApps = [
     url: 'https://maintintelv2.vercel.app/employees',
     status: 'Active'
   },
+
+  {
+    id: 2,
+    name: 'Shift Roster Viewer',
+    description: 'ระบบดูการจัดการตารางกะงานพนักงาน',
+    icon: 'bi-calendar3',
+    color: 'text-emerald-500',
+    bgColor: 'bg-emerald-500/10',
+    url: 'https://maintintelv2.vercel.app/Viewer',
+    status: 'Active'
+  },
   // 💡 ถ้าอนาคตบอสทำเว็บอื่นเพิ่ม ก็เอามาก๊อปปี้ต่อท้ายตรงนี้ได้เลยครับ!
   /*
   {
