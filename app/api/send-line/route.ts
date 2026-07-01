@@ -38,16 +38,34 @@ export async function POST(request: Request) {
       finalMessage += `\n📍 พิกัดตู้: ${location}\n(ผู้ดูแลเลิกงานแล้ว ผู้เบิกหยิบเองได้เลยครับ)`;
     }
 
-    // 🌟 ยิงไปหา MS Teams (ง่ายกว่า LINE เยอะ!)
+    // 🌟 ยิงไปหา MS Teams (ปรับเป็นโครงสร้าง Adaptive Card สำหรับระบบ Workflows ใหม่)
     console.log("👉 URL ที่กำลังส่งไป Teams:", teamsWebhookUrl);
+    
     const teamsResponse = await fetch(teamsWebhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        // ฟอร์แมตเบสิกของ Teams ใช้ตัวแปร text
-        text: finalMessage.replace(/\n/g, '<br>') // Teams ต้องใช้ <br> ขึ้นบรรทัดใหม่
+        type: "message",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            contentUrl: null,
+            content: {
+              $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+              type: "AdaptiveCard",
+              version: "1.2",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: finalMessage, 
+                  wrap: true
+                }
+              ]
+            }
+          }
+        ]
       })
     });
 
@@ -60,6 +78,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, message: 'ส่ง Teams สำเร็จ!' });
 
+  // 👇 ท่อนนี้แหละครับที่น่าจะโดนเผลอลบทิ้งไปตอนวางทับรอบที่แล้ว
   } catch (error) {
     console.error("Send Teams Error:", error);
     return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
