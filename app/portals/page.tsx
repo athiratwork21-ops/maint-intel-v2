@@ -24,6 +24,17 @@ const externalApps = [
     url: 'https://maintintelv2.vercel.app/Viewer',
     status: 'Active'
   },
+
+  {
+    id: 3,
+    name: 'Request Parts',
+    description: 'ระบบเบิกอะไหล่และอุปกรณ์ต่างๆ',
+    icon: 'bi-box-seam',
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-500/10',
+    url: 'https://maintintelv2.vercel.app/scan',
+    status: 'In Progress'
+  }
   // 💡 ถ้าอนาคตบอสทำเว็บอื่นเพิ่ม ก็เอามาก๊อปปี้ต่อท้ายตรงนี้ได้เลยครับ!
   /*
   {

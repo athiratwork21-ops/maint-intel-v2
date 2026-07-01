@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     }
 
     // 🌟 ยิงไปหา MS Teams (ง่ายกว่า LINE เยอะ!)
+    console.log("👉 URL ที่กำลังส่งไป Teams:", teamsWebhookUrl);
     const teamsResponse = await fetch(teamsWebhookUrl, {
       method: 'POST',
       headers: {
