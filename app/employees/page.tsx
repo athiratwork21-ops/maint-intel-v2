@@ -30,10 +30,16 @@ export default function ShiftRosterPro() {
   const [adminDept, setAdminDept] = useState('');
 
   useEffect(() => {
-    // 💡 ตรงนี้สำคัญ: บอสต้องไปดูโค้ดหน้า Login ว่าตอนแอดมินล็อคอินผ่าน บอสเซฟค่า DepartmentID (ECBUME18326) ไว้ใน localStorage ชื่ออะไร
-    // สมมติว่าเซฟชื่อ 'user_dept' ก็เปลี่ยนตรงนี้ให้ตรงกันครับ (ช่างใหญ่ใส่ ECBUME18326 ไว้ให้เทสก่อน)
-    const dept = localStorage.getItem('user_dept') || 'ECBUME18326'; 
-    setAdminDept(dept);
+    // 🌟 1. ล้วงกระเป๋าเอาแผนกที่ล็อคอินมาใช้แบบเพียวๆ (ไม่บังคับเป็น ME แล้ว)
+    const dept = localStorage.getItem('activeDepartment');
+    
+    if (dept) {
+      setAdminDept(dept); // ถ้ามีแผนก ก็เซฟลงระบบแล้วโหลดข้อมูลลูกน้อง
+    } else {
+      // 🚨 2. ระบบป้องกันคนแอบเข้า: ถ้าไม่มีแผนก (แอบพิมพ์ URL เข้ามาตรงๆ โดยไม่ล็อคอิน) 
+      alert("ไม่พบข้อมูลแผนก กรุณาล็อคอินเข้าสู่ระบบก่อนครับ!");
+      // window.location.href = '/'; // บอสสามารถเอาคอมเมนต์ (//) ข้างหน้าออก เพื่อสั่งให้มันเด้งเตะกลับไปหน้า Login ได้เลยครับ
+    }
   }, []);
   const [employees, setEmployees] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<ScheduleState>({});
