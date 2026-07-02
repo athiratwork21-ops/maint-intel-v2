@@ -21,6 +21,8 @@ export default function MaintenanceDashboard() {
   // 🚨 เติมบรรทัดนี้กลับเข้าไปครับ! (ตัวแปรเก็บแผนกที่หายไป)
   const [selectedDept, setSelectedDept] = useState('');
 
+  localStorage.setItem('user_dept', user.DepartmentID);
+  
   // 🌟 เก็บค่า Location หลายตัวสำหรับ Fixture
   const [multiLocations, setMultiLocations] = useState<string[]>([]);
   const [activeDeptName, setActiveDeptName] = useState('');
