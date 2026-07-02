@@ -73,7 +73,7 @@ const loadInitialData = useCallback(async () => {
     setIsLoading(true);
     try {
       // 🌟 1. ดึงพนักงาน "เฉพาะที่ DepartmentID ตรงกับแอดมิน"
-      const { data: empData, error: empErr } = await supabase
+      const { data: empData, error: empErr } = await supabaseServiceWork
         .from('employees')
         .select('*')
         .eq('DepartmentID', adminDept); // กรองแผนกตรงนี้!
