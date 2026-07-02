@@ -1,19 +1,40 @@
 "use client";
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabaseServiceWork } from '../../lib/supabase-servicework';
 import * as XLSX from 'xlsx';
-import html2canvas from 'html2canvas'; // 🌟 เพิ่มไลบรารีสำหรับถ่ายรูป
+import html2canvas from 'html2canvas'; //  เพิ่มไลบรารีสำหรับถ่ายรูป
 
-type CellData = { shift: 'D' | 'N' | 'O'; isOT: boolean };
+type CellData = { shift: 'D' | 'N' | 'O'; isOT: boolean; is6S?: boolean }; //  เพิ่ม is6S
 type ScheduleState = Record<string, CellData>;
-type HolidayState = Record<number, string>;
+type HolidayState = Record<string, string>; // เปลี่ยนเป็น string เพื่อรองรับวันที่แบบ YYYY-MM-DD
+
+// ฟังก์ชันช่วยเหลือแปลงวันที่เป็น YYYY-MM-DD
+const formatDateStr = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 export default function ShiftRosterPro() {
-  const [currentDate, setCurrentDate] = useState(() => {
+// 🌟 1. ตั้งค่าเริ่มต้นเป็น "วันแรก" ถึง "วันสุดท้าย" ของเดือนปัจจุบัน
+  const [startDate, setStartDate] = useState(() => {
     const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+    return formatDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
   });
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date();
+    return formatDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  });
+  // 🌟 1. State จำแผนกของแอดมิน
+  const [adminDept, setAdminDept] = useState('');
 
+  useEffect(() => {
+    // 💡 ตรงนี้สำคัญ: บอสต้องไปดูโค้ดหน้า Login ว่าตอนแอดมินล็อคอินผ่าน บอสเซฟค่า DepartmentID (ECBUME18326) ไว้ใน localStorage ชื่ออะไร
+    // สมมติว่าเซฟชื่อ 'user_dept' ก็เปลี่ยนตรงนี้ให้ตรงกันครับ (ช่างใหญ่ใส่ ECBUME18326 ไว้ให้เทสก่อน)
+    const dept = localStorage.getItem('user_dept') || 'ECBUME18326'; 
+    setAdminDept(dept);
+  }, []);
   const [employees, setEmployees] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<ScheduleState>({});
   const [backupSchedule, setBackupSchedule] = useState<ScheduleState>({});
@@ -23,47 +44,72 @@ export default function ShiftRosterPro() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [activeTool, setActiveTool] = useState<'D' | 'N' | 'O' | 'OT' | 'ERASE'>('D');
+  const [activeTool, setActiveTool] = useState<'D' | 'N' | 'O' | 'OT' | '6S' | 'ERASE'>('D'); //  เพิ่ม '6S' เข้าไปในเครื่องมือ
   const [isDragging, setIsDragging] = useState(false);
   
   const [newEmpId, setNewEmpId] = useState('');
   const [newEmpName, setNewEmpName] = useState('');
   const [newEmpShift, setNewEmpShift] = useState(''); 
-  const [newEmpGroup, setNewEmpGroup] = useState(''); // 🌟 2. State สำหรับรับค่ากรุ๊ป
+  const [newEmpGroup, setNewEmpGroup] = useState(''); 
 
   const [selectedForExport, setSelectedForExport] = useState<string[]>([]);
   const [violations, setViolations] = useState<string[]>([]);
 
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const monthName = currentDate.toLocaleString('th-TH', { month: 'long', year: 'numeric' });
+  // 🌟 คำนวณวันที่ทั้งหมดในช่่วงที่เลือก
+  const dateList = useMemo(() => {
+    const list: Date[] = [];
+    const current = new Date(startDate);
+    const end = new Date(endDate);
+    while (current <= end) {
+      list.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    return list;
+  }, [startDate, endDate]);
 
-  const loadInitialData = useCallback(async () => {
+const loadInitialData = useCallback(async () => {
+    if (!adminDept) return; // ถ้าระบบยังไม่รู้ว่าแอดมินแผนกไหน ให้เบรกไว้ก่อน
+
     setIsLoading(true);
     try {
-      const { data: empData, error: empErr } = await supabaseServiceWork.from('employees').select('*');
+      // 🌟 1. ดึงพนักงาน "เฉพาะที่ DepartmentID ตรงกับแอดมิน"
+      const { data: empData, error: empErr } = await supabaseServiceWork
+        .from('employees')
+        .select('*')
+        .eq('DepartmentID', adminDept); // กรองแผนกตรงนี้!
+        
       if (empErr) throw empErr;
       
       const loadedEmps = empData || [];
       setEmployees(loadedEmps);
       setSelectedForExport(loadedEmps.map(e => e.id));
 
-      const year = currentDate.getFullYear();
-      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-      const startDate = `${year}-${month}-01`;
-      const endDate = `${year}-${month}-${daysInMonth}`;
+      const empIds = loadedEmps.map(e => e.id);
+      
+      if (empIds.length === 0) {
+        setSchedule({});
+        setBackupSchedule({});
+        setIsLoading(false);
+        return;
+      }
 
+      // 🌟 2. ดึงตารางงาน เฉพาะพนักงานแก๊งนี้
       const { data: schedData, error: schedErr } = await supabaseServiceWork
-        .from('schedules').select('*').gte('work_date', startDate).lte('work_date', endDate);
+        .from('schedules')
+        .select('*')
+        .gte('work_date', startDate)
+        .lte('work_date', endDate)
+        .in('employee_id', empIds);
 
       if (schedErr) throw schedErr;
 
       const loadedSchedule: ScheduleState = {};
       if (schedData) {
         schedData.forEach(row => {
-          const day = parseInt(row.work_date.split('-')[2], 10);
-          loadedSchedule[`${row.employee_id}_${day}`] = {
+          loadedSchedule[`${row.employee_id}_${row.work_date}`] = {
             shift: row.shift_code as 'D'|'N'|'O',
-            isOT: row.is_ot
+            isOT: row.is_ot,
+            is6S: row.is_6s || false //  ดึงค่า 6S มาแสดงผล
           };
         });
       }
@@ -74,11 +120,14 @@ export default function ShiftRosterPro() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate, daysInMonth]);
+  }, [startDate, endDate, adminDept]); // 🌟 ใส่ adminDept ในวงเล็บด้วย
 
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    // 🌟 โหลดข้อมูลตารางทันที ที่แอดมินล็อคอินและดึงแผนกสำเร็จ
+    if (adminDept) {
+      loadInitialData();
+    }
+  }, [loadInitialData, adminDept]);
 
   const sortedEmployees = [...employees].sort((a, b) => {
     const shiftOrder: Record<string, number> = { '': 0, 'A': 1, 'B': 2 };
@@ -89,22 +138,38 @@ export default function ShiftRosterPro() {
     return a.name.localeCompare(b.name);
   });
 
-  const getDayDetails = (day: number) => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+  const getDayDetails = (date: Date) => {
     return {
       dayName: date.toLocaleString('th-TH', { weekday: 'short' }),
+      dayNum: date.getDate(),
       isSunday: date.getDay() === 0,
       isWeekend: date.getDay() === 0 || date.getDay() === 6
     };
   };
 
-  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.value) return;
-    const [year, month] = e.target.value.split('-');
+  // 🌟 ฟังก์ชันจัดการการเปลี่ยนวันที่ และดักไม่ให้เกิน 31 วัน
+  const handleDateRangeChange = (field: 'start' | 'end', value: string) => {
+    if (!value) return;
     if (isEditMode) {
-      if (!confirm('ข้อมูลยังไม่ได้บันทึก ยืนยันที่จะเปลี่ยนเดือนหรือไม่?')) return;
+      if (!confirm('ข้อมูลยังไม่ได้บันทึก ยืนยันที่จะเปลี่ยนช่วงเวลาหรือไม่?')) return;
     }
-    setCurrentDate(new Date(parseInt(year), parseInt(month) - 1, 1));
+    
+    let newStart = field === 'start' ? value : startDate;
+    let newEnd = field === 'end' ? value : endDate;
+
+    const sDate = new Date(newStart);
+    const eDate = new Date(newEnd);
+    const diffDays = Math.floor((eDate.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return alert('⚠️ วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มต้นครับ');
+    if (diffDays > 30) {
+      alert('⚠️ เลือกระยะเวลาได้สูงสุด 31 วันครับ (ระบบปรับให้อัตโนมัติ)');
+      eDate.setTime(sDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+      newEnd = formatDateStr(eDate);
+    }
+    
+    setStartDate(newStart);
+    setEndDate(newEnd);
     setIsEditMode(false);
     setViolations([]);
     setHolidays({});
@@ -121,14 +186,14 @@ export default function ShiftRosterPro() {
     setIsEditMode(mode);
   };
 
-  const applyToolToCell = (empId: string, day: number) => {
+  const applyToolToCell = (empId: string, dateStr: string) => {
     if (!isEditMode) return; 
-    const key = `${empId}_${day}`;
+    const key = `${empId}_${dateStr}`;
     setSchedule(prev => {
       const currentCell = prev[key];
       if (activeTool === 'ERASE' && !currentCell) return prev;
       if (activeTool === 'OT' && currentCell?.isOT === true) return prev;
-      if (activeTool !== 'ERASE' && activeTool !== 'OT' && currentCell?.shift === activeTool && currentCell?.isOT === false) return prev;
+      if (activeTool === '6S' && currentCell?.is6S === true) return prev; //  ดักไม่ให้ทา 6S ซ้ำถ้ามีอยู่แล้ว
 
       const newState = { ...prev };
       if (activeTool === 'ERASE') {
@@ -137,22 +202,30 @@ export default function ShiftRosterPro() {
         if (currentCell && (currentCell.shift === 'D' || currentCell.shift === 'N')) {
           newState[key] = { ...currentCell, isOT: true }; 
         }
+      } else if (activeTool === '6S') {
+        if (currentCell) { //  แปะป้าย 6S ได้ถ้าวันนั้นมีกะงานอยู่แล้ว
+          newState[key] = { ...currentCell, is6S: true }; 
+        }
       } else {
-        newState[key] = { shift: activeTool as 'D'|'N'|'O', isOT: currentCell?.isOT || false };
-        if (activeTool === 'O') newState[key].isOT = false; 
+        //  เปลี่ยนกะหลัก แต่ยังคงรักษาสถานะ 6S ไว้ (ไม่ลบหายไป)
+        newState[key] = { 
+          shift: activeTool as 'D'|'N'|'O', 
+          isOT: activeTool === 'O' ? false : (currentCell?.isOT || false),
+          is6S: currentCell?.is6S || false 
+        };
       }
       return newState;
     });
   };
 
-  const handleMouseDown = (empId: string, day: number) => {
+  const handleMouseDown = (empId: string, dateStr: string) => {
     if (!isEditMode) return;
     setIsDragging(true);
-    applyToolToCell(empId, day);
+    applyToolToCell(empId, dateStr);
   };
 
-  const handleMouseEnter = (empId: string, day: number) => {
-    if (isDragging && isEditMode) applyToolToCell(empId, day);
+  const handleMouseEnter = (empId: string, dateStr: string) => {
+    if (isDragging && isEditMode) applyToolToCell(empId, dateStr);
   };
 
   useEffect(() => {
@@ -165,18 +238,19 @@ export default function ShiftRosterPro() {
     const newViolations: string[] = [];
     employees.forEach(emp => {
       let consecutiveWorkDays = 0;
-      for (let day = 1; day <= daysInMonth; day++) {
-        const cell = schedule[`${emp.id}_${day}`];
+      dateList.forEach(date => {
+        const dateStr = formatDateStr(date);
+        const cell = schedule[`${emp.id}_${dateStr}`];
         if (cell && (cell.shift === 'D' || cell.shift === 'N')) {
           consecutiveWorkDays++;
           if (consecutiveWorkDays > 6 && !newViolations.includes(emp.id)) newViolations.push(emp.id);
         } else {
           consecutiveWorkDays = 0;
         }
-      }
+      });
     });
     setViolations(newViolations);
-  }, [schedule, employees, daysInMonth]);
+  }, [schedule, employees, dateList]);
 
   const handleAddEmployee = async () => {
     if (!newEmpId.trim() || !newEmpName.trim()) return alert('กรุณากรอกรหัสและชื่อพนักงานให้ครบ');
@@ -188,7 +262,8 @@ export default function ShiftRosterPro() {
         name: newEmpName.trim(),
         role: 'Staff',
         shift_team: newEmpShift,
-        group_team: newEmpGroup // 🌟 2. ยิงค่ากรุ๊ปเข้า DB 
+        group_team: newEmpGroup,
+        DepartmentID: adminDept //  ประทับตราแผนกให้พนักงานคนนี้อัตโนมัติ! แอดมินไม่ต้องพิมพ์เอง
       });
       if (error) throw error;
 
@@ -209,15 +284,17 @@ export default function ShiftRosterPro() {
     }
   };
 
-  const handleToggleHoliday = (day: number) => {
+  const handleToggleHoliday = (date: Date) => {
     if (!isEditMode) return;
-    const currentName = holidays[day] || '';
-    const newHolidayName = prompt(`ตั้งชื่อวันหยุดพิเศษ สำหรับวันที่ ${day} ${monthName}:\n(ลบข้อความออกและกด OK เพื่อยกเลิก)`, currentName);
+    const dateStr = formatDateStr(date);
+    const displayDate = date.toLocaleString('th-TH', { day: 'numeric', month: 'short' });
+    const currentName = holidays[dateStr] || '';
+    const newHolidayName = prompt(`ตั้งชื่อวันหยุดพิเศษ สำหรับวันที่ ${displayDate}:\n(ลบข้อความออกและกด OK เพื่อยกเลิก)`, currentName);
     if (newHolidayName !== null) {
       setHolidays(prev => {
         const newState = { ...prev };
-        if (newHolidayName.trim() === '') delete newState[day];
-        else newState[day] = newHolidayName.trim();
+        if (newHolidayName.trim() === '') delete newState[dateStr];
+        else newState[dateStr] = newHolidayName.trim();
         return newState;
       });
     }
@@ -225,15 +302,16 @@ export default function ShiftRosterPro() {
 
   const calculateSummary = (empId: string) => {
     let d = 0, n = 0, ot = 0, off = 0;
-    for (let day = 1; day <= daysInMonth; day++) {
-      const cell = schedule[`${empId}_${day}`];
+    dateList.forEach(date => {
+      const dateStr = formatDateStr(date);
+      const cell = schedule[`${empId}_${dateStr}`];
       if (cell) {
         if (cell.shift === 'D') d++;
         if (cell.shift === 'N') n++;
         if (cell.shift === 'O') off++;
         if (cell.isOT) ot++;
       }
-    }
+    });
     return { d, n, off, ot };
   };
 
@@ -246,24 +324,19 @@ export default function ShiftRosterPro() {
     setSelectedForExport(prev => prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]);
   };
 
-  // 🌟 1. แก้ปุ่มบันทึก: ให้ลบตารางที่โดนยางลบออกจาก DB ด้วย!
   const handleSaveToSupabase = async () => {
     if (Object.keys(schedule).length === 0 && Object.keys(backupSchedule).length === 0) return alert('ไม่มีข้อมูลให้บันทึกครับ');
     setIsSaving(true);
     try {
-      // 1. หาว่าช่องไหนหายไปจากกระดาน (โดนยางลบถู) ให้ไปลบใน Database ก่อน
       const keysToDelete = Object.keys(backupSchedule).filter(k => !schedule[k]);
       for (const key of keysToDelete) {
-        const [empId, dayStr] = key.split('_');
-        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(parseInt(dayStr)).padStart(2, '0')}`;
+        const [empId, dateStr] = key.split('_');
         await supabaseServiceWork.from('schedules').delete().match({ employee_id: empId, work_date: dateStr });
       }
 
-      // 2. ข้อมูลที่เหลือเอามาอัปเดต / บันทึกใหม่
       const upsertData = Object.entries(schedule).map(([key, value]) => {
-        const [empId, dayStr] = key.split('_');
-        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(parseInt(dayStr)).padStart(2, '0')}`;
-        return { employee_id: empId, work_date: dateStr, shift_code: value.shift, is_ot: value.isOT };
+        const [empId, dateStr] = key.split('_');
+        return { employee_id: empId, work_date: dateStr, shift_code: value.shift, is_ot: value.isOT, is_6s: value.is6S || false };
       });
 
       if (upsertData.length > 0) {
@@ -278,32 +351,26 @@ export default function ShiftRosterPro() {
     finally { setIsSaving(false); }
   };
 
-  // 🌟 4. และ 5. ปรับการ Export ตัด Shift/Group ออก โชว์แค่ H และ O
   const handleExportExcel = () => {
     if (selectedForExport.length === 0) return alert('กรุณาเลือกพนักงานเพื่อส่งออกครับ!');
 
-    const year = currentDate.getFullYear();
-    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-    
-    // ตัดหัวคอลัมน์กะออก
     const headers = ['empid', 'name'];
-    for (let day = 1; day <= daysInMonth; day++) headers.push(`${year}/${month}/${String(day).padStart(2, '0')}`);
+    dateList.forEach(date => headers.push(formatDateStr(date).replace(/-/g, '/')));
 
     const excelData = [headers];
 
     sortedEmployees.filter(emp => selectedForExport.includes(emp.id)).forEach(emp => {
-      // ตัดข้อมูลกะและกรุ๊ปออก เอาแค่ ID กับชื่อ
       const rowData = [emp.id, emp.name];
-      for (let day = 1; day <= daysInMonth; day++) {
+      dateList.forEach(date => {
+        const dateStr = formatDateStr(date);
         let cellValue = '';
-        if (holidays[day]) cellValue = 'H';
+        if (holidays[dateStr]) cellValue = 'H';
         else {
-          const cell = schedule[`${emp.id}_${day}`];
+          const cell = schedule[`${emp.id}_${dateStr}`];
           if (cell && cell.shift === 'O') cellValue = 'O'; 
-          // ปล่อยว่างสำหรับกะ D, N, และ OT
         }
         rowData.push(cellValue);
-      }
+      });
       excelData.push(rowData);
     });
 
@@ -313,21 +380,19 @@ export default function ShiftRosterPro() {
     XLSX.writeFile(workbook, `SWD_Template.xlsx`); 
   };
 
-  // 🌟 6. ระบบ Capture รูปภาพ (กดถ่ายหน้าจอเก็บภาพไว้)
   const handleCaptureImage = async () => {
     const tableEl = document.getElementById('roster-capture-area');
     if (!tableEl) return;
     
     try {
-      // ใช้ html2canvas ถ่ายรูป Element ที่ระบุ
       const canvas = await html2canvas(tableEl, {
         backgroundColor: '#0f172a',
-        scale: 2 // ขยาย 2 เท่าเพื่อให้ตัวอักษรคมชัดขึ้น
+        scale: 2 
       });
       const image = canvas.toDataURL("image/png");
       const link = document.createElement('a');
       link.href = image;
-      link.download = `Roster_Capture_${currentDate.getFullYear()}_${currentDate.getMonth() + 1}.png`;
+      link.download = `Roster_Capture_${startDate}.png`;
       link.click();
     } catch (err) {
       console.error(err);
@@ -348,15 +413,28 @@ export default function ShiftRosterPro() {
           <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight text-white">
             <i className="bi bi-calendar3 text-emerald-400"></i> Roster <span className="text-emerald-400 font-light">Pro</span>
           </h1>
-          <div className="flex items-center gap-3 mt-2">
-            <p className="text-slate-400 font-medium text-sm">เดือน:</p>
-            <input 
-              type="month" value={`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`} onChange={handleMonthChange}
-              className="bg-[#1e293b] border border-slate-700 text-white font-medium px-3 py-1.5 rounded-lg outline-none focus:border-emerald-500 cursor-pointer shadow-inner text-sm transition-all hover:bg-slate-800"
-            />
+          {/* 🌟 แยกช่องเลือกวันที่เริ่มต้น - สิ้นสุดให้ชัดเจน */}
+          <div className="flex flex-wrap items-center gap-3 mt-2">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-medium text-sm">เริ่มต้น:</span>
+              <input 
+                type="date" value={startDate} onChange={(e) => handleDateRangeChange('start', e.target.value)}
+                className="bg-[#1e293b] border border-slate-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-inner outline-none focus:border-emerald-500 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-medium text-sm">สิ้นสุด:</span>
+              <input 
+                type="date" value={endDate} onChange={(e) => handleDateRangeChange('end', e.target.value)}
+                className="bg-[#1e293b] border border-slate-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-inner outline-none focus:border-emerald-500 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer"
+              />
+            </div>
             <button onClick={loadInitialData} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300 transition-colors" title="รีเฟรชข้อมูลล่าสุด">
               <i className="bi bi-arrow-clockwise"></i>
             </button>
+            <span className="text-xs text-emerald-500/70 ml-1 font-medium bg-emerald-500/10 px-2 py-1 rounded-md">
+              (รวม {dateList.length} วัน)
+            </span>
           </div>
         </div>
 
@@ -381,7 +459,6 @@ export default function ShiftRosterPro() {
                 <option value="A">Shift A</option>
                 <option value="B">Shift B</option>
               </select>
-              {/* 🌟 2. ช่องใส่ข้อมูลกรุ๊ป */}
               <input type="text" value={newEmpGroup} onChange={e => setNewEmpGroup(e.target.value)} placeholder="กรุ๊ป (เช่น G1)" className="w-24 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 font-medium" />
               <button onClick={handleAddEmployee} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2.5 rounded-lg text-xs font-medium border border-slate-600 transition-colors flex items-center gap-1">
                 <i className="bi bi-person-plus"></i> เพิ่ม
@@ -390,7 +467,6 @@ export default function ShiftRosterPro() {
           )}
 
           <div className="flex items-center gap-2">
-            {/* 🌟 6. ปุ่มถ่ายรูปจอ */}
             <button onClick={handleCaptureImage} className="bg-[#1e293b] hover:bg-cyan-900/50 text-cyan-400 border border-cyan-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95">
               <i className="bi bi-camera"></i> จับภาพหน้าจอ
             </button>
@@ -412,13 +488,14 @@ export default function ShiftRosterPro() {
         <button onClick={() => setActiveTool('O')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTool === 'O' ? 'bg-slate-600 text-white shadow-md' : 'bg-[#0f172a] text-slate-400 hover:text-white'}`}><div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div> หยุด (O)</button>
         <div className="w-px h-6 bg-slate-700 mx-2"></div>
         <button onClick={() => setActiveTool('OT')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${activeTool === 'OT' ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-inner' : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:text-amber-400'}`}><i className="bi bi-clock-history"></i> ป้าย OT (+OT)</button>
+        <button onClick={() => setActiveTool('6S')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${activeTool === '6S' ? 'bg-blue-500/20 border-blue-500 text-blue-400 shadow-inner' : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:text-blue-400'}`}><i className="bi bi-stars"></i> ป้าย 6S (+6S)</button>
         <button onClick={() => setActiveTool('ERASE')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border ${activeTool === 'ERASE' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:text-red-400'}`}><i className="bi bi-eraser"></i> ยางลบ</button>
       </div>
 
       <div className="max-w-[1500px] w-full mx-auto bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl flex-1 flex flex-col overflow-hidden shadow-2xl relative">
         <div className="overflow-auto custom-scrollbar flex-1 relative will-change-transform">
-          {/* 🌟 6. ใส่ ID ให้ตาราง สำหรับการแคปเจอร์ภาพ */}
-          <table id="roster-capture-area" className="w-full min-w-max border-separate border-spacing-0 bg-[#0f172a]">
+          {/* 🌟 2. เปลี่ยนจาก w-full เป็น w-max เพื่อให้ตารางกว้างพอดีกับข้อมูลที่มี ไม่ยืดจนเกิดขอบดำ */}
+          <table id="roster-capture-area" className="w-max min-w-max border-separate border-spacing-0 bg-[#0f172a]">
             <thead className="sticky top-0 z-40 bg-[#0f172a]">
               <tr className="text-slate-400 text-xs shadow-sm">
                 
@@ -432,17 +509,21 @@ export default function ShiftRosterPro() {
                 <th className="sticky left-[336px] top-0 z-50 w-[56px] min-w-[56px] max-w-[56px] bg-[#0f172a] p-2 border-b border-r border-slate-700 text-center text-orange-400 font-medium bg-clip-padding">Night</th>
                 <th className="sticky left-[392px] top-0 z-50 w-[56px] min-w-[56px] max-w-[56px] bg-[#0f172a] p-2 border-b border-r border-slate-700 text-center text-amber-400 font-medium bg-clip-padding border-r-amber-500/20">OT</th>
 
-                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                  const { dayName, isSunday, isWeekend } = getDayDetails(day);
-                  const holidayName = holidays[day];
+                {/* 🌟 บังคับขนาดช่องหัวตาราง 55px เท่าของเดิมเป๊ะ */}
+                {dateList.map((date, index) => {
+                  const { dayName, dayNum, isSunday, isWeekend } = getDayDetails(date);
+                  const dateStr = formatDateStr(date);
+                  const holidayName = holidays[dateStr];
                   const isHoliday = !!holidayName;
-                  const borderRightClass = isSunday ? 'border-r-2 border-r-slate-600/50' : 'border-r border-slate-700/30';
+                  
+                  const isEndOfMonth = dateList[index + 1] && dateList[index + 1].getDate() === 1;
+                  const borderRightClass = isEndOfMonth ? 'border-r-2 border-r-emerald-500/40' : (isSunday ? 'border-r-2 border-r-slate-600/50' : 'border-r border-slate-700/30');
                   const bgClass = isHoliday ? 'bg-rose-500/10' : (isWeekend ? 'bg-slate-800/30' : '');
 
                   return (
-                    <th key={day} onClick={() => handleToggleHoliday(day)} className={`p-1.5 text-center min-w-[55px] relative transition-colors border-b border-slate-700 ${borderRightClass} ${bgClass} ${isEditMode ? 'cursor-pointer hover:bg-white/5' : ''} bg-clip-padding`}>
+                    <th key={dateStr} onClick={() => handleToggleHoliday(date)} className={`p-1.5 text-center w-[55px] min-w-[55px] max-w-[55px] relative transition-colors border-b border-slate-700 ${borderRightClass} ${bgClass} ${isEditMode ? 'cursor-pointer hover:bg-white/5' : ''} bg-clip-padding`}>
                       <div className={`font-medium mb-0.5 text-[10px] ${isHoliday ? 'text-rose-300' : 'text-slate-400'}`}>{dayName}</div>
-                      <div className={`font-semibold text-sm ${isHoliday ? 'text-rose-400' : isWeekend ? 'text-slate-300' : 'text-slate-200'}`}>{day}</div>
+                      <div className={`font-semibold text-sm ${isHoliday ? 'text-rose-400' : isWeekend ? 'text-slate-300' : 'text-slate-200'}`}>{dayNum}</div>
                       {isHoliday && (
                         <div className="mt-1 flex flex-col items-center">
                           <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mb-0.5"></div>
@@ -452,13 +533,14 @@ export default function ShiftRosterPro() {
                     </th>
                   );
                 })}
+                {/* 🌟 3. ลบช่องล่องหนทิ้งไปแล้ว ตารางจะสุดแค่วันที่เลือกพอดีเป๊ะ! */}
               </tr>
             </thead>
 
             <tbody>
               {sortedEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={daysInMonth + 4} className="p-10 text-center text-slate-500 font-medium border-b border-slate-700">
+                  <td colSpan={dateList.length + 5} className="p-10 text-center text-slate-500 font-medium border-b border-slate-700">
                     <i className="bi bi-people text-4xl mb-3 block opacity-40"></i>
                     ยังไม่มีพนักงานในระบบ กรุณากดโหมดแก้ไขเพื่อเพิ่มคน
                   </td>
@@ -479,7 +561,6 @@ export default function ShiftRosterPro() {
                               <i className="bi bi-person-fill text-lg"></i>
                             </div>
                             <div className="min-w-0 flex-1">
-                              {/* 🌟 ถอดคลาส truncate ออก แล้วใช้ JavaScript ตัดคำแทนเพื่อแก้บั๊ก html2canvas หั่นครึ่งตัวอักษร */}
                               <div className="flex items-center gap-1.5 pb-0.5">
                                 <span className="font-semibold text-slate-200 text-[13px] whitespace-nowrap">
                                   {emp.name && emp.name.length > 22 ? emp.name.substring(0, 22) + '...' : emp.name}
@@ -487,7 +568,6 @@ export default function ShiftRosterPro() {
                                 {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse text-[10px] shrink-0" title="เตือน: ทำงานเกิน 6 วัน!"></i>}
                               </div>
                               
-                                {/* แถวข้อมูล รหัส -> กะ -> กรุ๊ป (แบบไม่มีกรอบ มินิมอลคลีนๆ) */}
                               <div className="font-mono text-slate-400 font-medium text-[10px] tracking-wider mt-0.5 flex items-center gap-2">
                                 <span className="shrink-0">{emp.id}</span>
                                 {emp.shift_team && (
@@ -515,12 +595,16 @@ export default function ShiftRosterPro() {
                       <td className="sticky left-[336px] z-20 w-[56px] min-w-[56px] max-w-[56px] bg-[#1e293b] p-2 border-b border-r border-slate-700/50 text-center font-semibold text-orange-400 text-[13px] bg-clip-padding">{summary.n || '-'}</td>
                       <td className="sticky left-[392px] z-20 w-[56px] min-w-[56px] max-w-[56px] bg-[#1e293b] p-2 border-b border-r border-slate-700/50 text-center font-semibold text-amber-400 text-[13px] border-r-amber-500/20 bg-clip-padding">{summary.ot || '-'}</td>
 
-                      {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                        const { isSunday, isWeekend } = getDayDetails(day);
-                        const isHoliday = !!holidays[day];
-                        const cell = schedule[`${emp.id}_${day}`];
+                      {/* 🌟 บังคับขนาดช่องข้อมูลตารางให้เท่าเดิมเป๊ะ */}
+                      {dateList.map((date, index) => {
+                        const dateStr = formatDateStr(date);
+                        const isSunday = date.getDay() === 0;
+                        const isWeekend = isSunday || date.getDay() === 6;
+                        const isHoliday = !!holidays[dateStr];
+                        const cell = schedule[`${emp.id}_${dateStr}`];
                         
-                        const borderRightClass = isSunday ? 'border-r-2 border-r-slate-600/50' : 'border-r border-slate-700/30';
+                        const isEndOfMonth = dateList[index + 1] && dateList[index + 1].getDate() === 1;
+                        const borderRightClass = isEndOfMonth ? 'border-r-2 border-r-emerald-500/40' : (isSunday ? 'border-r-2 border-r-slate-600/50' : 'border-r border-slate-700/30');
                         const colBg = isHoliday ? 'bg-rose-500/5' : (isWeekend ? 'bg-slate-800/30' : '');
 
                         let cellBg = 'border-transparent';
@@ -531,10 +615,10 @@ export default function ShiftRosterPro() {
                         if (cell?.shift === 'O') { cellBg = 'bg-slate-600 shadow-sm border-slate-700'; textColor = 'text-white'; }
 
                         return (
-                          <td key={day} className={`p-1 relative border-b border-slate-700/50 ${borderRightClass} ${colBg}`}>
+                          <td key={dateStr} className={`p-1 w-[55px] min-w-[55px] max-w-[55px] relative border-b border-slate-700/50 ${borderRightClass} ${colBg}`}>
                             <div
-                              onMouseDown={() => handleMouseDown(emp.id, day)}
-                              onMouseEnter={() => handleMouseEnter(emp.id, day)}
+                              onMouseDown={() => handleMouseDown(emp.id, dateStr)}
+                              onMouseEnter={() => handleMouseEnter(emp.id, dateStr)}
                               className={`w-full h-[40px] rounded flex flex-col items-center justify-center border ${cellBg} relative transition-all ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}
                             >
                               {cell?.shift ? <span className={`font-semibold text-sm ${textColor}`}>{cell.shift}</span> : (isEditMode && <span className="opacity-0 group-hover:opacity-20 text-xs text-slate-400">+</span>)}
@@ -543,10 +627,17 @@ export default function ShiftRosterPro() {
                                   OT
                                 </div>
                               )}
+                              {/*  ป้าย 6S มุมซ้ายล่าง (ของใหม่) */}
+                              {cell?.is6S && (
+                                <div className="absolute bottom-0 left-0 bg-blue-500 text-white text-[7px] font-bold px-1 rounded-tr-sm shadow-sm">
+                                  6S
+                                </div>
+                              )}
                             </div>
                           </td>
                         );
                       })}
+                      {/* 🌟 4. ลบช่องล่องหนทิ้งไปแล้วเช่นกัน */}
                     </tr>
                   );
                 })
