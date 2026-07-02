@@ -69,7 +69,6 @@ export default function MaintenanceDashboard() {
       setIsLoggingIn(false);
     } else {
       localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept);
-      localStorage.setItem('user_dept', user.DepartmentID);
       // 🌟 ล็อกอินผ่านปุ๊บ สั่งเปิด Intro 3 วินาที 🌟
       setShowIntro(true);
       setTimeout(() => {
