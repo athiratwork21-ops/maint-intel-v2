@@ -418,6 +418,10 @@ const loadInitialData = useCallback(async () => {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight text-white">
             <i className="bi bi-calendar3 text-emerald-400"></i> Roster <span className="text-emerald-400 font-light">Pro</span>
+            {/* 🌟 ป้ายแฉความจริง! */}
+            <span className="text-xs bg-slate-800 text-amber-400 px-3 py-1.5 rounded-md ml-2 border border-slate-700 font-mono">
+              [แผนกที่ระบบค้นหา: "{adminDept}"]
+            </span>
           </h1>
           {/* 🌟 แยกช่องเลือกวันที่เริ่มต้น - สิ้นสุดให้ชัดเจน */}
           <div className="flex flex-wrap items-center gap-3 mt-2">
