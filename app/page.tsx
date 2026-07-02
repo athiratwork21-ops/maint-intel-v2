@@ -20,8 +20,6 @@ export default function MaintenanceDashboard() {
 
   // 🚨 เติมบรรทัดนี้กลับเข้าไปครับ! (ตัวแปรเก็บแผนกที่หายไป)
   const [selectedDept, setSelectedDept] = useState('');
-
-  localStorage.setItem('user_dept', user.DepartmentID);
   
   // 🌟 เก็บค่า Location หลายตัวสำหรับ Fixture
   const [multiLocations, setMultiLocations] = useState<string[]>([]);
@@ -71,7 +69,7 @@ export default function MaintenanceDashboard() {
       setIsLoggingIn(false);
     } else {
       localStorage.setItem('activeDepartment', selectedDept); fetchDeptName(selectedDept);
-
+      localStorage.setItem('user_dept', user.DepartmentID);
       // 🌟 ล็อกอินผ่านปุ๊บ สั่งเปิด Intro 3 วินาที 🌟
       setShowIntro(true);
       setTimeout(() => {
