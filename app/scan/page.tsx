@@ -279,19 +279,26 @@ export default function RequestPartShoppingPage() {
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
           // =================================================================
-          // 🚨 ท่อนที่เพิ่มใหม่: สั่งเปิดตู้ Smart Cabinet (ESP32 Trigger) 🚨
+          // 🚨 ท่อนที่แก้ไขใหม่: สร้าง Ticket ใบใหม่ (INSERT) ให้ ESP32 ไปเปิดตู้ 🚨
           // =================================================================
           const cabinetIds = Array.from(locations);
+          
           if (cabinetIds.length > 0) {
-            // สั่งอัปเดต Status เป็น 'ReadyToPick' เฉพาะตู้ที่มีของในตะกร้า
+            // 1. เตรียมก้อนข้อมูล Ticket ใหม่ (ถ้าเบิกของจาก 2 ตู้พร้อมกัน มันก็จะสร้าง 2 ใบ)
+            const ticketsToInsert = cabinetIds.map(cabId => ({
+              CabinetID: cabId,
+              Status: 'ReadyToPick'
+            }));
+
+            // 2. สั่ง Insert (เพิ่มแถวใหม่) ลงไปในตาราง CabinetTickets ทันที
             const { error: cabErr } = await supabase
               .from('CabinetTickets')
-              .update({ Status: 'ReadyToPick' })
-              .in('CabinetID', cabinetIds); // .in คือการสั่งให้อัปเดตทีละหลายๆ ตู้พร้อมกันได้
+              .insert(ticketsToInsert);
 
             if (cabErr) {
-              console.error("Smart Cabinet Trigger Error:", cabErr);
-              // ถ้าเซิร์ฟเวอร์ ESP32 ฝั่งตู้พัง เราแค่ log ไว้ แต่ไม่ให้ระบบเว็บพัง (ช่างยังเบิกของในระบบต่อได้)
+              console.error("🚨 [ERROR] สร้าง Ticket เปิดตู้ไม่สำเร็จ:", cabErr);
+            } else {
+              console.log("✅ [SUCCESS] สร้าง Ticket สั่งเปิดตู้ให้ ESP32 เรียบร้อย:", ticketsToInsert);
             }
           }
           // =================================================================
