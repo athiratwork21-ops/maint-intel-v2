@@ -94,7 +94,7 @@ export default function MaintenanceDashboard() {
   const [isEditMachineModalOpen, setEditMachineModalOpen] = useState(false);
   const [editingMachineData, setEditingMachineData] = useState<any>(null);
   const [editingPartData, setEditingPartData] = useState<any>(null);
-  const [basicInfoModal, setBasicInfoModal] = useState<{ isOpen: boolean, type: 'line' | 'location' }>({ isOpen: false, type: 'line' });
+  const [basicInfoModal, setBasicInfoModal] = useState<{ isOpen: boolean, type: 'line' | 'location' | 'cabinet' }>({ isOpen: false, type: 'line' });
 
   const [consumables, setConsumables] = useState<any[]>([]);
   const [isNewConsumableModalOpen, setNewConsumableModalOpen] = useState(false);
@@ -140,8 +140,9 @@ export default function MaintenanceDashboard() {
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [linesMaster, setLinesMaster] = useState<any[]>([]);
   const [locationsMaster, setLocationsMaster] = useState<any[]>([]);
+  const [cabinetsMaster, setCabinetsMaster] = useState<any[]>([]); // 1. เพิ่มกล่องรับข้อมูล Cabinet
   const [prTrackingData, setPrTrackingData] = useState<any[]>([]); // สำหรับเก็บข้อมูลจากตาราง PurchaseTracking
-  const [prSearchQuery, setPrSearchQuery] = useState(''); // 🌟 เพิ่มตัวแปรนี้สำหรับช่องเสิร์ช PR
+  const [prSearchQuery, setPrSearchQuery] = useState(''); //  เพิ่มตัวแปรนี้สำหรับช่องเสิร์ช PR
   const [prLastUpdated, setPrLastUpdated] = useState<string | null>(null);
   useEffect(() => { setPrLastUpdated(localStorage.getItem('prLastUpdated')); }, []);
 
@@ -202,8 +203,10 @@ export default function MaintenanceDashboard() {
 
       const { data: lData } = await supabase.from('LineMaster').select('*').eq('DepartmentID', activeDept);
       const { data: locData } = await supabase.from('LocationMaster').select('*').eq('DepartmentID', activeDept);
+      const { data: cabData } = await supabase.from('CabinetMaster').select('*').eq('DepartmentID', activeDept); //  2. ดึงข้อมูลตู้
       setLinesMaster(lData || []);
       setLocationsMaster(locData || []);
+      setCabinetsMaster(cabData || []); // 2. เซ็ตค่า
 
       const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', activeDept);
       setConsumables(consData || []);
@@ -759,19 +762,33 @@ export default function MaintenanceDashboard() {
 
   const handleBasicInfoSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const value = formData.get('value') as string; let error; const activeDept = localStorage.getItem('activeDepartment');
-    if (basicInfoModal.type === 'line') { const res = await supabase.from('LineMaster').insert({ LineName: value, DepartmentID: activeDept }); error = res.error; }
-    else { const res = await supabase.from('LocationMaster').insert({ LocationName: value, DepartmentID: activeDept }); error = res.error; }
-    if (error) showToast(`Error: ${error.message}`, 'error'); else { showToast(`Information added successfully!`, 'success'); setBasicInfoModal({ isOpen: false, type: 'line' }); fetchAllData(); }
+    
+    // 🌟 ดักจับการเซฟตู้สมาร์ท
+    if (basicInfoModal.type === 'line') { 
+      const res = await supabase.from('LineMaster').insert({ LineName: value, DepartmentID: activeDept }); error = res.error; 
+    } else if (basicInfoModal.type === 'location') { 
+      const res = await supabase.from('LocationMaster').insert({ LocationName: value, DepartmentID: activeDept }); error = res.error; 
+    } else if (basicInfoModal.type === 'cabinet') { 
+      const res = await supabase.from('CabinetMaster').insert({ CabinetName: value, DepartmentID: activeDept }); error = res.error; 
+    }
+    
+    if (error) showToast(`Error: ${error.message}`, 'error'); 
+    else { showToast(`Information added successfully!`, 'success'); setBasicInfoModal({ isOpen: false, type: 'line' }); fetchAllData(); }
     setIsProcessing(false);
   };
 
-  const handleDeleteBasicInfo = async (type: 'line' | 'location', id: any) => {
+  // 🌟 อัปเดตให้ฟังก์ชันรับ type เป็น 'cabinet' ได้ (เส้นแดงตรงปุ่มถังขยะจะหายไปตรงนี้!)
+  const handleDeleteBasicInfo = async (type: 'line' | 'location' | 'cabinet', id: any) => {
     if (!confirm('Are you sure you want to delete this data?')) return;
-    const table = type === 'line' ? 'LineMaster' : 'LocationMaster';
-    const { error } = await supabase.from(table).delete().eq(type === 'line' ? 'LineName' : 'LocationName', id);
+    
+    let table = ''; let idField = '';
+    if (type === 'line') { table = 'LineMaster'; idField = 'LineName'; }
+    else if (type === 'location') { table = 'LocationMaster'; idField = 'LocationName'; }
+    else if (type === 'cabinet') { table = 'CabinetMaster'; idField = 'CabinetName'; }
+
+    const { error } = await supabase.from(table).delete().eq(idField, id);
     if (!error) { showToast('Deleted successfully!', 'success'); fetchAllData(); } else showToast(`Error: ${error.message}`, 'error');
   };
-
   const requestGroups = Object.values(pendingRequests.reduce((acc: any, req: any) => { const parts = req.RequestID.split('-'); const baseId = parts.length >= 3 ? `${parts[0]}-${parts[1]}` : req.RequestID; if (!acc[baseId]) { acc[baseId] = { baseId, pickerName: req.PickerName, createdAt: req.CreatedAt, items: [] }; } acc[baseId].items.push(req); return acc; }, {})).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   const handleApproveGroup = async (group: any) => {
@@ -1164,11 +1181,19 @@ export default function MaintenanceDashboard() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> Add {basicInfoModal.type === 'line' ? 'Production Line' : 'Cabinet Location'}</h3>
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> 
+                Add {basicInfoModal.type === 'line' ? 'Production Line' : basicInfoModal.type === 'location' ? 'Fixture Location' : 'Smart Cabinet'}
+              </h3>
               <button onClick={() => setBasicInfoModal({ isOpen: false, type: 'line' })} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all active:scale-95"><i className="bi bi-x-lg"></i></button>
             </div>
             <form className="p-8 space-y-5 bg-slate-50/30" onSubmit={handleBasicInfoSubmit}>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">{basicInfoModal.type === 'line' ? 'Line' : 'Location'} Name</label><input type="text" name="value" required placeholder={`e.g. ${basicInfoModal.type === 'line' ? 'EC01' : 'A01'}`} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-bold text-slate-800 text-sm shadow-sm" /></div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">
+                  {basicInfoModal.type === 'line' ? 'Line' : basicInfoModal.type === 'location' ? 'Fixture Location' : 'Cabinet'} Name
+                </label>
+                <input type="text" name="value" required placeholder={`e.g. ${basicInfoModal.type === 'line' ? 'EC01' : basicInfoModal.type === 'location' ? 'A01' : 'CAB-01'}`} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-bold text-slate-800 text-sm shadow-sm" />
+              </div>
               <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50 text-[15px]">{isProcessing ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i>Saving...</> : <><i className="bi bi-check-lg mr-2"></i>Save Data</>}</button>
             </form>
           </div>
@@ -1204,7 +1229,7 @@ export default function MaintenanceDashboard() {
                       defaultValue=""
                       options={[
                         { value: '', label: '-- Not specified --' },
-                        ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                        ...cabinetsMaster.map(cab => ({ value: cab.CabinetName, label: cab.CabinetName }))
                       ]}
                       placeholder="-- Not specified --"
                     />
@@ -1253,7 +1278,7 @@ export default function MaintenanceDashboard() {
                     defaultValue={editingConsumableData?.Location || ''}
                     options={[
                       { value: '', label: '-- Not specified --' },
-                      ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                      ...cabinetsMaster.map(cab => ({ value: cab.CabinetName, label: cab.CabinetName }))
                     ]}
                     placeholder="-- Not specified --"
                   />
@@ -1356,7 +1381,7 @@ export default function MaintenanceDashboard() {
                       defaultValue=""
                       options={[
                         { value: '', label: '-- Not specified --' },
-                        ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                        ...cabinetsMaster.map(cab => ({ value: cab.CabinetName, label: cab.CabinetName }))
                       ]}
                       placeholder="-- Not specified --"
                     />
@@ -1405,7 +1430,7 @@ export default function MaintenanceDashboard() {
                 defaultValue={editingPartData?.Location || ''}
                 options={[
                   { value: '', label: '-- Not specified --' },
-                  ...locationsMaster.map(loc => ({ value: loc.LocationName, label: loc.LocationName }))
+                  ...cabinetsMaster.map(cab => ({ value: cab.CabinetName, label: cab.CabinetName }))
                 ]}
                 placeholder="-- Not specified --"
               />
@@ -2723,12 +2748,16 @@ export default function MaintenanceDashboard() {
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="mb-6">
                 <h2 className="text-2xl font-black text-slate-800">Basic Information</h2>
-                <p className="text-slate-500 mt-1">Manage master data for cabinet locations and production lines.</p>
+                <p className="text-slate-500 mt-1">Manage master data for fixture locations, smart cabinets, and production lines.</p>
               </div>
-              <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              {/* ปรับ grid เป็นรองรับ 3 คอลัมน์บนหน้าจอใหญ่ */}
+              <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                
+                {/* 📦 กล่องที่ 1: Fixture Location (ปรับจาก Cabinet Location เดิม) */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-0 overflow-hidden">
-                  <div className="bg-[#0ea5e9] text-white p-5 flex justify-between items-center shrink-0">
-                    <h3 className="font-bold text-lg"><i className="bi bi-box-seam-fill mr-2"></i> Cabinet Location</h3>
+                  <div className="bg-[#6366f1] text-white p-5 flex justify-between items-center shrink-0">
+                    <h3 className="font-bold text-lg"><i className="bi bi-tools mr-2"></i> Fixture Location</h3>
                     <button onClick={() => setBasicInfoModal({ isOpen: true, type: 'location' })} className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"><i className="bi bi-plus-lg mr-1"></i> Add New</button>
                   </div>
                   <div className="overflow-y-auto flex-1 bg-slate-50/30">
@@ -2756,6 +2785,38 @@ export default function MaintenanceDashboard() {
                   </div>
                 </div>
 
+                {/* 🔒 กล่องที่ 2: Smart Cabinet (เพิ่มเข้ามาใหม่เพื่อโปรเจกต์ Smart Lock) */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-0 overflow-hidden">
+                  <div className="bg-[#10b981] text-white p-5 flex justify-between items-center shrink-0">
+                    <h3 className="font-bold text-lg"><i className="bi bi-safe2-fill mr-2"></i> Smart Cabinet</h3>
+                    <button onClick={() => setBasicInfoModal({ isOpen: true, type: 'cabinet' })} className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"><i className="bi bi-plus-lg mr-1"></i> Add New</button>
+                  </div>
+                  <div className="overflow-y-auto flex-1 bg-slate-50/30">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                        <tr className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">
+                          <th className="py-4 px-6 w-16">No.</th>
+                          <th className="py-4 px-6">Cabinet Name</th>
+                          <th className="py-4 px-6 text-center w-24">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm">
+                        {cabinetsMaster.map((cab, idx) => (
+                          <tr key={idx} className="border-b border-slate-100 hover:bg-white transition-colors">
+                            <td className="py-4 px-6 text-slate-400 font-bold">{idx + 1}</td>
+                            <td className="py-4 px-6 font-bold text-slate-700">{cab.CabinetName}</td>
+                            <td className="py-4 px-6 text-center">
+                              <button onClick={() => handleDeleteBasicInfo('cabinet', cab.CabinetName)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"><i className="bi bi-trash-fill"></i></button>
+                            </td>
+                          </tr>
+                        ))}
+                        {cabinetsMaster.length === 0 && (<tr><td colSpan={3} className="py-8 text-center text-slate-400">No data available</td></tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* ⚙️ กล่องที่ 3: Production Line (คงเดิมไว้) */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-0 overflow-hidden">
                   <div className="bg-[#0ea5e9] text-white p-5 flex justify-between items-center shrink-0">
                     <h3 className="font-bold text-lg"><i className="bi bi-diagram-3-fill mr-2"></i> Production Line</h3>
@@ -2785,6 +2846,7 @@ export default function MaintenanceDashboard() {
                     </table>
                   </div>
                 </div>
+
               </div>
             </div>
           )}

@@ -278,6 +278,23 @@ export default function RequestPartShoppingPage() {
           });
 
           const locationText = Array.from(locations).join(', ') || 'ไม่ระบุพิกัด';
+          // =================================================================
+          // 🚨 ท่อนที่เพิ่มใหม่: สั่งเปิดตู้ Smart Cabinet (ESP32 Trigger) 🚨
+          // =================================================================
+          const cabinetIds = Array.from(locations);
+          if (cabinetIds.length > 0) {
+            // สั่งอัปเดต Status เป็น 'ReadyToPick' เฉพาะตู้ที่มีของในตะกร้า
+            const { error: cabErr } = await supabase
+              .from('CabinetTickets')
+              .update({ Status: 'ReadyToPick' })
+              .in('CabinetID', cabinetIds); // .in คือการสั่งให้อัปเดตทีละหลายๆ ตู้พร้อมกันได้
+
+            if (cabErr) {
+              console.error("Smart Cabinet Trigger Error:", cabErr);
+              // ถ้าเซิร์ฟเวอร์ ESP32 ฝั่งตู้พัง เราแค่ log ไว้ แต่ไม่ให้ระบบเว็บพัง (ช่างยังเบิกของในระบบต่อได้)
+            }
+          }
+          // =================================================================
           
           // 🚨 เปลี่ยน .join(', ') เป็น .join('\n') เพื่อให้มันขึ้นบรรทัดใหม่
           const lineMsg = `🚨 ใบเบิกใหม่! (แผนก: ${activeDept})\n👨‍🔧 ผู้เบิก: ${pickerName}\n📦 รายการขอเบิก:\n${itemNames.join('\n')}\n👉 ผู้ดูแลโปรดตรวจสอบในระบบครับ`;
