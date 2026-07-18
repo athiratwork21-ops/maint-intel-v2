@@ -136,11 +136,22 @@ const loadInitialData = useCallback(async () => {
   }, [loadInitialData, adminDept]);
 
   const sortedEmployees = [...employees].sort((a, b) => {
+    // 1. เงื่อนไขที่ 1: เรียงตามตัวอักษรกะ (Shift)
     const shiftOrder: Record<string, number> = { '': 0, 'A': 1, 'B': 2 };
     const orderA = shiftOrder[a.shift_team || ''] ?? 99;
     const orderB = shiftOrder[b.shift_team || ''] ?? 99;
     
     if (orderA !== orderB) return orderA - orderB;
+
+    // 2. เงื่อนไขที่ 2: เรียงตามเลขกรุ๊ป (Group Number)
+    // 🚨 ข้อควรระวัง: บอสต้องเปลี่ยนคำว่า 'shift_group' ให้ตรงกับชื่อ Field จริงใน Database ของบอสนะครับ
+    // เช่น ถ้าในดาต้าใช้คำว่า group_no ก็เปลี่ยนเป็น a.group_no
+    const groupA = Number(a.group_team) || 0;
+    const groupB = Number(b.group_team) || 0;
+
+    if (groupA !== groupB) return groupA - groupB;
+
+    // 3. เงื่อนไขที่ 3: ถ้ากะเดียวกัน และเลขกรุ๊ปเดียวกัน ค่อยเรียงตามชื่อตัวอักษร
     return a.name.localeCompare(b.name);
   });
 
