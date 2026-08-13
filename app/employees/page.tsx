@@ -516,7 +516,7 @@ export default function ShiftRosterPro() {
             onClick={() => setActiveTool('O')} 
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${['O', 'NOT', 'PL'].includes(activeTool) ? 'bg-slate-600 text-white shadow-md' : 'bg-[#0f172a] text-slate-400 hover:text-white'}`}
           >
-            <div className={`w-2.5 h-2.5 rounded-full ${activeTool === 'NOT' ? 'bg-orange-500' : activeTool === 'PL' ? 'bg-red-500' : 'bg-slate-400'}`}></div> 
+            <div className={`w-2.5 h-2.5 rounded-full ${activeTool === 'NOT' ? 'bg-purple-500' : activeTool === 'PL' ? 'bg-red-500' : 'bg-slate-400'}`}></div> 
             {activeTool === 'NOT' ? 'NOT' : activeTool === 'PL' ? 'PL' : 'หยุด (O)'}
             <i className="bi bi-chevron-down text-[10px] ml-1 opacity-50"></i>
           </button>
@@ -525,8 +525,8 @@ export default function ShiftRosterPro() {
             <button onClick={() => setActiveTool('O')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
               <div className="w-2 h-2 rounded-full bg-slate-400"></div> หยุด (O)
             </button>
-            <button onClick={() => setActiveTool('NOT')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-orange-400 hover:bg-orange-500/20 transition-colors">
-              <div className="w-2 h-2 rounded-full bg-orange-500"></div> ไม่มา OT (NOT)
+            <button onClick={() => setActiveTool('NOT')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-purple-400 hover:bg-orange-500/20 transition-colors">
+              <div className="w-2 h-2 rounded-full bg-purple-500"></div> ไม่มา OT (NOT)
             </button>
             <button onClick={() => setActiveTool('PL')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors">
               <div className="w-2 h-2 rounded-full bg-red-500"></div> ลางาน (PL)
@@ -662,7 +662,7 @@ export default function ShiftRosterPro() {
                         if (cell?.shift === 'D') { cellBg = 'bg-emerald-500 shadow-sm border-emerald-600'; textColor = 'text-white'; }
                         if (cell?.shift === 'N') { cellBg = 'bg-orange-500 shadow-sm border-orange-600'; textColor = 'text-white'; }
                         if (cell?.shift === 'O') { cellBg = 'bg-slate-600 shadow-sm border-slate-700'; textColor = 'text-white'; }
-                        if (cell?.shift === 'NOT') { cellBg = 'bg-orange-600 shadow-sm border-orange-700'; textColor = 'text-white'; }
+                        if (cell?.shift === 'NOT') { cellBg = 'bg-purple-600 shadow-sm border-purple-700'; textColor = 'text-white'; }
                         if (cell?.shift === 'PL') { cellBg = 'bg-red-600 shadow-sm border-red-700'; textColor = 'text-white'; }
 
                         return (
