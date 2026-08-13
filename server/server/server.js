@@ -21,7 +21,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ==========================================
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
-const GEMINI_API_KEY = "AIzaSyBSROqTlvnbHw9IW8OfL7XTkZRXqr37ooU";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
