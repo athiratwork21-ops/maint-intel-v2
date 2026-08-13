@@ -55,7 +55,7 @@ async function generateTroubleshootingSummary(videoFilePath, alarmCode) {
     }
 
     console.log("\n🧠 [AI] วิดีโอพร้อมแล้ว! กำลังวิเคราะห์และเขียนสรุป...");
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `
       คุณคือวิศวกรซ่อมบำรุงระดับซีเนียร์ หน้าที่ของคุณคือดูคลิปวิดีโอนี้
       แล้วสรุปขั้นตอนการซ่อมแซม (Troubleshooting) ออกมาเป็นข้อๆ (1. 2. 3. ...)
