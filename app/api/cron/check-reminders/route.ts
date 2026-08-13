@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// 🚨 บอสเพิ่มบรรทัดนี้ลงไปตรงนี้เลยครับ! สั่งห้ามจำแคช (Force Dynamic)
 export const dynamic = 'force-dynamic';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_managerfocus_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_managerfocus_ANON_KEY!
-);
 
 export async function GET(req: Request) {
   try {
+    // 💡 ย้ายเข้ามาสร้างในนี้! และใส่ || 'https://dummy.supabase.co' กันเหนียวไว้
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_managerfocus_URL || 'https://dummy.supabase.co';
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_managerfocus_ANON_KEY || 'dummy-key';
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const now = new Date();
     const thaiTime = new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Asia/Bangkok',
