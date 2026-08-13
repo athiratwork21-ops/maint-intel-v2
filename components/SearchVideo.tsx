@@ -91,7 +91,7 @@ export default function SearchVideo() {
     if (!isConfirm) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/delete-video/${selectedVideo.id}`, { 
+      const response = await fetch(`https://maint-intel-v2.onrender.com/api/delete-video/${selectedVideo.id}`, { 
         method: 'DELETE' 
       });
       
