@@ -10,7 +10,10 @@ export const metadata: Metadata = {
   openGraph: {
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        url: '/og-cover.png', 
+        width: 1200,
+        height: 630,
+        alt: 'Maintenance Intelligence Cover',
       },
     ],
   },
@@ -18,7 +21,11 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     images: [
       {
-        url: 'https://bolt.new/static/og_default.png',
+        // 👇 แก้ตรงนี้ให้เหมือนกันด้วยครับบอส
+        url: '/og-cover.png', 
+        width: 1200,
+        height: 630,
+        alt: 'Maintenance Intelligence Cover',
       },
     ],
   },
