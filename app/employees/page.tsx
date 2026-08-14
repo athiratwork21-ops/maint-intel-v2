@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabaseServiceWork } from '../../lib/supabase-servicework';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
@@ -29,6 +29,9 @@ export default function ShiftRosterPro() {
   
   // State จำแผนกของแอดมิน
   const [adminDept, setAdminDept] = useState('');
+
+  // สร้างเสาอากาศ (Channel) เตรียมไว้รับ-ส่งข้อมูล Real-time
+  const channelRef = useRef<any>(null);
 
   useEffect(() => {
     // ล้วงกระเป๋าเอาแผนกที่ล็อคอินมาใช้แบบเพียวๆ
@@ -140,6 +143,36 @@ export default function ShiftRosterPro() {
     }
   }, [loadInitialData, adminDept]);
 
+  // ระบบดักฟังวิทยุ Real-time ทำงานที่นี่
+  useEffect(() => {
+    if (adminDept) {
+      const channel = supabaseServiceWork.channel(`roster_sync_${adminDept}`);
+      channelRef.current = channel;
+
+      channel
+        .on('broadcast', { event: 'sync_cell' }, (payload) => {
+          const { empId, dateStr, cellData } = payload.payload;
+          setSchedule(prev => {
+            const newState = { ...prev };
+            if (cellData === null) {
+              delete newState[`${empId}_${dateStr}`]; 
+            } else {
+              newState[`${empId}_${dateStr}`] = cellData; 
+            }
+            return newState;
+          });
+        })
+        .on('broadcast', { event: 'roster_saved' }, () => {
+          loadInitialData(); 
+        })
+        .subscribe();
+
+      return () => {
+        supabaseServiceWork.removeChannel(channel);
+      };
+    }
+  }, [adminDept, loadInitialData]);
+
   const sortedEmployees = [...employees].sort((a, b) => {
     const shiftOrder: Record<string, number> = { '': 0, 'A': 1, 'B': 2 };
     const orderA = shiftOrder[a.shift_team || ''] ?? 99;
@@ -207,24 +240,44 @@ export default function ShiftRosterPro() {
       if (activeTool === '6S' && currentCell?.is6S === true) return prev; 
 
       const newState = { ...prev };
+      let newCellData: CellData | null = null;
+
       if (activeTool === 'ERASE') {
         delete newState[key];
+        newCellData = null;
       } else if (activeTool === 'OT') {
         if (currentCell && (currentCell.shift === 'D' || currentCell.shift === 'N')) {
-          newState[key] = { ...currentCell, isOT: true }; 
+          newCellData = { ...currentCell, isOT: true };
+          newState[key] = newCellData; 
+        } else {
+          return prev;
         }
       } else if (activeTool === '6S') {
         if (currentCell) {
-          newState[key] = { ...currentCell, is6S: true }; 
+          newCellData = { ...currentCell, is6S: true };
+          newState[key] = newCellData; 
+        } else {
+          return prev;
         }
       } else {
         // เปลี่ยนกะหลัก แต่ยังคงรักษาสถานะ 6S ไว้ (ไม่ลบหายไป)
-        newState[key] = { 
+        newCellData = { 
           shift: activeTool as 'D'|'N'|'O'|'NOT'|'PL', 
           isOT: (activeTool === 'O' || activeTool === 'NOT' || activeTool === 'PL') ? false : (currentCell?.isOT || false),
           is6S: currentCell?.is6S || false 
         };
+        newState[key] = newCellData;
       }
+
+      // ส่งข้อมูลกระซิบไปบอกเพื่อนในห้องแชท
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'sync_cell',
+          payload: { empId, dateStr, cellData: newCellData }
+        }).catch(() => {});
+      }
+
       return newState;
     });
   };
@@ -353,6 +406,15 @@ export default function ShiftRosterPro() {
       if (upsertData.length > 0) {
         const { error } = await supabaseServiceWork.from('schedules').upsert(upsertData, { onConflict: 'employee_id, work_date' });
         if (error) throw error;
+      }
+
+      // ประกาศให้ทุกคนในห้องรู้ว่ามีการเซฟแล้ว
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'roster_saved',
+          payload: {}
+        }).catch(() => {});
       }
 
       alert('บันทึกสำเร็จเรียบร้อยครับ!');
@@ -525,7 +587,7 @@ export default function ShiftRosterPro() {
             <button onClick={() => setActiveTool('O')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
               <div className="w-2 h-2 rounded-full bg-slate-400"></div> หยุด (O)
             </button>
-            <button onClick={() => setActiveTool('NOT')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-purple-400 hover:bg-orange-500/20 transition-colors">
+            <button onClick={() => setActiveTool('NOT')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-purple-400 hover:bg-purple-500/20 transition-colors">
               <div className="w-2 h-2 rounded-full bg-purple-500"></div> ไม่มา OT (NOT)
             </button>
             <button onClick={() => setActiveTool('PL')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors">
