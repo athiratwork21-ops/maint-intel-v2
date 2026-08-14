@@ -4,13 +4,17 @@ import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
+// 🌟 สร้างตัวแปรสุ่มตัวเลขเวลาปัจจุบัน เพื่อหลอก Cache ของ LINE/Facebook
+const cacheBuster = Date.now();
+
 export const metadata: Metadata = {
   title: 'Maint. Intel',
   description: 'ระบบจัดการอะไหล่',
   openGraph: {
     images: [
       {
-        url: '/og-cover.png', 
+        // 👇 อัปเกรดเป็นลิงก์เต็ม + แนบเลข Cache Buster อัตโนมัติ
+        url: `https://maintintelv2.vercel.app/og-cover.png?v=${cacheBuster}`, 
         width: 1200,
         height: 630,
         alt: 'Maintenance Intelligence Cover',
@@ -21,8 +25,8 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     images: [
       {
-        // 👇 แก้ตรงนี้ให้เหมือนกันด้วยครับบอส
-        url: '/og-cover.png', 
+        // 👇 ทำแบบเดียวกันในส่วนของ Twitter
+        url: `https://maintintelv2.vercel.app/og-cover.png?v=${cacheBuster}`, 
         width: 1200,
         height: 630,
         alt: 'Maintenance Intelligence Cover',
