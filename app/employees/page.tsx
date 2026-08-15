@@ -8,7 +8,6 @@ type CellData = { shift: 'D' | 'N' | 'O' | 'NOT' | 'PL'; isOT: boolean; is6S?: b
 type ScheduleState = Record<string, CellData>;
 type HolidayState = Record<string, string>;
 
-// ฟังก์ชันช่วยเหลือแปลงวันที่เป็น YYYY-MM-DD
 const formatDateStr = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -17,7 +16,6 @@ const formatDateStr = (date: Date) => {
 };
 
 export default function ShiftRosterPro() {
-  // ตั้งค่าเริ่มต้นเป็น วันแรก ถึง วันสุดท้าย ของเดือนปัจจุบัน
   const [startDate, setStartDate] = useState(() => {
     const now = new Date();
     return formatDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -27,20 +25,14 @@ export default function ShiftRosterPro() {
     return formatDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
   });
   
-  // State จำแผนกของแอดมิน
   const [adminDept, setAdminDept] = useState('');
-
-  // สร้างเสาอากาศ (Channel) เตรียมไว้รับ-ส่งข้อมูล Real-time
   const channelRef = useRef<any>(null);
 
   useEffect(() => {
-    // ล้วงกระเป๋าเอาแผนกที่ล็อคอินมาใช้แบบเพียวๆ
     const dept = localStorage.getItem('activeDepartment');
-    
     if (dept) {
       setAdminDept(dept);
     } else {
-      // ระบบป้องกันคนแอบเข้า: ถ้าไม่มีแผนก
       alert("ไม่พบข้อมูลแผนก กรุณาล็อคอินเข้าสู่ระบบก่อนครับ!");
     }
   }, []);
@@ -53,7 +45,7 @@ export default function ShiftRosterPro() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isCapturing, setIsCapturing] = useState(false); // State สำหรับควบคุมการแคปจอ
+  const [isCapturing, setIsCapturing] = useState(false); 
 
   const [activeTool, setActiveTool] = useState<'D' | 'N' | 'O' | 'NOT' | 'PL' | 'OT' | '6S' | 'ERASE'>('D');
   const [isDragging, setIsDragging] = useState(false);
@@ -66,14 +58,19 @@ export default function ShiftRosterPro() {
   const [selectedForExport, setSelectedForExport] = useState<string[]>([]);
   const [violations, setViolations] = useState<string[]>([]);
 
-  // คำนวณวันที่ทั้งหมดในช่่วงที่เลือก (ถ้าวันเริ่มต้น > สิ้นสุด จะส่งค่าว่างกลับไป)
+  // State สำหรับ Modal แก้ไขข้อมูลพนักงาน
+  const [editingEmp, setEditingEmp] = useState<any>(null);
+  const [editForm, setEditForm] = useState<{name: string; phone: string; line_name: string; photo_url: string; photo_file: File | null; photo_preview: string}>({ 
+    name: '', phone: '', line_name: '', photo_url: '', photo_file: null, photo_preview: '' 
+  });
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const dateList = useMemo(() => {
     const list: Date[] = [];
     const current = new Date(startDate);
     const end = new Date(endDate);
-    
-    if (current > end) return []; // คืนค่าว่างถ้าวันที่สลับกัน
-    
+    if (current > end) return []; 
     while (current <= end) {
       list.push(new Date(current));
       current.setDate(current.getDate() + 1);
@@ -83,10 +80,8 @@ export default function ShiftRosterPro() {
 
   const loadInitialData = useCallback(async () => {
     if (!adminDept) return;
-
     setIsLoading(true);
     try {
-      // ดึงพนักงาน เฉพาะที่ DepartmentID ตรงกับแอดมิน
       const { data: empData, error: empErr } = await supabaseServiceWork
         .from('employees')
         .select('*')
@@ -99,7 +94,6 @@ export default function ShiftRosterPro() {
       setSelectedForExport(loadedEmps.map(e => e.id));
 
       const empIds = loadedEmps.map(e => e.id);
-      
       if (empIds.length === 0) {
         setSchedule({});
         setBackupSchedule({});
@@ -107,7 +101,6 @@ export default function ShiftRosterPro() {
         return;
       }
 
-      // ดึงตารางงาน เฉพาะพนักงาน
       const { data: schedData, error: schedErr } = await supabaseServiceWork
         .from('schedules')
         .select('*')
@@ -137,13 +130,9 @@ export default function ShiftRosterPro() {
   }, [startDate, endDate, adminDept]);
 
   useEffect(() => {
-    // โหลดข้อมูลตารางทันที ที่แอดมินล็อคอิน
-    if (adminDept) {
-      loadInitialData();
-    }
+    if (adminDept) loadInitialData();
   }, [loadInitialData, adminDept]);
 
-  // ระบบดักฟังวิทยุ Real-time ทำงานที่นี่
   useEffect(() => {
     if (adminDept) {
       const channel = supabaseServiceWork.channel(`roster_sync_${adminDept}`);
@@ -154,11 +143,8 @@ export default function ShiftRosterPro() {
           const { empId, dateStr, cellData } = payload.payload;
           setSchedule(prev => {
             const newState = { ...prev };
-            if (cellData === null) {
-              delete newState[`${empId}_${dateStr}`]; 
-            } else {
-              newState[`${empId}_${dateStr}`] = cellData; 
-            }
+            if (cellData === null) delete newState[`${empId}_${dateStr}`]; 
+            else newState[`${empId}_${dateStr}`] = cellData; 
             return newState;
           });
         })
@@ -167,9 +153,7 @@ export default function ShiftRosterPro() {
         })
         .subscribe();
 
-      return () => {
-        supabaseServiceWork.removeChannel(channel);
-      };
+      return () => { supabaseServiceWork.removeChannel(channel); };
     }
   }, [adminDept, loadInitialData]);
 
@@ -177,18 +161,13 @@ export default function ShiftRosterPro() {
     const shiftOrder: Record<string, number> = { '': 0, 'A': 1, 'B': 2 };
     const orderA = shiftOrder[a.shift_team || ''] ?? 99;
     const orderB = shiftOrder[b.shift_team || ''] ?? 99;
-    
     if (orderA !== orderB) return orderA - orderB;
-
     const groupA = Number(a.group_team) || 0;
     const groupB = Number(b.group_team) || 0;
-
     if (groupA !== groupB) return groupA - groupB;
-
     return a.name.localeCompare(b.name);
   });
 
-  // ตัวแปรสำหรับคัดกรองพนักงานเวลาแคปจอ
   const employeesToRender = isCapturing 
     ? sortedEmployees.filter(emp => selectedForExport.includes(emp.id)) 
     : sortedEmployees;
@@ -202,16 +181,13 @@ export default function ShiftRosterPro() {
     };
   };
 
-  // ฟังก์ชันจัดการการเปลี่ยนวันที่ (ปลดล็อกเงื่อนไขแล้ว)
   const handleDateRangeChange = (field: 'start' | 'end', value: string) => {
     if (!value) return;
     if (isEditMode) {
       if (!confirm('ข้อมูลยังไม่ได้บันทึก ยืนยันที่จะเปลี่ยนช่วงเวลาหรือไม่?')) return;
     }
-    
     const newStart = field === 'start' ? value : startDate;
     const newEnd = field === 'end' ? value : endDate;
-    
     setStartDate(newStart);
     setEndDate(newEnd);
     setIsEditMode(false);
@@ -249,18 +225,13 @@ export default function ShiftRosterPro() {
         if (currentCell && (currentCell.shift === 'D' || currentCell.shift === 'N')) {
           newCellData = { ...currentCell, isOT: true };
           newState[key] = newCellData; 
-        } else {
-          return prev;
-        }
+        } else return prev;
       } else if (activeTool === '6S') {
         if (currentCell) {
           newCellData = { ...currentCell, is6S: true };
           newState[key] = newCellData; 
-        } else {
-          return prev;
-        }
+        } else return prev;
       } else {
-        // เปลี่ยนกะหลัก แต่ยังคงรักษาสถานะ 6S ไว้ (ไม่ลบหายไป)
         newCellData = { 
           shift: activeTool as 'D'|'N'|'O'|'NOT'|'PL', 
           isOT: (activeTool === 'O' || activeTool === 'NOT' || activeTool === 'PL') ? false : (currentCell?.isOT || false),
@@ -269,15 +240,11 @@ export default function ShiftRosterPro() {
         newState[key] = newCellData;
       }
 
-      // ส่งข้อมูลกระซิบไปบอกเพื่อนในห้องแชท
       if (channelRef.current) {
         channelRef.current.send({
-          type: 'broadcast',
-          event: 'sync_cell',
-          payload: { empId, dateStr, cellData: newCellData }
+          type: 'broadcast', event: 'sync_cell', payload: { empId, dateStr, cellData: newCellData }
         }).catch(() => {});
       }
-
       return newState;
     });
   };
@@ -308,9 +275,7 @@ export default function ShiftRosterPro() {
         if (cell && (cell.shift === 'D' || cell.shift === 'N')) {
           consecutiveWorkDays++;
           if (consecutiveWorkDays > 6 && !newViolations.includes(emp.id)) newViolations.push(emp.id);
-        } else {
-          consecutiveWorkDays = 0;
-        }
+        } else consecutiveWorkDays = 0;
       });
     });
     setViolations(newViolations);
@@ -330,7 +295,6 @@ export default function ShiftRosterPro() {
         DepartmentID: adminDept
       });
       if (error) throw error;
-
       alert('เพิ่มพนักงานสำเร็จ!');
       setNewEmpId(''); setNewEmpName(''); setNewEmpShift(''); setNewEmpGroup('');
       loadInitialData(); 
@@ -344,7 +308,80 @@ export default function ShiftRosterPro() {
         const { error } = await supabaseServiceWork.from('employees').delete().eq('id', empId);
         if (error) throw error;
         loadInitialData();
+        setEditingEmp(null); 
       } catch (err: any) { alert(`ลบพนักงานไม่สำเร็จ: ${err.message}`); }
+    }
+  };
+
+  // ฟังก์ชันเปิด Modal แก้ไขพนักงาน
+  const handleOpenEditModal = (emp: any) => {
+    setEditingEmp(emp);
+    setEditForm({
+      name: emp.name || '',
+      phone: emp.phone || '',
+      line_name: emp.line_name || '',
+      photo_url: emp.photo_url || '',
+      photo_file: null,
+      photo_preview: ''
+    });
+  };
+
+  // ฟังก์ชันรับไฟล์รูปภาพเมื่อผู้ใช้เลือกไฟล์
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setEditForm(prev => ({
+        ...prev,
+        photo_file: file,
+        photo_preview: URL.createObjectURL(file) 
+      }));
+    }
+  };
+
+  // ฟังก์ชันกดบันทึกข้อมูลพนักงานลง Supabase พร้อมอัปโหลดรูป
+  const handleSaveEmpDetails = async () => {
+    setIsUploading(true);
+    try {
+      let finalPhotoUrl = editForm.photo_url;
+
+      // ถ้ามีการเลือกไฟล์รูปใหม่ ให้ทำการอัปโหลดขึ้น Storage ก่อน
+      if (editForm.photo_file) {
+        const fileExt = editForm.photo_file.name.split('.').pop();
+        const fileName = `${editingEmp.id}-${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError } = await supabaseServiceWork.storage
+          .from('profiles')
+          .upload(fileName, editForm.photo_file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        // ดึง URL แบบ Public ของรูปที่เพิ่งอัปโหลด
+        const { data: publicUrlData } = supabaseServiceWork.storage
+          .from('profiles')
+          .getPublicUrl(fileName);
+
+        finalPhotoUrl = publicUrlData.publicUrl;
+      }
+
+      // นำข้อมูลทั้งหมดและ URL รูปไปเซฟลง Table employees
+      const { error: updateError } = await supabaseServiceWork.from('employees')
+        .update({
+          name: editForm.name,
+          phone: editForm.phone,
+          line_name: editForm.line_name,
+          photo_url: finalPhotoUrl
+        })
+        .eq('id', editingEmp.id);
+      
+      if (updateError) throw updateError;
+      
+      alert('อัปเดตข้อมูลพนักงานสำเร็จ!');
+      setEditingEmp(null);
+      loadInitialData(); 
+    } catch (err: any) {
+      alert(`อัปเดตพัง: ${err.message}`);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -408,13 +445,8 @@ export default function ShiftRosterPro() {
         if (error) throw error;
       }
 
-      // ประกาศให้ทุกคนในห้องรู้ว่ามีการเซฟแล้ว
       if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'roster_saved',
-          payload: {}
-        }).catch(() => {});
+        channelRef.current.send({ type: 'broadcast', event: 'roster_saved', payload: {} }).catch(() => {});
       }
 
       alert('บันทึกสำเร็จเรียบร้อยครับ!');
@@ -455,29 +487,18 @@ export default function ShiftRosterPro() {
 
   const handleCaptureImage = async () => {
     if (selectedForExport.length === 0) return alert('กรุณาเลือกพนักงานที่ต้องการจับภาพหน้าจอครับ!');
-    
     setIsCapturing(true);
-    
-    // หน่วงเวลาเล็กน้อยเพื่อให้ React ซ่อนคนที่ไม่เกี่ยวออกไปก่อนแคปจอ
     setTimeout(async () => {
       const tableEl = document.getElementById('roster-capture-area');
-      if (!tableEl) {
-        setIsCapturing(false);
-        return;
-      }
-      
+      if (!tableEl) return setIsCapturing(false);
       try {
-        const canvas = await html2canvas(tableEl, {
-          backgroundColor: '#0f172a',
-          scale: 2 
-        });
+        const canvas = await html2canvas(tableEl, { backgroundColor: '#0f172a', scale: 2 });
         const image = canvas.toDataURL("image/png");
         const link = document.createElement('a');
         link.href = image;
         link.download = `Roster_Capture_${startDate}.png`;
         link.click();
       } catch (err) {
-        console.error(err);
         alert('แคปจอไม่สำเร็จครับ ลองอีกครั้ง');
       } finally {
         setIsCapturing(false);
@@ -490,47 +511,31 @@ export default function ShiftRosterPro() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-6 font-sans select-none flex flex-col h-screen overflow-hidden">
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-6 font-sans select-none flex flex-col h-screen overflow-hidden relative">
       
-      {/* Header Section */}
       <div className="max-w-[1500px] w-full mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight text-white">
             <i className="bi bi-calendar3 text-emerald-400"></i> Roster <span className="text-emerald-400 font-light">Pro</span>
           </h1>
-          {/* แยกช่องเลือกวันที่เริ่มต้น - สิ้นสุดให้ชัดเจน */}
           <div className="flex flex-wrap items-center gap-3 mt-2">
             <div className="flex items-center gap-2">
               <span className="text-slate-400 font-medium text-sm">เริ่มต้น:</span>
-              <input 
-                type="date" value={startDate} onChange={(e) => handleDateRangeChange('start', e.target.value)}
-                className="bg-[#1e293b] border border-slate-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-inner outline-none focus:border-emerald-500 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer"
-              />
+              <input type="date" value={startDate} onChange={(e) => handleDateRangeChange('start', e.target.value)} className="bg-[#1e293b] border border-slate-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-inner outline-none focus:border-emerald-500 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer" />
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-400 font-medium text-sm">สิ้นสุด:</span>
-              <input 
-                type="date" value={endDate} onChange={(e) => handleDateRangeChange('end', e.target.value)}
-                className="bg-[#1e293b] border border-slate-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-inner outline-none focus:border-emerald-500 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer"
-              />
+              <input type="date" value={endDate} onChange={(e) => handleDateRangeChange('end', e.target.value)} className="bg-[#1e293b] border border-slate-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-inner outline-none focus:border-emerald-500 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)] cursor-pointer" />
             </div>
-            <button onClick={loadInitialData} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300 transition-colors" title="รีเฟรชข้อมูลล่าสุด">
-              <i className="bi bi-arrow-clockwise"></i>
-            </button>
-            <span className="text-xs text-emerald-500/70 ml-1 font-medium bg-emerald-500/10 px-2 py-1 rounded-md">
-              (รวม {dateList.length} วัน)
-            </span>
+            <button onClick={loadInitialData} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300 transition-colors" title="รีเฟรชข้อมูลล่าสุด"><i className="bi bi-arrow-clockwise"></i></button>
+            <span className="text-xs text-emerald-500/70 ml-1 font-medium bg-emerald-500/10 px-2 py-1 rounded-md">(รวม {dateList.length} วัน)</span>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center bg-[#1e293b] p-1.5 rounded-xl border border-slate-700 shadow-inner">
-            <button onClick={() => toggleEditMode(false)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${!isEditMode ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
-              <i className="bi bi-eye"></i> ดูข้อมูล
-            </button>
-            <button onClick={() => toggleEditMode(true)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${isEditMode ? 'bg-amber-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
-              <i className="bi bi-pencil"></i> แก้ไข
-            </button>
+            <button onClick={() => toggleEditMode(false)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${!isEditMode ? 'bg-blue-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-eye"></i> ดูข้อมูล</button>
+            <button onClick={() => toggleEditMode(true)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${isEditMode ? 'bg-amber-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}><i className="bi bi-pencil"></i> แก้ไข</button>
           </div>
 
           <div className="w-px h-8 bg-slate-700 hidden md:block"></div>
@@ -540,24 +545,16 @@ export default function ShiftRosterPro() {
               <input type="text" value={newEmpId} onChange={e => setNewEmpId(e.target.value)} placeholder="รหัส..." className="w-20 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 font-medium" />
               <input type="text" value={newEmpName} onChange={e => setNewEmpName(e.target.value)} placeholder="ชื่อ-สกุล..." className="w-32 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 font-medium" />
               <select value={newEmpShift} onChange={e => setNewEmpShift(e.target.value)} className="w-20 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-2 py-2.5 outline-none focus:border-emerald-500 font-medium appearance-none">
-                <option value="">ไม่มีกะ</option>
-                <option value="A">Shift A</option>
-                <option value="B">Shift B</option>
+                <option value="">ไม่มีกะ</option><option value="A">Shift A</option><option value="B">Shift B</option>
               </select>
               <input type="text" value={newEmpGroup} onChange={e => setNewEmpGroup(e.target.value)} placeholder="กรุ๊ป (เช่น G1)" className="w-24 bg-[#1e293b] border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 outline-none focus:border-emerald-500 font-medium" />
-              <button onClick={handleAddEmployee} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2.5 rounded-lg text-xs font-medium border border-slate-600 transition-colors flex items-center gap-1">
-                <i className="bi bi-person-plus"></i> เพิ่ม
-              </button>
+              <button onClick={handleAddEmployee} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2.5 rounded-lg text-xs font-medium border border-slate-600 transition-colors flex items-center gap-1"><i className="bi bi-person-plus"></i> เพิ่ม</button>
             </div>
           )}
 
           <div className="flex items-center gap-2">
-            <button onClick={handleCaptureImage} className="bg-[#1e293b] hover:bg-cyan-900/50 text-cyan-400 border border-cyan-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95">
-              <i className="bi bi-camera"></i> จับภาพหน้าจอ
-            </button>
-            <button onClick={handleExportExcel} className="bg-[#1e293b] hover:bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95">
-              <i className="bi bi-file-earmark-excel"></i> ส่งออก SWD
-            </button>
+            <button onClick={handleCaptureImage} className="bg-[#1e293b] hover:bg-cyan-900/50 text-cyan-400 border border-cyan-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95"><i className="bi bi-camera"></i> จับภาพหน้าจอ</button>
+            <button onClick={handleExportExcel} className="bg-[#1e293b] hover:bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95"><i className="bi bi-file-earmark-excel"></i> ส่งออก SWD</button>
             <button onClick={handleSaveToSupabase} disabled={!isEditMode || isSaving} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-lg flex items-center gap-2 ${isEditMode && !isSaving ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'}`}>
               {isSaving ? <><i className="bi bi-arrow-repeat animate-spin"></i> บันทึก...</> : <><i className="bi bi-cloud-arrow-up"></i> บันทึกตาราง</>}
             </button>
@@ -565,34 +562,21 @@ export default function ShiftRosterPro() {
         </div>
       </div>
 
-      {/* Toolbar เครื่องมือทาสี */}
-      {/* เปลี่ยนจาก overflow-hidden เป็น overflow-visible เพื่อให้ Dropdown โผล่ทะลุได้ */}
       <div className={`max-w-[1500px] w-full mx-auto flex items-center gap-3 shrink-0 bg-[#1e293b]/50 p-2 rounded-xl border border-slate-700/50 transition-all duration-300 ${isEditMode ? 'mb-4 opacity-100 max-h-32 overflow-visible' : 'mb-0 opacity-0 max-h-0 border-transparent py-0 overflow-hidden'}`}>
         <span className="text-xs font-semibold text-slate-400 px-3 uppercase tracking-widest flex items-center gap-2"><i className="bi bi-brush"></i> พู่กัน:</span>
         <button onClick={() => setActiveTool('D')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTool === 'D' ? 'bg-emerald-500 text-white shadow-md' : 'bg-[#0f172a] text-slate-400 hover:text-emerald-400'}`}><div className="w-2.5 h-2.5 rounded-full bg-emerald-400"></div> เช้า (D)</button>
         <button onClick={() => setActiveTool('N')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTool === 'N' ? 'bg-orange-500 text-white shadow-md' : 'bg-[#0f172a] text-slate-400 hover:text-orange-400'}`}><div className="w-2.5 h-2.5 rounded-full bg-orange-400"></div> ดึก (N)</button>
         
-        {/* กลุ่มปุ่มหยุดงาน (เพิ่ม Dropdown เมนู) */}
         <div className="relative group">
-          <button 
-            onClick={() => setActiveTool('O')} 
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${['O', 'NOT', 'PL'].includes(activeTool) ? 'bg-slate-600 text-white shadow-md' : 'bg-[#0f172a] text-slate-400 hover:text-white'}`}
-          >
+          <button onClick={() => setActiveTool('O')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${['O', 'NOT', 'PL'].includes(activeTool) ? 'bg-slate-600 text-white shadow-md' : 'bg-[#0f172a] text-slate-400 hover:text-white'}`}>
             <div className={`w-2.5 h-2.5 rounded-full ${activeTool === 'NOT' ? 'bg-purple-500' : activeTool === 'PL' ? 'bg-red-500' : 'bg-slate-400'}`}></div> 
             {activeTool === 'NOT' ? 'NOT' : activeTool === 'PL' ? 'PL' : 'หยุด (O)'}
             <i className="bi bi-chevron-down text-[10px] ml-1 opacity-50"></i>
           </button>
-          
           <div className="absolute top-full left-0 mt-2 bg-[#1e293b] border border-slate-700 rounded-lg shadow-xl p-1.5 z-50 flex flex-col gap-1 min-w-[140px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-            <button onClick={() => setActiveTool('O')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors">
-              <div className="w-2 h-2 rounded-full bg-slate-400"></div> หยุด (O)
-            </button>
-            <button onClick={() => setActiveTool('NOT')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-purple-400 hover:bg-purple-500/20 transition-colors">
-              <div className="w-2 h-2 rounded-full bg-purple-500"></div> ไม่มา OT (NOT)
-            </button>
-            <button onClick={() => setActiveTool('PL')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors">
-              <div className="w-2 h-2 rounded-full bg-red-500"></div> ลางาน (PL)
-            </button>
+            <button onClick={() => setActiveTool('O')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"><div className="w-2 h-2 rounded-full bg-slate-400"></div> หยุด (O)</button>
+            <button onClick={() => setActiveTool('NOT')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-purple-400 hover:bg-purple-500/20 transition-colors"><div className="w-2 h-2 rounded-full bg-purple-500"></div> ไม่มา OT (NOT)</button>
+            <button onClick={() => setActiveTool('PL')} className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"><div className="w-2 h-2 rounded-full bg-red-500"></div> ลางาน (PL)</button>
           </div>
         </div>
 
@@ -604,12 +588,9 @@ export default function ShiftRosterPro() {
 
       <div className="max-w-[1500px] w-full mx-auto bg-[#1e293b]/50 border border-slate-700/50 rounded-2xl flex-1 flex flex-col overflow-hidden shadow-2xl relative">
         <div className="overflow-auto custom-scrollbar flex-1 relative will-change-transform">
-          {/* เปลี่ยนจาก w-full เป็น w-max เพื่อให้ตารางกว้างพอดีกับข้อมูลที่มี */}
           <table id="roster-capture-area" className="w-max min-w-max border-separate border-spacing-0 bg-[#0f172a]">
             <thead className="sticky top-0 z-40 bg-[#0f172a]">
               <tr className="text-slate-400 text-xs shadow-sm">
-                
-                {/* ปรับขนาดส่วนหัวข้อมูลพนักงานและสรุปให้เล็กลง */}
                 <th className="sticky left-0 top-0 z-50 w-[230px] min-w-[230px] max-w-[230px] bg-[#0f172a] p-3 text-left font-semibold border-b border-r border-slate-700 bg-clip-padding">
                   <div className="flex items-center gap-3">
                     <input type="checkbox" title="เลือกทั้งหมด" checked={selectedForExport.length === employees.length && employees.length > 0} onChange={handleToggleSelectAll} className="w-4 h-4 rounded cursor-pointer accent-emerald-500" />
@@ -620,13 +601,11 @@ export default function ShiftRosterPro() {
                 <th className="sticky left-[274px] top-0 z-50 w-[44px] min-w-[44px] max-w-[44px] bg-[#0f172a] p-1 border-b border-r border-slate-700 text-center text-orange-400 font-medium bg-clip-padding">Night</th>
                 <th className="sticky left-[318px] top-0 z-50 w-[44px] min-w-[44px] max-w-[44px] bg-[#0f172a] p-1 border-b border-r border-slate-700 text-center text-amber-400 font-medium bg-clip-padding border-r-amber-500/20">OT</th>
 
-                {/* บังคับขนาดช่องวันที่ให้เล็กลง */}
                 {dateList.map((date, index) => {
                   const { dayName, dayNum, isSunday, isWeekend } = getDayDetails(date);
                   const dateStr = formatDateStr(date);
                   const holidayName = holidays[dateStr];
                   const isHoliday = !!holidayName;
-                  
                   const isEndOfMonth = dateList[index + 1] && dateList[index + 1].getDate() === 1;
                   const borderRightClass = isEndOfMonth ? 'border-r-2 border-r-emerald-500/40' : (isSunday ? 'border-r-2 border-r-slate-600/50' : 'border-r border-slate-700/30');
                   const bgClass = isHoliday ? 'bg-rose-500/10' : (isWeekend ? 'bg-slate-800/30' : '');
@@ -636,10 +615,7 @@ export default function ShiftRosterPro() {
                       <div className={`font-medium mb-0.5 text-[9px] ${isHoliday ? 'text-rose-300' : 'text-slate-400'}`}>{dayName}</div>
                       <div className={`font-semibold text-xs ${isHoliday ? 'text-rose-400' : isWeekend ? 'text-slate-300' : 'text-slate-200'}`}>{dayNum}</div>
                       {isHoliday && (
-                        <div className="mt-1 flex flex-col items-center">
-                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 mb-0.5"></div>
-                          <div className="text-[7px] font-medium text-rose-300 bg-rose-900/40 px-1 py-0.5 rounded truncate max-w-[30px] leading-none">{holidayName}</div>
-                        </div>
+                        <div className="mt-1 flex flex-col items-center"><div className="w-1.5 h-1.5 rounded-full bg-rose-500 mb-0.5"></div><div className="text-[7px] font-medium text-rose-300 bg-rose-900/40 px-1 py-0.5 rounded truncate max-w-[30px] leading-none">{holidayName}</div></div>
                       )}
                     </th>
                   );
@@ -662,41 +638,35 @@ export default function ShiftRosterPro() {
 
                   return (
                     <tr key={emp.id} className={`hover:bg-slate-800/50 transition-colors group ${isViolating ? 'bg-red-500/5' : ''}`}>
-                      
-                      {/* ปรับขนาดส่วนเนื้อหาข้อมูลพนักงานและสรุปให้เล็กลง */}
                       <td className="sticky left-0 z-20 w-[230px] min-w-[230px] max-w-[230px] bg-[#1e293b] p-1.5 px-2 text-xs text-slate-200 border-b border-r border-slate-700/50 bg-clip-padding">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <input type="checkbox" checked={selectedForExport.includes(emp.id)} onChange={() => handleToggleSelectEmp(emp.id)} className="w-4 h-4 rounded cursor-pointer accent-emerald-500 shrink-0" />
-                            <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0 shadow-sm">
-                              <i className="bi bi-person-fill text-sm"></i>
+                            
+                            <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 shrink-0 shadow-sm overflow-hidden">
+                              {emp.photo_url ? (
+                                <img src={emp.photo_url} alt={emp.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = ''; e.currentTarget.className = 'hidden'; }} />
+                              ) : (
+                                <i className="bi bi-person-fill text-sm"></i>
+                              )}
                             </div>
+                            
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1 pb-0.5">
-                                <span className="font-semibold text-slate-200 text-xs whitespace-nowrap">
-                                  {emp.name && emp.name.length > 18 ? emp.name.substring(0, 18) + '...' : emp.name}
-                                </span>
-                                {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse text-[10px] shrink-0" title="เตือน: ทำงานเกิน 6 วัน!"></i>}
+                                <span className="font-semibold text-slate-200 text-xs whitespace-nowrap">{emp.name && emp.name.length > 18 ? emp.name.substring(0, 18) + '...' : emp.name}</span>
+                                {isViolating && <i className="bi bi-exclamation-triangle-fill text-red-500 animate-pulse text-[10px] shrink-0"></i>}
                               </div>
-                              
                               <div className="font-mono text-slate-400 font-medium text-[9px] tracking-wider mt-0 flex items-center gap-1.5">
                                 <span className="shrink-0">{emp.id}</span>
-                                {emp.shift_team && (
-                                  <span className={`font-bold tracking-widest shrink-0 ${emp.shift_team === 'A' ? 'text-blue-400' : 'text-purple-400'}`}>
-                                    S:{emp.shift_team}
-                                  </span>
-                                )}
-                                {emp.group_team && (
-                                  <span className="font-bold tracking-widest shrink-0 text-emerald-400">
-                                    {emp.group_team}
-                                  </span>
-                                )}
+                                {emp.shift_team && <span className={`font-bold tracking-widest shrink-0 ${emp.shift_team === 'A' ? 'text-blue-400' : 'text-purple-400'}`}>S:{emp.shift_team}</span>}
+                                {emp.group_team && <span className="font-bold tracking-widest shrink-0 text-emerald-400">{emp.group_team}</span>}
                               </div>
                             </div>
                           </div>
+                          
                           {isEditMode && (
-                            <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="text-slate-500 hover:text-red-400 hover:bg-red-500/10 w-6 h-6 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 shrink-0">
-                              <i className="bi bi-trash text-xs"></i>
+                            <button onClick={() => handleOpenEditModal(emp)} className="text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 w-6 h-6 rounded-md flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                              <i className="bi bi-pencil-square text-xs"></i>
                             </button>
                           )}
                         </div>
@@ -706,14 +676,12 @@ export default function ShiftRosterPro() {
                       <td className="sticky left-[274px] z-20 w-[44px] min-w-[44px] max-w-[44px] bg-[#1e293b] p-1 border-b border-r border-slate-700/50 text-center font-semibold text-orange-400 text-xs bg-clip-padding">{summary.n || '-'}</td>
                       <td className="sticky left-[318px] z-20 w-[44px] min-w-[44px] max-w-[44px] bg-[#1e293b] p-1 border-b border-r border-slate-700/50 text-center font-semibold text-amber-400 text-xs border-r-amber-500/20 bg-clip-padding">{summary.ot || '-'}</td>
 
-                      {/* บังคับขนาดช่องเนื้อหาตารางให้เล็กลง */}
                       {dateList.map((date, index) => {
                         const dateStr = formatDateStr(date);
                         const isSunday = date.getDay() === 0;
                         const isWeekend = isSunday || date.getDay() === 6;
                         const isHoliday = !!holidays[dateStr];
                         const cell = schedule[`${emp.id}_${dateStr}`];
-                        
                         const isEndOfMonth = dateList[index + 1] && dateList[index + 1].getDate() === 1;
                         const borderRightClass = isEndOfMonth ? 'border-r-2 border-r-emerald-500/40' : (isSunday ? 'border-r-2 border-r-slate-600/50' : 'border-r border-slate-700/30');
                         const colBg = isHoliday ? 'bg-rose-500/5' : (isWeekend ? 'bg-slate-800/30' : '');
@@ -729,22 +697,10 @@ export default function ShiftRosterPro() {
 
                         return (
                           <td key={dateStr} className={`p-[2px] w-[38px] min-w-[38px] max-w-[38px] relative border-b border-slate-700/50 ${borderRightClass} ${colBg}`}>
-                            <div
-                              onMouseDown={() => handleMouseDown(emp.id, dateStr)}
-                              onMouseEnter={() => handleMouseEnter(emp.id, dateStr)}
-                              className={`w-full h-[32px] rounded flex flex-col items-center justify-center border ${cellBg} relative transition-all ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}
-                            >
+                            <div onMouseDown={() => handleMouseDown(emp.id, dateStr)} onMouseEnter={() => handleMouseEnter(emp.id, dateStr)} className={`w-full h-[32px] rounded flex flex-col items-center justify-center border ${cellBg} relative transition-all ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}>
                               {cell?.shift ? <span className={`font-semibold text-[11px] ${textColor}`}>{cell.shift}</span> : (isEditMode && <span className="opacity-0 group-hover:opacity-20 text-xs text-slate-400">+</span>)}
-                              {cell?.isOT && (
-                                <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 text-[6px] font-bold px-0.5 rounded-bl-sm shadow-sm">
-                                  OT
-                                </div>
-                              )}
-                              {cell?.is6S && (
-                                <div className="absolute bottom-0 left-0 bg-blue-500 text-white text-[6px] font-bold px-0.5 rounded-tr-sm shadow-sm">
-                                  6S
-                                </div>
-                              )}
+                              {cell?.isOT && <div className="absolute top-0 right-0 bg-amber-400 text-amber-900 text-[6px] font-bold px-0.5 rounded-bl-sm shadow-sm">OT</div>}
+                              {cell?.is6S && <div className="absolute bottom-0 left-0 bg-blue-500 text-white text-[6px] font-bold px-0.5 rounded-tr-sm shadow-sm">6S</div>}
                             </div>
                           </td>
                         );
@@ -757,6 +713,89 @@ export default function ShiftRosterPro() {
           </table>
         </div>
       </div>
+
+      {/* หน้าต่าง Pop-up สำหรับแก้ไขข้อมูลและอัปโหลดรูปภาพ */}
+      {editingEmp && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1e293b] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <i className="bi bi-person-lines-fill text-blue-400"></i> แก้ไขข้อมูลพนักงาน
+              </h3>
+              <button onClick={() => setEditingEmp(null)} disabled={isUploading} className="text-slate-400 hover:text-white transition-colors">
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* ส่วนพรีวิวและอัปโหลดรูปภาพ */}
+              <div className="flex flex-col items-center mb-4">
+                <div 
+                  className="w-24 h-24 rounded-full border-4 border-slate-600 bg-slate-800 overflow-hidden flex items-center justify-center shadow-inner relative group cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {editForm.photo_preview || editForm.photo_url ? (
+                    <img src={editForm.photo_preview || editForm.photo_url} alt="Profile Preview" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = ''; e.currentTarget.className = 'hidden'; }} />
+                  ) : (
+                    <i className="bi bi-person-fill text-5xl text-slate-500"></i>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <i className="bi bi-camera-fill text-white text-xl"></i>
+                  </div>
+                </div>
+                <button onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-medium text-blue-400 hover:text-blue-300">
+                  กดเพื่อเปลี่ยนรูปภาพ
+                </button>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange} 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">รหัสพนักงาน (ไม่สามารถแก้ได้)</label>
+                <input type="text" value={editingEmp.id} disabled className="w-full bg-[#0f172a] border border-slate-700/50 text-slate-500 text-sm rounded-lg px-3 py-2 cursor-not-allowed" />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">ชื่อ-สกุล</label>
+                <input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">เบอร์โทรศัพท์</label>
+                  <input type="text" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} placeholder="08x-xxx-xxxx" className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">ชื่อไลน์ (Line Name)</label>
+                  <input type="text" value={editForm.line_name} onChange={e => setEditForm({...editForm, line_name: e.target.value})} placeholder="รองรับทุกตัวอักษร" className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-between pt-4 border-t border-slate-700">
+              <button onClick={() => handleDeleteEmployee(editingEmp.id, editingEmp.name)} disabled={isUploading} className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
+                <i className="bi bi-trash"></i> ลบพนักงาน
+              </button>
+
+              <div className="flex gap-2">
+                <button onClick={() => setEditingEmp(null)} disabled={isUploading} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50">
+                  ยกเลิก
+                </button>
+                <button onClick={handleSaveEmpDetails} disabled={isUploading} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2">
+                  {isUploading ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังอัปโหลด</> : 'บันทึกข้อมูล'}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { height: 10px; width: 10px; }
