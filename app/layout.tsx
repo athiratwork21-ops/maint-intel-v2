@@ -7,9 +7,15 @@ const inter = Inter({ subsets: ['latin'] });
 // 🌟 สร้างตัวแปรสุ่มตัวเลขเวลาปัจจุบัน เพื่อหลอก Cache ของ LINE/Facebook
 const cacheBuster = Date.now();
 
+// 👇 (เพิ่มใหม่สำหรับ PWA) กำหนดสีขอบจอด้านบนของแอปมือถือ
+export const viewport = {
+  themeColor: '#2563eb', 
+};
+
 export const metadata: Metadata = {
   title: 'Maint. Intel',
   description: 'ระบบจัดการอะไหล่',
+  manifest: '/manifest.json', // 👈 (เพิ่มใหม่สำหรับ PWA) เรียกบัตรประชาชนแอป
   openGraph: {
     images: [
       {
