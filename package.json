@@ -9,6 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capawesome/capacitor-file-picker": "^8.0.4",
+    "@capgo/capacitor-uploader": "^8.3.11",
     "@google/generative-ai": "latest",
     "@supabase/supabase-js": "^2.112.3",
     "@types/node": "20.6.2",
@@ -28,5 +32,9 @@
     "tailwindcss": "3.3.3",
     "typescript": "5.2.2",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.0"
   }
 }

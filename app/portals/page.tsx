@@ -33,8 +33,31 @@ const externalApps = [
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/10',
     url: 'https://maintintelv2.vercel.app/scan',
+    status: 'Active'
+  },
+
+  {
+    id: 4,
+    name: 'Maint-Intel',
+    description: 'ระบบเสริมเรียนรู้จากวิดิโอ',
+    icon: 'bi-box-seam',
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-500/10',
+    url: 'https://maintintelv2.vercel.app/search',
     status: 'In Progress'
+  },
+  
+  {
+    id: 5,
+    name: 'Today',
+    description: 'รายชื่อปฏิบัติงาน',
+    icon: 'bi-box-seam',
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-500/10',
+    url: 'https://maintintelv2.vercel.app/today?dept=ECBUME18326',
+    status: 'Active'
   }
+  
   // 💡 ถ้าอนาคตบอสทำเว็บอื่นเพิ่ม ก็เอามาก๊อปปี้ต่อท้ายตรงนี้ได้เลยครับ!
   /*
   {

@@ -1,8 +1,11 @@
-/** @type {import('next').Next.jsConfig} */
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 🚨 สั่งให้ Vercel ข้ามการเช็ค Error ของ ESLint ตอน Build
+  output: 'export',
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  images: {
+    unoptimized: true, 
   },
 };
 

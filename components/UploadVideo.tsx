@@ -1,21 +1,22 @@
 'use client'; 
 
 import React, { useState, useRef } from 'react';
-// ใช้ท่าไม้ตาย @/ ชี้ตรงไปที่โฟลเดอร์ lib เลย ชัวร์ที่สุดครับ!
 import { supabaseServiceWork } from '@/lib/supabase-servicework'; 
+import { Capacitor } from '@capacitor/core';
+import { FilePicker } from '@capawesome/capacitor-file-picker';
+import { Uploader } from '@capgo/capacitor-uploader';
 
 export default function UploadVideo() {
   const [file, setFile] = useState<File | null>(null);
+  const [nativeFilePath, setNativeFilePath] = useState<string | null>(null);
   const [alarmCode, setAlarmCode] = useState('');
   const [status, setStatus] = useState('');
   const [youtubeLink, setYoutubeLink] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
-  // สร้าง State สำหรับทำ Effect ลากไฟล์มาวาง
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- ฟังก์ชันจัดการการลากวางไฟล์ (Drag & Drop) ---
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -33,7 +34,23 @@ export default function UploadVideo() {
       setFile(e.dataTransfer.files[0]);
     }
   };
-  // ----------------------------------------
+
+  const handleSelectFileClick = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await FilePicker.pickVideos();
+        if (result.files.length > 0) {
+          const selected = result.files[0];
+          setNativeFilePath(selected.path || null); 
+          setFile({ name: selected.name, size: selected.size } as any); 
+        }
+      } catch (e) {
+        console.log('ยกเลิกการเลือกไฟล์มือถือ');
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
 
   const handleUpload = async () => {
     if (!file || !alarmCode) {
@@ -42,15 +59,59 @@ export default function UploadVideo() {
     }
 
     setIsLoading(true);
-    setStatus('⏳ กำลังอัปโหลดวิดีโอขึ้น YouTube... (ห้ามปิดหน้านี้นะครับ)');
     setYoutubeLink(null);
 
+    // ==========================================
+    // 📱 โซนของแอป (Background Upload) -> ยิงเข้า Node.js
+    // ==========================================
+    if (Capacitor.isNativePlatform()) {
+      if (!nativeFilePath) {
+        setStatus('⚠️ ไม่พบ Path ไฟล์ในมือถือ กรุณาเลือกไฟล์ใหม่ครับ');
+        setIsLoading(false);
+        return;
+      }
+      
+      setStatus('🚀 กำลังสั่งงานให้ Android อัปโหลด... (พับจอไปทำงานอื่นได้เลย!)');
+
+      try {
+        const upload = await Uploader.startUpload({
+          serverUrl: 'https://maint-intel-v2.onrender.com/api/upload-video',
+          method: 'POST',
+          filePath: nativeFilePath,
+          headers: {},
+          // ✂️ ช่างใหญ่ลบคำว่า name: 'file' ออกตรงนี้แหละครับ! แค่นี้ TypeScript ก็เลิกบ่นแล้ว!
+          parameters: {
+            alarmCode: alarmCode,
+            category: 'มือถือ'
+          },
+          notificationTitle: `กำลังอัปโหลดคลิป ${alarmCode}`,
+        });
+
+        console.log('ยิงอัปโหลดหลังบ้านสำเร็จ! ID:', upload.id);
+        
+        setStatus('✅ ระบบรับทราบ! หุ่นยนต์กำลังแบกไฟล์ไปให้ AI วิเคราะห์ ปิดจอไปทำงานต่อได้เลยครับ!');
+        
+        setFile(null);
+        setNativeFilePath(null);
+        setAlarmCode('');
+        
+      } catch (error) {
+        setStatus(`❌ แอปอัปโหลดพัง: ${error}`);
+      } finally {
+        setIsLoading(false);
+      }
+      return; 
+    }
+
+    // ==========================================
+    // 🌐 โซนของเว็บ (เหมือนที่บอสทำไว้ตอนแรกเป๊ะๆ)
+    // ==========================================
+    setStatus('⏳ กำลังอัปโหลดวิดีโอ... (ห้ามปิดหน้านี้)');
     const formData = new FormData();
     formData.append('alarmCode', alarmCode);
     formData.append('file', file);
 
     try {
-      // 🚀 ยิงตรงไปหาหลังบ้าน Node.js (พอร์ต 3001)
       const response = await fetch('https://maint-intel-v2.onrender.com/api/upload-video', {
         method: 'POST',
         body: formData,
@@ -59,17 +120,16 @@ export default function UploadVideo() {
       const data = await response.json();
 
       if (data.success) {
-        setStatus('🎉 อัปโหลดเข้า YouTube สำเร็จ! กำลังบันทึกลงฐานข้อมูล...');
+        setStatus('🎉 อัปโหลดสำเร็จ!');
         setYoutubeLink(data.youtubeLink);
         
-        // 🚨 ยิงเข้า Supabase
         const { error } = await supabaseServiceWork
           .from('troubleshooting_guides')
           .insert([
             { 
               alarm_code: alarmCode, 
               youtube_url: data.youtubeLink,
-              video_title: `วิดีโอแก้ปัญหา ${alarmCode}` // 👈 เติมบรรทัดนี้เข้าไปครับ!
+              video_title: `วิดีโอแก้ปัญหา ${alarmCode}`
             }
           ]);
 
@@ -78,8 +138,8 @@ export default function UploadVideo() {
           setStatus(`❌ วิดีโอขึ้น YouTube แล้ว แต่เซฟลงฐานข้อมูลพัง: ${error.message}`);
         } else {
           setStatus('🎉 สมบูรณ์แบบ! อัปโหลดและบันทึกข้อมูลพร้อมใช้งาน 100%!');
-          // เคลียร์ช่องกรอกข้อมูลเผื่ออัปโหลดคลิปต่อไป
           setFile(null);
+          setNativeFilePath(null);
           setAlarmCode('');
         }
         
@@ -95,13 +155,11 @@ export default function UploadVideo() {
 
   return (
     <div className="max-w-2xl mx-auto mt-10 p-8 bg-slate-900 rounded-2xl shadow-2xl border border-slate-800 text-slate-200 font-sans">
-      {/* ส่วนหัว */}
       <div className="mb-8 text-center">
         <h2 className="text-3xl font-bold text-white mb-2">📤 แนบวิดีโอคู่มือแก้ Alarm</h2>
         <p className="text-slate-400">อัปโหลดคลิปแก้ปัญหาเข้าสู่ระบบ Service Work Portal</p>
       </div>
 
-      {/* ช่องกรอกรหัส Alarm */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-slate-300 mb-2">
           รหัส Alarm / ชื่ออาการเสีย <span className="text-red-400">*</span>
@@ -115,7 +173,6 @@ export default function UploadVideo() {
         />
       </div>
 
-      {/* โซนอัปโหลดไฟล์ (Drag & Drop) */}
       <div className="mb-8">
         <label className="block text-sm font-medium text-slate-300 mb-2">
           ไฟล์วิดีโอ (MP4) <span className="text-red-400">*</span>
@@ -124,7 +181,7 @@ export default function UploadVideo() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={handleSelectFileClick} 
           className={`relative border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
             isDragging
               ? 'border-blue-500 bg-blue-500/10'
@@ -136,7 +193,12 @@ export default function UploadVideo() {
             accept="video/*"
             className="hidden"
             ref={fileInputRef}
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                setFile(e.target.files[0]);
+                setNativeFilePath(null); 
+              }
+            }}
           />
           
           {file ? (
@@ -160,7 +222,6 @@ export default function UploadVideo() {
         </div>
       </div>
 
-      {/* ปุ่มกดอัปโหลด */}
       <button
         onClick={handleUpload}
         disabled={isLoading || !file || !alarmCode}
@@ -180,7 +241,6 @@ export default function UploadVideo() {
         )}
       </button>
 
-      {/* กล่องแสดงสถานะ / แจ้งเตือน */}
       {status && (
         <div className={`mt-6 p-5 rounded-xl border ${
           youtubeLink ? 'bg-green-500/10 border-green-500/20 text-green-400' : 
@@ -189,7 +249,6 @@ export default function UploadVideo() {
         }`}>
           <p className="text-center font-medium text-lg">{status}</p>
           
-          {/* โชว์ลิงก์ YouTube แบบหล่อๆ ถ้าอัปโหลดเสร็จ */}
           {youtubeLink && (
             <div className="mt-4 p-4 bg-slate-950 rounded-lg border border-green-500/30 flex items-center justify-between">
               <span className="text-sm truncate mr-4 text-slate-400">{youtubeLink}</span>
