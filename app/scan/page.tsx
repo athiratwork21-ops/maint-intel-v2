@@ -8,6 +8,7 @@ export default function RequestPartShoppingPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [activeDept, setActiveDept] = useState('');
   const [pickerName, setPickerName] = useState('');
+  const [empIdInput, setEmpIdInput] = useState(''); 
 
   const [parts, setParts] = useState<any[]>([]);
   const [consumables, setConsumables] = useState<any[]>([]); 
@@ -64,14 +65,50 @@ export default function RequestPartShoppingPage() {
 
   const fetchDepartmentsForSetup = async () => { const { data } = await supabase.from('Departments').select('*'); if (data) setDepartments(data); setIsLoading(false); };
 
-  const handleSetupComplete = (e: React.FormEvent) => {
+  const handleSetupComplete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeDept || !pickerName.trim()) return showToast('กรุณากรอกข้อมูลให้ครบ', 'warning');
-    localStorage.setItem('mechanicDept', activeDept); localStorage.setItem('mechanicName', pickerName);
-    setIsSetupComplete(true); fetchInitialData(activeDept);
+    if (!activeDept || !empIdInput.trim()) return showToast('กรุณากรอกข้อมูลให้ครบ', 'warning');
+    
+    setIsSubmitting(true);
+    try {
+      // 🔍 1. วิ่งไปค้นหารหัสพนักงานในตาราง Employees
+      const { data, error } = await supabase
+        .from('Employees') // 👈 ชื่อตารางพนักงานของบอส
+        .select('name') // 👈 ชื่อคอลัมน์ที่เก็บ "ชื่อพนักงาน"
+        .eq('id', empIdInput.trim()) // 👈 ชื่อคอลัมน์ที่เก็บ "รหัสพนักงาน"
+        .single(); // บังคับว่าต้องเจอแค่ 1 คน
+
+      if (error || !data) {
+        showToast('ไม่พบรหัสพนักงานนี้ในระบบ!', 'error');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const fetchedName = data.Name; // ดึงชื่อที่เจอออกมา
+
+      // 💾 2. บันทึกลงเครื่อง (เผื่อรีเฟรชหน้าเว็บจะได้ไม่หลุด)
+      localStorage.setItem('mechanicDept', activeDept); 
+      localStorage.setItem('mechanicName', fetchedName);
+      localStorage.setItem('mechanicEmpId', empIdInput.trim());
+      
+      // 🚀 3. เข้าสู่ระบบสำเร็จ
+      setPickerName(fetchedName); // เอาชื่อจริงไปโชว์ที่มุมขวาบน
+      setIsSetupComplete(true); 
+      fetchInitialData(activeDept);
+      
+    } catch (err) {
+      console.error(err);
+      showToast('เกิดข้อผิดพลาดในการตรวจสอบรหัส', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleChangeProfile = () => { setIsSetupComplete(false); fetchDepartmentsForSetup(); };
+  const handleChangeProfile = () => { 
+    setIsSetupComplete(false); 
+    setEmpIdInput(''); // 👈 เคลียร์ช่องพิมพ์รหัสทิ้งตอนกดสลับบัญชี
+    fetchDepartmentsForSetup(); 
+  };
 
   const fetchInitialData = async (dept: string) => {
     setIsLoading(true);
@@ -504,13 +541,23 @@ export default function RequestPartShoppingPage() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">2. ชื่อผู้เบิก (Your Name)</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase">2. รหัสพนักงาน (Employee ID)</label>
               <div className="relative">
-                <i className="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
-                <input type="text" value={pickerName} onChange={e => setPickerName(e.target.value)} required placeholder="เช่น ผู้เบิกสมชาย" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm" />
+                <i className="bi bi-person-badge absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg"></i>
+                <input 
+                  type="text" 
+                  value={empIdInput} 
+                  onChange={e => setEmpIdInput(e.target.value)} 
+                  required 
+                  placeholder="เช่น 86123456" 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm" 
+                />
               </div>
             </div>
-            <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px] mt-4">เข้าสู่ระบบเบิกของ <i className="bi bi-arrow-right ml-1"></i></button>
+            
+            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-[15px] mt-4 disabled:opacity-50">
+              {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin mr-2"></i> กำลังตรวจสอบ...</> : <>เข้าสู่ระบบเบิกของ <i className="bi bi-arrow-right ml-1"></i></>}
+            </button>
           </form>
         </div>
       </div>
