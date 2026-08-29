@@ -622,7 +622,7 @@ export default function RequestPartShoppingPage() {
         </div>
       )}
 
-      <header className="bg-[#0f172a] text-white px-5 pt-8 pb-5 shrink-0 z-20 shadow-md">
+      <header className="bg-[#0f172a] text-white px-5 pt-[max(env(safe-area-inset-top),1rem)] pb-4 shrink-0 z-20 shadow-md">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h1 className="text-xl font-black tracking-tight flex items-center gap-2"><i className="bi bi-tools text-blue-400"></i> Request Parts</h1>

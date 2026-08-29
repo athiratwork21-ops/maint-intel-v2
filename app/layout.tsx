@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   title: 'Maint. Intel',
   description: 'ระบบจัดการอะไหล่',
   manifest: '/manifest.json', // 👈 (เพิ่มใหม่สำหรับ PWA) เรียกบัตรประชาชนแอป
+  appleWebApp: {
+    capable: true,
+    title: 'Maint. Intel',
+    statusBarStyle: 'black-translucent', // สั่งให้แอปทะลุไปถึงขอบจอบนสุด
+  },
   openGraph: {
     images: [
       {
