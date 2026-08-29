@@ -74,7 +74,7 @@ export default function RequestPartShoppingPage() {
     try {
       // 🔍 ใช้ supabaseServiceWork วิ่งไปหาโปรเจกต์ฝั่งขวา
       const { data, error } = await supabaseServiceWork
-        .from('Employees') // 👈 เช็กชื่อตารางพนักงานให้ตรงเป๊ะ
+        .from('employees') // 👈 เช็กชื่อตารางพนักงานให้ตรงเป๊ะ
         .select('name') // 👈 เช็กชื่อคอลัมน์ชื่อพนักงาน
         .eq('id', empIdInput.trim()) // 👈 เช็กชื่อคอลัมน์รหัสพนักงาน
         .single();
