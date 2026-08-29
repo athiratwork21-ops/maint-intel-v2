@@ -14,14 +14,20 @@ export interface DashboardReport {
   mtbfDays: number; 
 }
 
+// 🌟 ตัวช่วยแปลงวันที่เป็น Local Time (ป้องกันปัญหา Timezone เลื่อน 1 วัน)
+const toLocalDateString = (date: Date) => {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().split('T')[0];
+};
+
 export async function getSmartMaintenanceData(activeDepartment?: string | null) {
   try {
-    let partsQuery = supabase.from('Part').select('*');
-    let stockQuery = supabase.from('Stock').select('*');
-    let machinesQuery = supabase.from('Machine').select('*');
-    let historyQuery = supabase.from('ChangeHistory').select('*').order('ChangeDate', { ascending: true });
-    // 🌟 ดึงข้อมูลตาราง LeadTime มาด้วยเรียงจากใหม่ไปเก่า
-    let leadTimeQuery = supabase.from('LeadTime').select('*').order('RecordDate', { ascending: false });
+    // 🚨 เพิ่ม .limit(10000) ป้องกัน Supabase ตัดข้อมูลแค่ 1,000 แถว
+    let partsQuery = supabase.from('Part').select('*').limit(5000);
+    let stockQuery = supabase.from('Stock').select('*').limit(10000);
+    let machinesQuery = supabase.from('Machine').select('*').limit(2000);
+    let historyQuery = supabase.from('ChangeHistory').select('*').order('ChangeDate', { ascending: true }).limit(20000);
+    let leadTimeQuery = supabase.from('LeadTime').select('*').order('RecordDate', { ascending: false }).limit(5000);
 
     if (activeDepartment) {
       partsQuery = partsQuery.eq('DepartmentID', activeDepartment);
@@ -36,7 +42,7 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
       { data: stockData },
       { data: machinesData },
       { data: historyData },
-      { data: leadTimeData } // 🌟 รับข้อมูล LeadTime
+      { data: leadTimeData }
     ] = await Promise.all([partsQuery, stockQuery, machinesQuery, historyQuery, leadTimeQuery]);
 
     const rawParts = partsData || [];
@@ -46,6 +52,21 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
     const rawLeadTimes = leadTimeData || []; 
     
     const rawLines = Array.from(new Set(rawMachines.map(m => m.LineName).filter(Boolean)));
+
+    // ==========================================
+    // 🚀 0. สร้าง Hash Maps (Lookup Tables) เพื่อตัดปัญหา O(n^2)
+    // ==========================================
+    const partMap = new Map(rawParts.map(p => [p.PartID, p]));
+    const machineMap = new Map(rawMachines.map(m => [m.MachineID, m]));
+    
+    // ดึง Lead Time ล่าสุดของแต่ละอะไหล่มาเก็บไว้
+    const leadTimeMap = new Map();
+    rawLeadTimes.forEach(lt => {
+      // เนื่องจากเรา order จากใหม่ไปเก่าข้างบนแล้ว ตัวแรกที่เจอคือล่าสุด
+      if (!leadTimeMap.has(lt.PartID)) {
+        leadTimeMap.set(lt.PartID, lt.LeadTimeDays || 0);
+      }
+    });
 
     // ==========================================
     // 1. คำนวณ MTBF แยกตามจุดติดตั้ง (Position)
@@ -60,7 +81,6 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
 
       if (!failureSpans[key]) failureSpans[key] = [];
 
-      // 🌟 FIX BUG ประเด็นที่ 1: คิด MTBF เฉพาะ Normal Wear
       if (record.ReasonType === 'Normal Wear') {
         if (lastChangeDates[key]) {
           const previousDate = new Date(lastChangeDates[key]);
@@ -71,8 +91,6 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
           }
         }
       }
-
-      // 🌟 FIX BUG ประเด็นที่ 1: แต่ "วันเปลี่ยนล่าสุด" ต้องรีเซ็ตเสมอ ไม่ว่าจะเปลี่ยนด้วยเหตุผลอะไร!
       lastChangeDates[key] = record.ChangeDate;
     });
 
@@ -80,38 +98,31 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
     Object.keys(failureSpans).forEach(key => {
       const spans = failureSpans[key];
       if (spans.length > 0) {
-        const avg = spans.reduce((a, b) => a + b, 0) / spans.length;
-        mtbfData[key] = Math.round(avg);
+        mtbfData[key] = Math.round(spans.reduce((a, b) => a + b, 0) / spans.length);
       }
     });
 
     // ==========================================
-    // 2. คำนวณ AI Predictions (นำ Lead Time มาใช้)
+    // 2. คำนวณ AI Predictions
     // ==========================================
     const predictions: any[] = [];
     Object.keys(lastChangeDates).forEach(key => {
       const [machineId, partId, pos] = key.split('_');
-      const partInfo = rawParts.find(p => p.PartID === partId);
+      
+      // 🚀 ใช้ Map เร็วกว่า Array.find() มหาศาล
+      const partInfo = partMap.get(partId);
       if (!partInfo) return;
 
       const mtbf = mtbfData[key] || 180; 
-      
-      // 🌟 FIX BUG ประเด็นที่ 2: หา Lead Time ของอะไหล่ชิ้นนี้ (ถ้าไม่มีให้เป็น 0)
-      const partLeadTimeRecord = rawLeadTimes.find(lt => lt.PartID === partId);
-      const leadTimeDays = partLeadTimeRecord ? (partLeadTimeRecord.LeadTimeDays || 0) : 0;
-      
+      const leadTimeDays = leadTimeMap.get(partId) || 0;
       const bufferDays = partInfo.SafetyBufferDays || 7;
-      
-      // รวมจำนวนวันที่ต้องสั่งล่วงหน้าทั้งหมด = (รอของส่ง + เผื่อเวลาปลอดภัย)
       const totalAdvanceDays = leadTimeDays + bufferDays;
 
       const lastDate = new Date(lastChangeDates[key]);
       
-      // คำนวณวันคาดว่าจะพัง
       const predictedFailDate = new Date(lastDate);
       predictedFailDate.setDate(predictedFailDate.getDate() + mtbf);
       
-      // 🌟 คำนวณวันสั่งซื้อใหม่ ถอยหลังไปตาม totalAdvanceDays
       const orderDate = new Date(predictedFailDate);
       orderDate.setDate(orderDate.getDate() - totalAdvanceDays);
 
@@ -120,8 +131,9 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
         partId,
         position: pos,
         mtbfDays: mtbf,
-        predictedFailDate: predictedFailDate.toISOString().split('T')[0],
-        orderDate: orderDate.toISOString().split('T')[0],
+        // 🌟 ใช้ตัวแก้ Timezone
+        predictedFailDate: toLocalDateString(predictedFailDate),
+        orderDate: toLocalDateString(orderDate),
         reqQty: 1 
       });
     });
@@ -135,7 +147,6 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
     });
 
     const allocations: { [partId: string]: { physical: number, reserved: number, available: number, machines: string[] } } = {};
-    
     rawParts.forEach(p => {
       allocations[p.PartID] = {
         physical: totalStock[p.PartID] || 0,
@@ -150,12 +161,13 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
     // ==========================================
     const scheduleData: DashboardReport[] = [];
     const today = new Date();
-    // ตัดเวลาทิ้งให้เทียบแค่วันที่ (เพื่อให้การจัดสถานะแม่นยำขึ้น)
     today.setHours(0,0,0,0);
 
     predictions.forEach(pred => {
-      const mInfo = rawMachines.find(m => m.MachineID === pred.machineId);
-      const pInfo = rawParts.find(p => p.PartID === pred.partId);
+      // 🚀 ใช้ Map ดึงข้อมูล ทะลวงความเร็ว
+      const mInfo = machineMap.get(pred.machineId);
+      const pInfo = partMap.get(pred.partId);
+      
       if (!mInfo || !pInfo) return;
 
       const pOrderDate = new Date(pred.orderDate);
@@ -166,20 +178,16 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
       let status = 'NORMAL';
       let alertLevel = 0;
 
-      // ถ้าเข้าสู่ช่วงสั่งของแล้ว (<= 0 หมายถึงถึงวันสั่งแล้ว หรือเลยมาแล้ว)
-      // หรือเหลือเวลาอีกไม่เกิน 7 วันจะถึงวันสั่งซื้อ (สั่งล่วงหน้าได้)
       if (diffDays <= 7 && diffDays >= 0) {
         status = 'ORDER NOW'; alertLevel = 2;
         allocations[pred.partId].reserved += pred.reqQty;
         allocations[pred.partId].available -= pred.reqQty;
-        const displayMachine = pred.position !== '-' ? `${mInfo.MachineName}(${pred.position})` : mInfo.MachineName;
-        allocations[pred.partId].machines.push(displayMachine);
+        allocations[pred.partId].machines.push(pred.position !== '-' ? `${mInfo.MachineName}(${pred.position})` : mInfo.MachineName);
       } else if (diffDays < 0) {
         status = 'OVERDUE'; alertLevel = 3;
         allocations[pred.partId].reserved += pred.reqQty;
         allocations[pred.partId].available -= pred.reqQty;
-        const displayMachine = pred.position !== '-' ? `${mInfo.MachineName}(${pred.position})` : mInfo.MachineName;
-        allocations[pred.partId].machines.push(displayMachine);
+        allocations[pred.partId].machines.push(pred.position !== '-' ? `${mInfo.MachineName}(${pred.position})` : mInfo.MachineName);
       } else if (allocations[pred.partId].available > 0) {
         status = 'IN STOCK'; alertLevel = 1;
       }

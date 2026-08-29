@@ -176,10 +176,29 @@ export default function MaintenanceDashboard() {
       const activeDept = localStorage.getItem('activeDepartment');
       if (!activeDept) { setIsLoading(false); return; }
 
-      const data = await getSmartMaintenanceData(activeDept);
+      // 🚀 ยิงทุกอย่างพร้อมกันรวดเดียวจบในจังหวะเดียว! (Ultimate Parallel Fetching)
+      const [
+        smartData,
+        { data: partData },
+        { data: reqData },
+        { data: lData },
+        { data: locData },
+        { data: cabData },
+        { data: consData },
+        { data: fixData }
+      ] = await Promise.all([
+        getSmartMaintenanceData(activeDept), // จับยัดเข้ามาวิ่งพร้อมกันในนี้เลย!
+        supabase.from('Part').select('PartID, PendingOrder').eq('DepartmentID', activeDept),
+        supabase.from('PartRequests').select('*').eq('Status', 'Pending').eq('DepartmentID', activeDept).order('CreatedAt', { ascending: true }),
+        supabase.from('LineMaster').select('*').eq('DepartmentID', activeDept),
+        supabase.from('LocationMaster').select('*').eq('DepartmentID', activeDept),
+        supabase.from('CabinetMaster').select('*').eq('DepartmentID', activeDept),
+        supabase.from('Consumable').select('*').eq('DepartmentID', activeDept),
+        supabase.from('Fixtures').select('*').eq('DepartmentID', activeDept)
+      ]);
 
-      const { data: partData } = await supabase.from('Part').select('PartID, PendingOrder').eq('DepartmentID', activeDept);
-      const updatedSchedule = data.scheduleData.map(row => {
+      // 🌟 จัดการ Schedule Data
+      const updatedSchedule = smartData.scheduleData.map(row => {
         const pInfo = partData?.find(p => p.PartID === row.partId);
         if (pInfo?.PendingOrder && (row.status === 'ORDER NOW' || row.status === 'OVERDUE')) {
           return { ...row, status: 'ORDERED', alertLevel: 3 };
@@ -188,33 +207,27 @@ export default function MaintenanceDashboard() {
       });
       updatedSchedule.sort((a, b) => b.alertLevel - a.alertLevel);
 
-      const sortedStock = [...data.rawStock].sort((a, b) => (a.Balance || 0) - (b.Balance || 0));
-
-      setStockData(sortedStock);
-      setMachines(data.rawMachines);
-      setParts(data.rawParts);
-      setStockAllocations(data.allocations);
+      // 🌟 Set State ทั้งหมดรวดเดียว
+      setStockData([...smartData.rawStock].sort((a, b) => (a.Balance || 0) - (b.Balance || 0)));
+      setMachines(smartData.rawMachines);
+      setParts(smartData.rawParts);
+      setStockAllocations(smartData.allocations);
       setScheduleData(updatedSchedule);
-      setDashboardStats(data.stats);
+      setDashboardStats(smartData.stats);
 
-      const { data: reqData } = await supabase.from('PartRequests').select('*').eq('Status', 'Pending').eq('DepartmentID', activeDept).order('CreatedAt', { ascending: true });
       setPendingRequests(reqData || []);
-
-      const { data: lData } = await supabase.from('LineMaster').select('*').eq('DepartmentID', activeDept);
-      const { data: locData } = await supabase.from('LocationMaster').select('*').eq('DepartmentID', activeDept);
-      const { data: cabData } = await supabase.from('CabinetMaster').select('*').eq('DepartmentID', activeDept); //  2. ดึงข้อมูลตู้
       setLinesMaster(lData || []);
       setLocationsMaster(locData || []);
-      setCabinetsMaster(cabData || []); // 2. เซ็ตค่า
-
-      const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', activeDept);
+      setCabinetsMaster(cabData || []);
       setConsumables(consData || []);
-
-      const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', activeDept);
       setFixtures(fixData || []);
 
       fetchHistoryData(activeDept);
-    } catch (error) { showToast('Error loading data', 'warning'); } finally { setIsLoading(false); }
+    } catch (error) { 
+      showToast('Error loading data', 'warning'); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   // 🌟 State เก็บผลวิเคราะห์ของ ML 🌟
@@ -270,7 +283,8 @@ export default function MaintenanceDashboard() {
               const mtbf = y.reduce((a, b) => a + b, 0) / y.length;
               const regression = new SimpleLinearRegression(x, y);
               const nextCycleX = x.length + 1;
-              const mlPrediction = regression.predict(nextCycleX);
+              let rawPrediction = regression.predict(nextCycleX);
+              const mlPrediction = Math.max(0, rawPrediction);
 
               const partDetails = parts.find(p => p.PartID === partId);
 
@@ -986,21 +1000,31 @@ export default function MaintenanceDashboard() {
     });
   };
 
-  const filteredScheduleData = scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
-  const filteredStockData = stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
+  // 🌟 ใช้ useMemo ลดการ Re-render ตารางหลัก
+  const filteredScheduleData = React.useMemo(() => {
+    return scheduleData.filter(row => { return (!filterLine || row.line === filterLine) && (!filterMachine || row.machineId === filterMachine); });
+  }, [scheduleData, filterLine, filterMachine]);
 
-  const filteredConsumables = consumables.filter(c => !searchQuery || c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || c.PartNumber?.toLowerCase().includes(searchQuery.toLowerCase()) || c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase()))
-    .sort((a, b) => {
-      const getPriority = (item: any) => {
-        const safety = item.SafetyStock || 0; const min = item.MinQty || 0; const rop = min + safety;
-        if (item.Balance <= safety) return 3;
-        if (item.Balance <= rop) return 2;
-        return 1;
-      };
-      return getPriority(b) - getPriority(a);
-    });
+  const filteredStockData = React.useMemo(() => {
+    return stockData.filter(row => { const q = searchQuery.toLowerCase(); const p = parts.find(p => p.PartID === row.PartID); return ((p?.PartName && p.PartName.toLowerCase().includes(q)) || (p?.PartModel && p.PartModel.toLowerCase().includes(q)) || (p?.PartNumber && p.PartNumber.toLowerCase().includes(q)) || (row.Location && row.Location.toLowerCase().includes(q))); });
+  }, [stockData, parts, searchQuery]);
 
-  const filteredFixtures = fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredConsumables = React.useMemo(() => {
+    return consumables.filter(c => !searchQuery || c.ItemName?.toLowerCase().includes(searchQuery.toLowerCase()) || c.PartNumber?.toLowerCase().includes(searchQuery.toLowerCase()) || c.Location?.toLowerCase().includes(searchQuery.toLowerCase()) || c.ItemModel?.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => {
+        const getPriority = (item: any) => {
+          const safety = item.SafetyStock || 0; const min = item.MinQty || 0; const rop = min + safety;
+          if (item.Balance <= safety) return 3;
+          if (item.Balance <= rop) return 2;
+          return 1;
+        };
+        return getPriority(b) - getPriority(a);
+      });
+  }, [consumables, searchQuery]);
+
+  const filteredFixtures = React.useMemo(() => {
+    return fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [fixtures, searchQuery]);
 
   const activeMachinesCount = machines.filter(m => m.Active !== false).length;
   const inactiveMachinesCount = machines.filter(m => m.Active === false).length;
@@ -1022,17 +1046,19 @@ export default function MaintenanceDashboard() {
 
   const activeActionPartDetails = parts.find(p => p.PartID === selectedActionPart?.id) || {};
 
-  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking 
-  const filteredPrData = prTrackingData.filter(pr => {
-    if (!prSearchQuery) return true;
-    const q = prSearchQuery.toLowerCase();
-    return (
-      (pr.PRNo && pr.PRNo.toLowerCase().includes(q)) ||
-      (pr.PRContent && pr.PRContent.toLowerCase().includes(q)) ||
-      (pr.PONo && pr.PONo.toLowerCase().includes(q)) ||
-      (pr.IniEmpName && pr.IniEmpName.toLowerCase().includes(q))
-    );
-  });
+  // 🌟 ฟังก์ชันกรองข้อมูล PR Tracking (หุ้มด้วย useMemo ไม่ให้พิมพ์ค้นหาแล้วกระตุก)
+  const filteredPrData = React.useMemo(() => {
+    return prTrackingData.filter(pr => {
+      if (!prSearchQuery) return true;
+      const q = prSearchQuery.toLowerCase();
+      return (
+        (pr.PRNo && pr.PRNo.toLowerCase().includes(q)) ||
+        (pr.PRContent && pr.PRContent.toLowerCase().includes(q)) ||
+        (pr.PONo && pr.PONo.toLowerCase().includes(q)) ||
+        (pr.IniEmpName && pr.IniEmpName.toLowerCase().includes(q))
+      );
+    });
+  }, [prTrackingData, prSearchQuery]);
 
   if (!session) {
     return (
