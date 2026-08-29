@@ -2,7 +2,7 @@
   "name": "Maintenance Intelligence",
   "short_name": "Maint. Intel",
   "description": "ระบบจัดการและคู่มือเครื่องจักร",
-  "start_url": "/",
+  "start_url": "/scan", 
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#2563eb",
