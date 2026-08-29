@@ -878,16 +878,19 @@ export default function RequestPartShoppingPage() {
       {/* แถบตะกร้าสินค้าปกติ */}
       <div className={`absolute bottom-0 left-0 w-full bg-white border-t border-slate-200 p-4 pb-safe shadow-[0_-15px_30px_rgba(15,23,42,0.08)] z-30 transition-transform duration-300 ${(activeCategory !== 'fixtures' || fixtureTab !== 'borrowed') && cartItemsCount > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          
+          {/* 🌟 ครอบปุ่มตรงนี้ ให้กดที่รูปตะกร้าได้เลย 🌟 */}
+          <button type="button" onClick={() => setIsCheckoutOpen(true)} className="flex items-center gap-3 text-left active:scale-95 transition-transform">
             <div className="relative">
               <div className="w-12 h-12 bg-[#0f172a] text-white rounded-full flex items-center justify-center text-xl shadow-lg"><i className="bi bi-cart3"></i></div>
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">{cartItemsCount}</span>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">รายการที่เลือก</p>
-              <p className="font-black text-slate-800 text-lg leading-none">{Object.keys(cart).length} <span className="text-sm font-bold text-slate-500">ชิ้น</span></p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">แตะเพื่อแก้ไข</p>
+              <p className="font-black text-slate-800 text-lg leading-none">{Object.keys(cart).length} <span className="text-sm font-bold text-slate-500">รายการ</span></p>
             </div>
-          </div>
+          </button>
+
           <button onClick={() => setIsCheckoutOpen(true)} className="bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-black text-sm shadow-xl shadow-blue-600/30 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2">
             ดำเนินการเบิก <i className="bi bi-arrow-right"></i>
           </button>
@@ -927,11 +930,17 @@ export default function RequestPartShoppingPage() {
 
                     return (
                       <div key={itemId} className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-start text-sm">
-                          <span className="font-bold text-slate-700 leading-tight pr-4">
+                        <div className="flex justify-between items-center text-sm gap-2">
+                          <span className="font-bold text-slate-700 leading-tight flex-1">
                             <i className={`bi ${isPart ? 'bi-gear-wide-connected text-blue-500' : isFix ? 'bi-tools text-purple-500' : 'bi-box2-heart text-pink-500'} mr-2`}></i>{name || itemId}
                           </span>
-                          <span className={`font-black px-2 py-0.5 rounded-md ${isPart ? 'text-blue-600 bg-blue-50' : isFix ? 'text-purple-600 bg-purple-50' : 'text-pink-600 bg-pink-50'}`}>x{cart[itemId].qty}</span>
+                          
+                          {/* 🌟 ปุ่มเพิ่ม/ลด ในหน้ายืนยันคำขอ 🌟 */}
+                          <div className={`flex items-center justify-between rounded-lg p-0.5 border ${isPart ? 'border-blue-200 bg-blue-50' : isFix ? 'border-purple-200 bg-purple-50' : 'border-pink-200 bg-pink-50'} shrink-0`}>
+                            <button type="button" onClick={() => handleUpdateCart(itemId, cart[itemId].type, -1)} className={`w-8 h-8 flex items-center justify-center font-black rounded-md active:scale-95 transition-all ${isPart ? 'text-blue-600 hover:bg-blue-100' : isFix ? 'text-purple-600 hover:bg-purple-100' : 'text-pink-600 hover:bg-pink-100'}`}><i className="bi bi-dash-lg"></i></button>
+                            <input type="number" min="0" value={cart[itemId].qty} onChange={(e) => handleUpdateCart(itemId, cart[itemId].type, parseInt(e.target.value) || 0, true)} className={`w-8 text-center font-black text-sm bg-transparent outline-none appearance-none ${isPart ? 'text-blue-800' : isFix ? 'text-purple-800' : 'text-pink-800'}`} style={{ MozAppearance: 'textfield' }} />
+                            <button type="button" onClick={() => handleUpdateCart(itemId, cart[itemId].type, 1)} className={`w-8 h-8 flex items-center justify-center font-black rounded-md active:scale-95 transition-all ${isPart ? 'text-blue-600 hover:bg-blue-100' : isFix ? 'text-purple-600 hover:bg-purple-100' : 'text-pink-600 hover:bg-pink-100'}`}><i className="bi bi-plus-lg"></i></button>
+                          </div>
                         </div>
                         
                         {/* 🌟 อัปเกรดปุ่มระบุจุดติดตั้งเป็นป๊อปอัพ (Modal) แทนการพิมพ์ 🌟 */}
@@ -967,8 +976,12 @@ export default function RequestPartShoppingPage() {
               </div>
 
               <div className="pt-2 mt-auto">
-                <button type="submit" disabled={isSubmitting} className="w-full bg-[#0f172a] text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 hover:bg-black active:scale-95 transition-all text-lg flex items-center justify-center gap-2">
-                  {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังประมวลผล...</> : <><i className="bi bi-send-fill"></i> ยืนยันคำขอ</>}
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting || Object.keys(cart).length === 0} 
+                  className="w-full bg-[#0f172a] text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 hover:bg-black active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100"
+                >
+                  {isSubmitting ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังประมวลผล...</> : <><i className="bi bi-send-fill"></i> {Object.keys(cart).length === 0 ? 'ตะกร้าว่างเปล่า' : 'ยืนยันคำขอ'}</>}
                 </button>
               </div>
             </form>
