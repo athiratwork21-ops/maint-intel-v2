@@ -58,7 +58,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      {/* 👇 ยัดคาถาปราบไอโฟนลงไปตรงๆ แบบไม่ต้องง้อ Next.js */}
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="theme-color" content="#0f172a" />
+      </head>
+      {/* 👇 เอาสีกรมท่าทาพื้นหลังสุดของเว็บ กันไอโฟนแอบใส่สีขาว */}
+      <body className={`${inter.className} bg-[#0f172a]`}>
+        {children}
+      </body>
     </html>
   );
 }
