@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { supabaseServiceWork } from '../../lib/supabase-servicework';
 import { getSmartMaintenanceData } from '../../lib/maintenanceLogic';
 
 export default function RequestPartShoppingPage() {
@@ -71,12 +72,12 @@ export default function RequestPartShoppingPage() {
     
     setIsSubmitting(true);
     try {
-      // 🔍 1. วิ่งไปค้นหารหัสพนักงานในตาราง Employees
-      const { data, error } = await supabase
-        .from('Employees') // 👈 ชื่อตารางพนักงานของบอส
-        .select('name') // 👈 ชื่อคอลัมน์ที่เก็บ "ชื่อพนักงาน"
-        .eq('id', empIdInput.trim()) // 👈 ชื่อคอลัมน์ที่เก็บ "รหัสพนักงาน"
-        .single(); // บังคับว่าต้องเจอแค่ 1 คน
+      // 🔍 ใช้ supabaseServiceWork วิ่งไปหาโปรเจกต์ฝั่งขวา
+      const { data, error } = await supabaseServiceWork
+        .from('Employees') // 👈 เช็กชื่อตารางพนักงานให้ตรงเป๊ะ
+        .select('name') // 👈 เช็กชื่อคอลัมน์ชื่อพนักงาน
+        .eq('id', empIdInput.trim()) // 👈 เช็กชื่อคอลัมน์รหัสพนักงาน
+        .single();
 
       if (error || !data) {
         showToast('ไม่พบรหัสพนักงานนี้ในระบบ!', 'error');
@@ -84,17 +85,17 @@ export default function RequestPartShoppingPage() {
         return;
       }
 
-      const fetchedName = data.Name; // ดึงชื่อที่เจอออกมา
+      const fetchedName = data.name; // 👈 ถ้าในฐานข้อมูลเป็นตัวใหญ่ (Name) อย่าลืมแก้ตรงนี้นะครับ
 
-      // 💾 2. บันทึกลงเครื่อง (เผื่อรีเฟรชหน้าเว็บจะได้ไม่หลุด)
+      // 💾 บันทึกลงเครื่อง
       localStorage.setItem('mechanicDept', activeDept); 
       localStorage.setItem('mechanicName', fetchedName);
       localStorage.setItem('mechanicEmpId', empIdInput.trim());
       
-      // 🚀 3. เข้าสู่ระบบสำเร็จ
-      setPickerName(fetchedName); // เอาชื่อจริงไปโชว์ที่มุมขวาบน
+      // 🚀 เข้าสู่ระบบ
+      setPickerName(fetchedName);
       setIsSetupComplete(true); 
-      fetchInitialData(activeDept);
+      fetchInitialData(activeDept); 
       
     } catch (err) {
       console.error(err);
