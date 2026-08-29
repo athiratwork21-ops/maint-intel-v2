@@ -7,9 +7,14 @@ const inter = Inter({ subsets: ['latin'] });
 // 🌟 สร้างตัวแปรสุ่มตัวเลขเวลาปัจจุบัน เพื่อหลอก Cache ของ LINE/Facebook
 const cacheBuster = Date.now();
 
-// 👇 (เพิ่มใหม่สำหรับ PWA) กำหนดสีขอบจอด้านบนของแอปมือถือ
+// 👇 อัปเกรด Viewport เป็นท่ายากปราบไอโฟน
 export const viewport = {
   themeColor: '#0f172a', 
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // กันลูกน้องซูมหน้าจอจนพัง
+  viewportFit: 'cover', // 👈 นี่คือคาถาที่ทำให้ทะลุรอยบากไอโฟน!
 };
 
 export const metadata: Metadata = {
