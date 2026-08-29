@@ -9,7 +9,7 @@ const cacheBuster = Date.now();
 
 // 👇 (เพิ่มใหม่สำหรับ PWA) กำหนดสีขอบจอด้านบนของแอปมือถือ
 export const viewport = {
-  themeColor: '#2563eb', 
+  themeColor: '#0f172a', 
 };
 
 export const metadata: Metadata = {

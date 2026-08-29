@@ -5,7 +5,7 @@
   "start_url": "https://maintintelv2.vercel.app/scan", 
   "display": "standalone",
   "background_color": "#0f172a",
-  "theme_color": "#2563eb",
+  "theme_color": "#0f172a",
   "icons": [
     {
       "src": "icon-192x192.png",
