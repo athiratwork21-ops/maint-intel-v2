@@ -1026,6 +1026,16 @@ export default function MaintenanceDashboard() {
     return fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [fixtures, searchQuery]);
 
+  // 🌟 จัดเรียงเครื่องจักร: เรียงตาม Machine ID (Natural Sort ให้ 2 มาก่อน 10)
+  const sortedMachines = React.useMemo(() => {
+    return [...machines].sort((a, b) => {
+      const idA = a.MachineID || '';
+      const idB = b.MachineID || '';
+      // ใช้ localeCompare พร้อมเปิดโหมด numeric เพื่อให้เรียงตัวเลขผสมตัวอักษรได้ฉลาดขึ้น
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [machines]);
+
   const activeMachinesCount = machines.filter(m => m.Active !== false).length;
   const inactiveMachinesCount = machines.filter(m => m.Active === false).length;
   const uniqueLinesCount = new Set(machines.map(m => m.LineName).filter(Boolean)).size;
