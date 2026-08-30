@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.json', // 👈 (เพิ่มใหม่สำหรับ PWA) เรียกบัตรประชาชนแอป
   appleWebApp: {
     capable: true,
-    title: 'Maint. Intel',
+    title: 'Req Parts',
     statusBarStyle: 'black-translucent', // สั่งให้แอปทะลุไปถึงขอบจอบนสุด
   },
   openGraph: {
