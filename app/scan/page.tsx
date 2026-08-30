@@ -112,28 +112,55 @@ export default function RequestPartShoppingPage() {
   };
 
   const fetchInitialData = async (dept: string) => {
-    setIsLoading(true);
-    try {
-      const data = await getSmartMaintenanceData(dept);
-      setMachines(data.rawMachines.filter(m => m.Active !== false)); setLines(data.rawLines); setParts(data.rawParts); setStockAllocations(data.allocations);
-      const { data: reqData } = await supabase.from('PartRequests').select('*').in('Status', ['Pending', 'Approved']).eq('DepartmentID', dept); setPendingRequests(reqData || []);
-      const { data: consData } = await supabase.from('Consumable').select('*').eq('DepartmentID', dept); setConsumables(consData || []);
-      const { data: fixData } = await supabase.from('Fixtures').select('*').eq('DepartmentID', dept); setFixtures(fixData || []);
-      const { data: dictData } = await supabase.from('Dictionary').select('*'); setDictionary(dictData || []);
+  setIsLoading(true);
+  try {
+    // 🚀 วิ่งไปดึงข้อมูลทุกอย่างมาพร้อมกัน
+    const [
+      data, // ผลลัพธ์จาก getSmartMaintenanceData
+      { data: reqData },
+      { data: consData },
+      { data: fixData },
+      { data: dictData },
+      { data: historyData }
+    ] = await Promise.all([
+      getSmartMaintenanceData(dept),
+      supabase.from('PartRequests').select('*').in('Status', ['Pending', 'Approved']).eq('DepartmentID', dept),
+      supabase.from('Consumable').select('*').eq('DepartmentID', dept),
+      supabase.from('Fixtures').select('*').eq('DepartmentID', dept),
+      supabase.from('Dictionary').select('*'),
+      supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept)
+    ]);
 
-      const { data: historyData } = await supabase.from('ChangeHistory').select('MachineID, PartID, Position').eq('DepartmentID', dept);
-      const posMap: Record<string, Set<string>> = {};
-      historyData?.forEach(h => {
-        if (!h.MachineID || !h.PartID) return;
-        const key = `${h.MachineID}_${h.PartID}`;
-        if (!posMap[key]) posMap[key] = new Set();
-        if (h.Position && h.Position !== '-') posMap[key].add(h.Position);
-      });
-      const formattedMap: Record<string, string[]> = {};
-      Object.keys(posMap).forEach(k => formattedMap[k] = Array.from(posMap[k]));
-      setHistoricalPositions(formattedMap);
-    } catch (error) { console.error(error); showToast('โหลดข้อมูลล้มเหลว', 'error'); } finally { setIsLoading(false); }
-  };
+    // เซ็ต State ทันทีที่ข้อมูลมาครบ
+    setMachines(data.rawMachines.filter(m => m.Active !== false)); 
+    setLines(data.rawLines); 
+    setParts(data.rawParts); 
+    setStockAllocations(data.allocations);
+    setPendingRequests(reqData || []);
+    setConsumables(consData || []);
+    setFixtures(fixData || []);
+    setDictionary(dictData || []);
+
+    // จัดการ Historical Positions
+    const posMap: Record<string, Set<string>> = {};
+    historyData?.forEach(h => {
+      if (!h.MachineID || !h.PartID) return;
+      const key = `${h.MachineID}_${h.PartID}`;
+      if (!posMap[key]) posMap[key] = new Set();
+      if (h.Position && h.Position !== '-') posMap[key].add(h.Position);
+    });
+    
+    const formattedMap: Record<string, string[]> = {};
+    Object.keys(posMap).forEach(k => formattedMap[k] = Array.from(posMap[k]));
+    setHistoricalPositions(formattedMap);
+
+  } catch (error) { 
+    console.error(error); 
+    showToast('โหลดข้อมูลล้มเหลว', 'error'); 
+  } finally { 
+    setIsLoading(false); 
+  }
+};
 
   const handleUpdateCart = (itemId: string, type: 'part' | 'consumable' | 'fixture', deltaOrExact: number, isExact: boolean = false) => {
     const currentQty = cart[itemId]?.qty || 0;
@@ -193,21 +220,53 @@ export default function RequestPartShoppingPage() {
     return terms;
   };
 
-  const searchTerms = getSearchTerms(searchQuery);
-  const filteredParts = parts.filter(p => { if (!searchQuery) return true; return searchTerms.some(term => `${p.PartName} ${p.PartModel} ${p.PartID}`.toLowerCase().includes(term)); });
-  const filteredConsumables = consumables.filter(c => { if (!searchQuery) return true; return searchTerms.some(term => `${c.ItemName} ${c.ItemModel || ''} ${c.ItemID}`.toLowerCase().includes(term)); });
-  const filteredFixtures = fixtures.filter(f => { if (!searchQuery) return true; return searchTerms.some(term => `${f.ModelName} ${f.FixtureNo}`.toLowerCase().includes(term)); });
+  // 🌟 แช่แข็งคำค้นหา (ทำใหม่ก็ต่อเมื่อ searchQuery หรือ dictionary เปลี่ยน)
+  const searchTerms = React.useMemo(() => getSearchTerms(searchQuery), [searchQuery, dictionary]);
 
-  const rawMyFixtureRequests = pendingRequests.filter(r => r.PickerName === pickerName && fixtures.some(f => f.FixtureNo === r.PartID));
-  const groupedFixtureRequests: any[] = Object.values(
-    rawMyFixtureRequests.reduce((acc: any, req: any) => {
-      const reqParts = req.RequestID.split('-');
-      const baseId = reqParts.length >= 3 ? `${reqParts[0]}-${reqParts[1]}` : req.RequestID; 
-      if (!acc[baseId]) { acc[baseId] = { baseId, createdAt: req.CreatedAt, status: req.Status, items: [] }; }
-      acc[baseId].items.push(req);
-      return acc;
-    }, {})
-  ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // 🌟 แช่แข็งผลลัพธ์อะไหล่
+  const filteredParts = React.useMemo(() => {
+    return parts.filter(p => { 
+      if (!searchQuery) return true; 
+      return searchTerms.some(term => `${p.PartName} ${p.PartModel} ${p.PartID}`.toLowerCase().includes(term)); 
+    });
+  }, [parts, searchQuery, searchTerms]);
+
+  // 🌟 แช่แข็งผลลัพธ์ของสิ้นเปลือง
+  const filteredConsumables = React.useMemo(() => {
+    return consumables.filter(c => { 
+      if (!searchQuery) return true; 
+      return searchTerms.some(term => `${c.ItemName} ${c.ItemModel || ''} ${c.ItemID}`.toLowerCase().includes(term)); 
+    });
+  }, [consumables, searchQuery, searchTerms]);
+
+  // 🌟 แช่แข็งผลลัพธ์ Fixture
+  const filteredFixtures = React.useMemo(() => {
+    return fixtures.filter(f => { 
+      if (!searchQuery) return true; 
+      return searchTerms.some(term => `${f.ModelName} ${f.FixtureNo}`.toLowerCase().includes(term)); 
+    });
+  }, [fixtures, searchQuery, searchTerms]);
+
+  // ----------------------------------------------------
+  // 🚨 ซ่อมตรงนี้ครับลูกพี่! แยก rawMyFixtureRequests ออกมาให้ข้างนอกเห็นด้วย
+  // ----------------------------------------------------
+  const rawMyFixtureRequests = React.useMemo(() => {
+    return pendingRequests.filter(r => r.PickerName === pickerName && fixtures.some(f => f.FixtureNo === r.PartID));
+  }, [pendingRequests, pickerName, fixtures]);
+
+  // 🌟 แช่แข็งรายการที่กำลังยืม (ใส่ <any[]> เพื่อให้ Typescript เลิกบ่นเรื่อง unknown)
+  const groupedFixtureRequests = React.useMemo<any[]>(() => {
+    return Object.values(
+      rawMyFixtureRequests.reduce((acc: any, req: any) => {
+        const reqParts = req.RequestID.split('-');
+        const baseId = reqParts.length >= 3 ? `${reqParts[0]}-${reqParts[1]}` : req.RequestID; 
+        if (!acc[baseId]) { acc[baseId] = { baseId, createdAt: req.CreatedAt, status: req.Status, items: [] }; }
+        acc[baseId].items.push(req);
+        return acc;
+      }, {})
+    ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [rawMyFixtureRequests]);
+  // ----------------------------------------------------
 
   const cartItemsCount = Object.values(cart).reduce((sum, item) => sum + item.qty, 0);
   const hasSparePartsInCart = Object.values(cart).some(item => item.type === 'part');
@@ -250,12 +309,22 @@ export default function RequestPartShoppingPage() {
     }
 
     const processCheckout = async () => {
-      setIsSubmitting(true);
-      try {
-        const { data: freshReqs } = await supabase.from('PartRequests').select('PartID, Qty').eq('Status', 'Pending').eq('DepartmentID', activeDept);
-        const { data: freshStocks } = await supabase.from('Stock').select('PartID, Balance, Location').eq('DepartmentID', activeDept);
-        const { data: freshCons } = await supabase.from('Consumable').select('ItemID, Balance, Location').eq('DepartmentID', activeDept);
-        const { data: freshFixs } = await supabase.from('Fixtures').select('*').eq('DepartmentID', activeDept);
+  setIsSubmitting(true);
+  try {
+    // 🚀 ยิงเช็กสต๊อกล่าสุดพร้อมกัน 4 ตารางรวดเดียว! (ไวขึ้น 4 เท่า)
+    const [
+      { data: freshReqs },
+      { data: freshStocks },
+      { data: freshCons },
+      { data: freshFixs }
+    ] = await Promise.all([
+      supabase.from('PartRequests').select('PartID, Qty').eq('Status', 'Pending').eq('DepartmentID', activeDept),
+      supabase.from('Stock').select('PartID, Balance, Location').eq('DepartmentID', activeDept),
+      supabase.from('Consumable').select('ItemID, Balance, Location').eq('DepartmentID', activeDept),
+      supabase.from('Fixtures').select('*').eq('DepartmentID', activeDept)
+    ]);
+
+    // ... (ส่วนการเช็ก available < item.qty และ Insert ใช้โค้ดเดิมของคุณได้เลยครับ ทำมาดีแล้ว)
 
         for (const itemId of Object.keys(cart)) {
           const item = cart[itemId];
@@ -821,7 +890,7 @@ export default function RequestPartShoppingPage() {
           })}
 
           {/* 🌟 FIXTURES (รายการที่กำลังยืม/รอดำเนินการ แบบใหม่ จัดกลุ่ม!) 🌟 */}
-          {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && groupedFixtureRequests.map(group => {
+          {activeCategory === 'fixtures' && fixtureTab === 'borrowed' && groupedFixtureRequests.map((group: any) => {
             const bState = batchReturnState[group.baseId] || { selected: false, items: {} };
             const isPending = group.status === 'Pending';
 
