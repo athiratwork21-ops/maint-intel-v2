@@ -1,7 +1,7 @@
 {
-  "name": "Maintenance Intelligence",
-  "short_name": "Maint. Intel",
-  "description": "ระบบจัดการและคู่มือเครื่องจักร",
+  "name": "Request Parts System",
+  "short_name": "Req Parts",
+  "description": "ระบบเบิกอะไหล่",
   "start_url": "https://maintintelv2.vercel.app/scan", 
   "display": "standalone",
   "background_color": "#0f172a",

@@ -18,7 +18,7 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Maint. Intel',
+  title: 'Request Parts',
   description: 'ระบบจัดการอะไหล่',
   manifest: '/manifest.json', // 👈 (เพิ่มใหม่สำหรับ PWA) เรียกบัตรประชาชนแอป
   appleWebApp: {
