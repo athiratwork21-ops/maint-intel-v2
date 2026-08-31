@@ -132,6 +132,54 @@ export default function MaintenanceDashboard() {
   const [stockData, setStockData] = useState<any[]>([]);
   const [stockAllocations, setStockAllocations] = useState<{ [partId: string]: { physical: number, reserved: number, available: number, machines: string[] } }>({});
   const [machines, setMachines] = useState<any[]>([]);
+  
+  // 👇 ก๊อปปี้ตั้งแต่ตรงนี้ เอาไปวางต่อท้ายบรรทัดข้างบนได้เลยครับ 👇
+  const [isLineReorderModalOpen, setIsLineReorderModalOpen] = useState(false);
+  const [reorderSelectedLine, setReorderSelectedLine] = useState('');
+  const [reorderMachines, setReorderMachines] = useState<any[]>([]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (reorderSelectedLine) {
+      const lineMachines = machines
+        .filter(m => m.LineName === reorderSelectedLine)
+        .sort((a, b) => (a.ProcessOrder || 0) - (b.ProcessOrder || 0));
+      setReorderMachines(lineMachines);
+    } else {
+      setReorderMachines([]);
+    }
+  }, [reorderSelectedLine, machines]);
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    const newMachines = [...reorderMachines];
+    const draggedItem = newMachines[draggedIndex];
+    newMachines.splice(draggedIndex, 1);
+    newMachines.splice(index, 0, draggedItem);
+    setDraggedIndex(index);
+    setReorderMachines(newMachines);
+  };
+
+  const handleSaveReorder = async () => {
+    setIsProcessing(true);
+    try {
+      const promises = reorderMachines.map((m, index) => 
+        supabase.from('Machine').update({ ProcessOrder: index + 1 }).eq('MachineID', m.MachineID)
+      );
+      await Promise.all(promises);
+      showToast('บันทึกลำดับ Process ใหม่สำเร็จ!', 'success');
+      setIsLineReorderModalOpen(false);
+      setReorderSelectedLine('');
+      fetchAllData();
+    } catch (error: any) {
+      showToast(`Error: ${error.message}`, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  // 👆 จบการก๊อปปี้แค่นี้ครับ 👆
+
   const [parts, setParts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardStats, setDashboardStats] = useState({ machines: 0, parts: 0, outOfStock: 0, overdue: 0 });
@@ -418,6 +466,7 @@ export default function MaintenanceDashboard() {
         setNewFixtureModalOpen(false);
         setEditFixtureStockOpen(false);
         setEditFixtureInfoOpen(false);
+        setIsLineReorderModalOpen(false);
       }
     };
 
@@ -1026,12 +1075,20 @@ export default function MaintenanceDashboard() {
     return fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [fixtures, searchQuery]);
 
-  // 🌟 จัดเรียงเครื่องจักร: เรียงตาม Machine ID (Natural Sort ให้ 2 มาก่อน 10)
+  // 🌟 จัดเรียงคอมโบ: 1. เรียงตาม Line -> 2. เรียงตาม ProcessOrder (ลากวาง) -> 3. ถ้าไม่มีให้เรียงตาม ID
   const sortedMachines = React.useMemo(() => {
     return [...machines].sort((a, b) => {
+      const lineA = a.LineName || '';
+      const lineB = b.LineName || '';
+      
+      if (lineA !== lineB) return lineA.localeCompare(lineB, undefined, { numeric: true, sensitivity: 'base' });
+      
+      const orderA = a.ProcessOrder || 0;
+      const orderB = b.ProcessOrder || 0;
+      if (orderA !== orderB) return orderA - orderB;
+
       const idA = a.MachineID || '';
       const idB = b.MachineID || '';
-      // ใช้ localeCompare พร้อมเปิดโหมด numeric เพื่อให้เรียงตัวเลขผสมตัวอักษรได้ฉลาดขึ้น
       return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [machines]);
@@ -2465,7 +2522,17 @@ export default function MaintenanceDashboard() {
                 </div>
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
                   <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl"><i className="bi bi-diagram-3-fill"></i></div>
-                  <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Lines</p><p className="text-3xl font-black text-indigo-600">{uniqueLinesCount}</p></div>
+                  {/* 🌟 การ์ดนี้เปลี่ยนเป็นปุ่มกดได้แล้ว 🌟 */}
+                <button 
+                  onClick={() => setIsLineReorderModalOpen(true)} 
+                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 w-full text-left active:scale-95 group cursor-pointer ring-2 ring-transparent hover:ring-indigo-500/20"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-diagram-3-fill"></i></div>
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">Total Lines <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i></p>
+                    <p className="text-3xl font-black text-indigo-600">{uniqueLinesCount} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest block sm:inline mt-1 sm:mt-0">(Click to Reorder)</span></p>
+                  </div>
+                </button>
                 </div>
               </div>
 
@@ -2936,6 +3003,72 @@ export default function MaintenanceDashboard() {
             </div>
           )}
         </div>
+        {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร 🌟 */}
+      {isLineReorderModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
+            
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <div>
+                <h3 className="font-black text-xl text-slate-800 flex items-center gap-2"><i className="bi bi-diagram-3-fill text-indigo-500"></i> Reorder Process Flow</h3>
+                <p className="text-xs text-slate-500 mt-1 font-bold">เลือกลายการผลิต แล้วลากวางเพื่อเรียงลำดับเครื่องจักรใหม่</p>
+              </div>
+              <button onClick={() => { setIsLineReorderModalOpen(false); setReorderSelectedLine(''); }} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors"><i className="bi bi-x-lg"></i></button>
+            </div>
+
+            <div className="p-6 flex flex-col flex-1 overflow-hidden bg-slate-50/50">
+              <div className="mb-4 shrink-0">
+                <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">1. Select Production Line</label>
+                <CustomDropdown
+                  value={reorderSelectedLine}
+                  onChange={setReorderSelectedLine}
+                  options={[{ value: '', label: '-- เลือกไลน์ผลิต --' }, ...linesMaster.map(l => ({ value: l.LineName, label: l.LineName }))]}
+                  placeholder="-- เลือกไลน์ผลิต --"
+                  iconClass="bi bi-diagram-3"
+                />
+              </div>
+
+              {reorderSelectedLine && (
+                <div className="flex-1 overflow-hidden flex flex-col mt-2">
+                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">2. Drag to Reorder ({reorderMachines.length} Machines)</label>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 pb-4">
+                    {reorderMachines.map((m, index) => (
+                      <div 
+                        key={m.MachineID}
+                        draggable
+                        onDragStart={() => setDraggedIndex(index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragEnd={() => setDraggedIndex(null)}
+                        className={`p-4 bg-white border rounded-xl flex items-center gap-4 transition-all ${draggedIndex === index ? 'opacity-50 scale-95 border-indigo-500 shadow-inner' : 'border-slate-200 shadow-sm cursor-grab hover:border-indigo-300 hover:shadow-md'}`}
+                      >
+                        <div className="text-slate-300 cursor-grab active:cursor-grabbing"><i className="bi bi-grip-vertical text-xl"></i></div>
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">{index + 1}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-800 truncate">{m.MachineName}</p>
+                          <p className="text-[10px] text-slate-400 font-bold">ID: {m.MachineID}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {reorderMachines.length === 0 && (
+                      <div className="py-10 text-center text-slate-400 font-bold border-2 border-dashed border-slate-200 rounded-xl">ไม่มีเครื่องจักรในไลน์นี้</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-white shrink-0">
+              <button 
+                onClick={handleSaveReorder} 
+                disabled={!reorderSelectedLine || isProcessing}
+                className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition-all text-[15px] disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+              >
+                {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin"></i> Saving...</> : <><i className="bi bi-check-circle-fill"></i> บันทึกลำดับ Process</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </main>
     </div>
   );
