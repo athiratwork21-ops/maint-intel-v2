@@ -2519,8 +2519,7 @@ export default function MaintenanceDashboard() {
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
                   <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center text-2xl"><i className="bi bi-pause-circle-fill"></i></div>
                   <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Inactive (Paused)</p><p className="text-3xl font-black text-slate-700">{inactiveMachinesCount}</p></div>
-                </div>
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
+                
                   {/* 🌟 การ์ดที่ 3 (Total Lines): เปลี่ยนเป็นปุ่มเดี่ยวคลุมทั้งการ์ด 🌟 */}
                 <button
                   onClick={() => setIsLineReorderModalOpen(true)}
@@ -2531,7 +2530,7 @@ export default function MaintenanceDashboard() {
                     <i className="bi bi-diagram-3-fill"></i>
                   </div>
                   
-                  {/* ข้อความตัวเลข */}
+                  {/* ข้อความและตัวเลข */}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">
                       Total Lines 
@@ -3016,11 +3015,13 @@ export default function MaintenanceDashboard() {
           )}
         </div>
         {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร 🌟 */}
+      {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร 🌟 */}
       {isLineReorderModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl min-h-[ุ760px] overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
+          {/* 🌟 แก้ไข Typo สระอุ และปรับขนาดความสูงให้พอดี (min-h-[600px]) 🌟 */}
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl min-h-[600px] flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500">
             
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 rounded-t-[2rem]">
               <div>
                 <h3 className="font-black text-xl text-slate-800 flex items-center gap-2"><i className="bi bi-diagram-3-fill text-indigo-500"></i> Reorder Process Flow</h3>
                 <p className="text-xs text-slate-500 mt-1 font-bold">เลือกลายการผลิต แล้วลากวางเพื่อเรียงลำดับเครื่องจักรใหม่</p>
@@ -3028,8 +3029,9 @@ export default function MaintenanceDashboard() {
               <button onClick={() => { setIsLineReorderModalOpen(false); setReorderSelectedLine(''); }} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors"><i className="bi bi-x-lg"></i></button>
             </div>
 
-            <div className="p-6 flex flex-col flex-1 overflow-hidden bg-slate-50/50">
-              <div className="mb-4 shrink-0">
+            <div className="p-6 flex flex-col flex-1 bg-slate-50/50 overflow-visible">
+              {/* 🌟 ใส่ relative และ z-50 เพื่อให้ Dropdown ลอยทะลุไม่โดนบัง 🌟 */}
+              <div className="mb-6 shrink-0 relative z-50">
                 <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">1. Select Production Line</label>
                 <CustomDropdown
                   value={reorderSelectedLine}
@@ -3040,9 +3042,9 @@ export default function MaintenanceDashboard() {
                 />
               </div>
 
-              {reorderSelectedLine && (
-                <div className="flex-1 overflow-hidden flex flex-col mt-2">
-                  <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">2. Drag to Reorder ({reorderMachines.length} Machines)</label>
+              {reorderSelectedLine ? (
+                <div className="flex-1 flex flex-col mt-2 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <label className="block text-xs font-bold text-slate-600 mb-3 uppercase">2. Drag to Reorder ({reorderMachines.length} Machines)</label>
                   <div className="flex-1 overflow-y-auto space-y-2 pr-2 pb-4">
                     {reorderMachines.map((m, index) => (
                       <div 
@@ -3062,14 +3064,21 @@ export default function MaintenanceDashboard() {
                       </div>
                     ))}
                     {reorderMachines.length === 0 && (
-                      <div className="py-10 text-center text-slate-400 font-bold border-2 border-dashed border-slate-200 rounded-xl">ไม่มีเครื่องจักรในไลน์นี้</div>
+                      <div className="py-10 text-center text-slate-400 font-bold border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">ไม่มีเครื่องจักรในไลน์นี้</div>
                     )}
                   </div>
+                </div>
+              ) : (
+                /* โชว์กล่อง Placeholder ระหว่างรอเลือก Dropdown ไม่ให้ Modal ดูโล่งเกินไป */
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white/50 min-h-[250px]">
+                   <i className="bi bi-diagram-2 text-4xl mb-3 text-slate-300"></i>
+                   <p className="font-bold text-sm">กรุณาเลือกไลน์ผลิตด้านบน</p>
+                   <p className="text-xs mt-1 opacity-70">เพื่อแสดงรายชื่อเครื่องจักรและจัดเรียงลำดับ</p>
                 </div>
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-100 bg-white shrink-0">
+            <div className="p-4 border-t border-slate-100 bg-white shrink-0 rounded-b-[2rem]">
               <button 
                 onClick={handleSaveReorder} 
                 disabled={!reorderSelectedLine || isProcessing}
