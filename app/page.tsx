@@ -2521,13 +2521,28 @@ export default function MaintenanceDashboard() {
                   <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Inactive (Paused)</p><p className="text-3xl font-black text-slate-700">{inactiveMachinesCount}</p></div>
                 </div>
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                  {/* 🌟 แก้ไขการ์ดซ้อน: ใช้ button เป็นการ์ดโดยตรงเลย 🌟 */}
-                <button 
-                  onClick={() => setIsLineReorderModalOpen(true)} 
+                  {/* 🌟 การ์ดที่ 3 (Total Lines): เปลี่ยนเป็นปุ่มเดี่ยวคลุมทั้งการ์ด 🌟 */}
+                <button
+                  onClick={() => setIsLineReorderModalOpen(true)}
+                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 w-full text-left active:scale-95 group cursor-pointer ring-2 ring-transparent hover:ring-indigo-500/20"
                 >
-                  <div className="flex-1">
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">Total Lines <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i></p>
-                    <p className="text-3xl font-black text-indigo-600">{uniqueLinesCount} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest block sm:inline mt-1 sm:mt-0">(Click to Reorder)</span></p>
+                  {/* ไอคอน */}
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl shrink-0">
+                    <i className="bi bi-diagram-3-fill"></i>
+                  </div>
+                  
+                  {/* ข้อความตัวเลข */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">
+                      Total Lines 
+                      <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                    </p>
+                    <p className="text-3xl font-black text-indigo-600 truncate">
+                      {uniqueLinesCount} 
+                      <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest block sm:inline mt-1 sm:mt-0">
+                        (Click to Reorder)
+                      </span>
+                    </p>
                   </div>
                 </button>
                 </div>
