@@ -1271,7 +1271,7 @@ export default function MaintenanceDashboard() {
       {/* Modals Data Processing */}
       {basicInfoModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-blue-500 flex flex-col">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl min-h-[600px] overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[95vh]">">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                 <i className="bi bi-plus-circle-fill text-blue-500 bg-blue-50 p-2 rounded-lg"></i> 
@@ -2521,7 +2521,6 @@ export default function MaintenanceDashboard() {
                   <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Inactive (Paused)</p><p className="text-3xl font-black text-slate-700">{inactiveMachinesCount}</p></div>
                 </div>
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl"><i className="bi bi-diagram-3-fill"></i></div>
                   {/* 🌟 แก้ไขการ์ดซ้อน: ใช้ button เป็นการ์ดโดยตรงเลย 🌟 */}
                 <button 
                   onClick={() => setIsLineReorderModalOpen(true)} 
