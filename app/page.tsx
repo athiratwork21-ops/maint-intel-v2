@@ -2512,39 +2512,33 @@ export default function MaintenanceDashboard() {
           {activeTab === 'machines' && (
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6 flex-shrink-0">
+                {/* 1. การ์ด Active */}
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
                   <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl"><i className="bi bi-robot"></i></div>
                   <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Active Machines</p><p className="text-3xl font-black text-blue-600">{activeMachinesCount}</p></div>
                 </div>
+
+                {/* 2. การ์ด Inactive */}
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
                   <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center text-2xl"><i className="bi bi-pause-circle-fill"></i></div>
                   <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Inactive (Paused)</p><p className="text-3xl font-black text-slate-700">{inactiveMachinesCount}</p></div>
+                </div>
                 
-                  {/* 🌟 การ์ดที่ 3 (Total Lines): เปลี่ยนเป็นปุ่มเดี่ยวคลุมทั้งการ์ด 🌟 */}
+                {/* 3. การ์ด Total Lines (ปุ่มกดแยกเป็นกล่องเดี่ยวๆ) */}
                 <button
                   onClick={() => setIsLineReorderModalOpen(true)}
-                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 w-full text-left active:scale-95 group cursor-pointer ring-2 ring-transparent hover:ring-indigo-500/20"
+                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 text-left active:scale-95 group focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
                 >
-                  {/* ไอคอน */}
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl shrink-0">
-                    <i className="bi bi-diagram-3-fill"></i>
-                  </div>
-                  
-                  {/* ข้อความและตัวเลข */}
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl shrink-0"><i className="bi bi-diagram-3-fill"></i></div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">
-                      Total Lines 
-                      <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                      Total Lines <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
                     </p>
                     <p className="text-3xl font-black text-indigo-600 truncate">
-                      {uniqueLinesCount} 
-                      <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest block sm:inline mt-1 sm:mt-0">
-                        (Click to Reorder)
-                      </span>
+                      {uniqueLinesCount} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest hidden lg:inline-block">(Reorder)</span>
                     </p>
                   </div>
                 </button>
-                </div>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
@@ -3014,14 +3008,15 @@ export default function MaintenanceDashboard() {
             </div>
           )}
         </div>
-        {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร 🌟 */}
-      {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร 🌟 */}
+        {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร (โครงสร้างใหม่ ไม่บั๊ก Dropdown) 🌟 */}
       {isLineReorderModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          {/* 🌟 แก้ไข Typo สระอุ และปรับขนาดความสูงให้พอดี (min-h-[600px]) 🌟 */}
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl min-h-[600px] flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200">
+          
+          {/* กล่องหลัก: ฟิกซ์ความสูงไว้ที่ไม่เกิน 90% ของหน้าจอ */}
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl h-[90vh] md:h-[80vh] flex flex-col animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 overflow-hidden">
             
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 rounded-t-[2rem]">
+            {/* 🔴 HEADER (ยึดติดด้านบน) */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
               <div>
                 <h3 className="font-black text-xl text-slate-800 flex items-center gap-2"><i className="bi bi-diagram-3-fill text-indigo-500"></i> Reorder Process Flow</h3>
                 <p className="text-xs text-slate-500 mt-1 font-bold">เลือกลายการผลิต แล้วลากวางเพื่อเรียงลำดับเครื่องจักรใหม่</p>
@@ -3029,9 +3024,11 @@ export default function MaintenanceDashboard() {
               <button onClick={() => { setIsLineReorderModalOpen(false); setReorderSelectedLine(''); }} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors"><i className="bi bi-x-lg"></i></button>
             </div>
 
-            <div className="p-6 flex flex-col flex-1 bg-slate-50/50 overflow-visible">
-              {/* 🌟 ใส่ relative และ z-50 เพื่อให้ Dropdown ลอยทะลุไม่โดนบัง 🌟 */}
-              <div className="mb-6 shrink-0 relative z-50">
+            {/* 🟡 BODY (แบ่งส่วน Dropdown ออกจากส่วนที่ Scroll ได้) */}
+            <div className="p-6 flex flex-col flex-1 min-h-0 bg-slate-50/50">
+              
+              {/* ส่วน Dropdown: ตั้งค่า z-50 ให้ลอยอยู่เหนือสิ่งอื่นใด และไม่โดนตัดทิ้ง */}
+              <div className="shrink-0 relative z-50 mb-4">
                 <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">1. Select Production Line</label>
                 <CustomDropdown
                   value={reorderSelectedLine}
@@ -3042,10 +3039,17 @@ export default function MaintenanceDashboard() {
                 />
               </div>
 
+              {/* ส่วนการลากวาง: เราจะให้กล่องนี้มี Scrollbar ของตัวเอง Dropdown ด้านบนจะได้ไม่พัง */}
               {reorderSelectedLine ? (
-                <div className="flex-1 flex flex-col mt-2 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <label className="block text-xs font-bold text-slate-600 mb-3 uppercase">2. Drag to Reorder ({reorderMachines.length} Machines)</label>
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 pb-4">
+                <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+                      2. Drag to Reorder ({reorderMachines.length} Machines)
+                    </label>
+                  </div>
+                  
+                  {/* กล่องรายชื่อเครื่องจักรที่สามารถ Scroll ได้อิสระ */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2 relative z-0">
                     {reorderMachines.map((m, index) => (
                       <div 
                         key={m.MachineID}
@@ -3053,12 +3057,12 @@ export default function MaintenanceDashboard() {
                         onDragStart={() => setDraggedIndex(index)}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDragEnd={() => setDraggedIndex(null)}
-                        className={`p-4 bg-white border rounded-xl flex items-center gap-4 transition-all ${draggedIndex === index ? 'opacity-50 scale-95 border-indigo-500 shadow-inner' : 'border-slate-200 shadow-sm cursor-grab hover:border-indigo-300 hover:shadow-md'}`}
+                        className={`p-3 bg-white border rounded-xl flex items-center gap-4 transition-all ${draggedIndex === index ? 'opacity-50 scale-95 border-indigo-500 shadow-inner' : 'border-slate-200 shadow-sm cursor-grab hover:border-indigo-300 hover:shadow-md'}`}
                       >
                         <div className="text-slate-300 cursor-grab active:cursor-grabbing"><i className="bi bi-grip-vertical text-xl"></i></div>
                         <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">{index + 1}</div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-800 truncate">{m.MachineName}</p>
+                          <p className="font-bold text-slate-800 text-sm truncate">{m.MachineName}</p>
                           <p className="text-[10px] text-slate-400 font-bold">ID: {m.MachineID}</p>
                         </div>
                       </div>
@@ -3069,24 +3073,26 @@ export default function MaintenanceDashboard() {
                   </div>
                 </div>
               ) : (
-                /* โชว์กล่อง Placeholder ระหว่างรอเลือก Dropdown ไม่ให้ Modal ดูโล่งเกินไป */
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white/50 min-h-[250px]">
-                   <i className="bi bi-diagram-2 text-4xl mb-3 text-slate-300"></i>
-                   <p className="font-bold text-sm">กรุณาเลือกไลน์ผลิตด้านบน</p>
+                /* โชว์กล่องเปล่าๆ ที่ดูดีระหว่างรอผู้ใช้เลือก Dropdown */
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl bg-white/50">
+                   <i className="bi bi-diagram-2 text-5xl mb-3 text-slate-200"></i>
+                   <p className="font-bold text-base text-slate-500">กรุณาเลือกไลน์ผลิต</p>
                    <p className="text-xs mt-1 opacity-70">เพื่อแสดงรายชื่อเครื่องจักรและจัดเรียงลำดับ</p>
                 </div>
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-100 bg-white shrink-0 rounded-b-[2rem]">
+            {/* 🟢 FOOTER (ปุ่มบันทึก ยึดติดด้านล่างสุดเสมอ) */}
+            <div className="p-5 border-t border-slate-100 bg-white shrink-0">
               <button 
                 onClick={handleSaveReorder} 
                 disabled={!reorderSelectedLine || isProcessing}
                 className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95 transition-all text-[15px] disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
               >
-                {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin"></i> Saving...</> : <><i className="bi bi-check-circle-fill"></i> บันทึกลำดับ Process</>}
+                {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin text-lg"></i> Saving...</> : <><i className="bi bi-check-circle-fill text-lg"></i> บันทึกลำดับ Process</>}
               </button>
             </div>
+
           </div>
         </div>
       )}
