@@ -60,7 +60,8 @@ export default function RootLayout({
     <html lang="en">
       {/* 👇 ยัดคาถาปราบไอโฟนลงไปตรงๆ แบบไม่ต้องง้อ Next.js */}
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+        {/* แก้ไขแค่บรรทัดนี้: เติม user-scalable=no เข้าไปเพื่อให้ตรงกับด้านบน */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="theme-color" content="#0f172a" />

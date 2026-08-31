@@ -31,3 +31,7 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+/* บังคับขนาดฟอนต์ Input เป็น 16px เพื่อไม่ให้ iOS แอบซูมจอเวลาผู้ใช้จิ้มช่องพิมพ์ */
+input, textarea, select {
+  font-size: 16px !important;
+}
