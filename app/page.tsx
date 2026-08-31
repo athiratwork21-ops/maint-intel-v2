@@ -2525,9 +2525,7 @@ export default function MaintenanceDashboard() {
                   {/* 🌟 แก้ไขการ์ดซ้อน: ใช้ button เป็นการ์ดโดยตรงเลย 🌟 */}
                 <button 
                   onClick={() => setIsLineReorderModalOpen(true)} 
-                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 w-full text-left active:scale-95 group cursor-pointer ring-2 ring-transparent hover:ring-indigo-500/20"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shrink-0"><i className="bi bi-diagram-3-fill"></i></div>
                   <div className="flex-1">
                     <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">Total Lines <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i></p>
                     <p className="text-3xl font-black text-indigo-600">{uniqueLinesCount} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest block sm:inline mt-1 sm:mt-0">(Click to Reorder)</span></p>
@@ -3006,7 +3004,7 @@ export default function MaintenanceDashboard() {
         {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร 🌟 */}
       {isLineReorderModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl min-h-[450px] overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl min-h-[ุ760px] overflow-hidden animate-in zoom-in-95 duration-300 ease-out border-t-4 border-t-indigo-500 flex flex-col max-h-[90vh]">
             
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
               <div>
