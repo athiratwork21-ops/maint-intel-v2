@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { supabaseServiceWork } from '../../lib/supabase-servicework';
+import { supabaseServiceWork } from '../../../lib/supabase-servicework';
 
 // ฟังก์ชันแปลงวันที่
 const formatDateStr = (date: Date) => {

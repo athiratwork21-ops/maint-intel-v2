@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { supabaseServiceWork } from '../../lib/supabase-servicework';
+import { supabaseServiceWork } from '../../../lib/supabase-servicework';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 

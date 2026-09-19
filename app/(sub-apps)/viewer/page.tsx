@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabaseServiceWork } from '../../lib/supabase-servicework';
+import { supabaseServiceWork } from '../../../lib/supabase-servicework';
 
 type CellData = { shift: 'D' | 'N' | 'O'; isOT: boolean };
 type ScheduleState = Record<string, CellData>;

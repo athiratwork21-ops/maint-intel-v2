@@ -21,7 +21,7 @@ const externalApps = [
     icon: 'bi-calendar3',
     color: 'text-emerald-500',
     bgColor: 'bg-emerald-500/10',
-    url: 'https://maintintelv2.vercel.app/Viewer',
+    url: 'https://maintintelv2.vercel.app/viewer',
     status: 'Active'
   },
 

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { supabaseServiceWork } from '../../lib/supabase-servicework'; 
+import { supabaseServiceWork } from '../../../lib/supabase-servicework'; 
 
 // =====================================================================
 // 🛡️ บังคับ TypeScript ให้รู้จักโครงสร้าง (แก้ปัญหา Type never[])

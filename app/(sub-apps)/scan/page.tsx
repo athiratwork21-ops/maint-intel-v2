@@ -1,8 +1,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-import { supabaseServiceWork } from '../../lib/supabase-servicework';
-import { getSmartMaintenanceData } from '../../lib/maintenanceLogic';
+import { supabase } from '../../../lib/supabase';
+import { supabaseServiceWork } from '../../../lib/supabase-servicework';
+import { getSmartMaintenanceData } from '../../../lib/maintenanceLogic';
 
 export default function RequestPartShoppingPage() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
