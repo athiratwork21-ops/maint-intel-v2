@@ -6,6 +6,18 @@ import Image from 'next/image';
 import Papa from 'papaparse';
 import ShelfMapSelector from '../components/ShelfMapSelector';
 import CustomDropdown from '../components/CustomDropdown';
+import DashboardStatsCards from '../components/main-dashboard/DashboardStatsCards';
+import AIPredictiveInsights from '../components/main-dashboard/AIPredictiveInsights';
+import MaintenanceScheduleTable from '../components/main-dashboard/MaintenanceScheduleTable';
+import CurrentStockTable from '../components/main-dashboard/CurrentStockTable'; 
+import ConsumablesTable from '../components/main-dashboard/ConsumablesTable'; 
+import FixturesTable from '../components/main-dashboard/FixturesTable'; 
+import MachinesTable from '../components/main-dashboard/MachinesTable';
+import RequestQueue from '../components/main-dashboard/RequestQueue'; 
+import HistoryTable from '../components/main-dashboard/HistoryTable'; 
+import PrTrackingTable from '../components/main-dashboard/PrTrackingTable'; 
+import BasicInfoTab from '../components/main-dashboard/BasicInfoTab';
+import LogRecordTab from '../components/main-dashboard/LogRecordTab';
 
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
@@ -822,6 +834,28 @@ export default function MaintenanceDashboard() {
   };
   const handleToggleMachineStatus = async (machineId: string, currentStatus: boolean) => { const newStatus = currentStatus === false ? true : false; const { error } = await supabase.from('Machine').update({ Active: newStatus }).eq('MachineID', machineId); if (!error) { showToast(`Machine status changed successfully`, 'success'); fetchAllData(); } };
 
+  const handleDeleteMachine = (machineId: string, machineName: string) => {
+    setOpenDropdownId(null);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Machine',
+      isDanger: true,
+      message: `Are you sure you want to delete Machine: "${machineName}"?\nThis cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        const { error } = await supabase.from('Machine').delete().eq('MachineID', machineId);
+        if (!error) {
+          showToast(`Machine "${machineName}" deleted successfully.`, 'success');
+          fetchAllData();
+        } else {
+          showToast(`Error: ${error.message}`, 'error');
+        }
+        setIsProcessing(false);
+      }
+    });
+  };
+
   const handleBasicInfoSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setIsProcessing(true); const formData = new FormData(e.currentTarget); const value = formData.get('value') as string; let error; const activeDept = localStorage.getItem('activeDepartment');
     
@@ -1075,7 +1109,7 @@ export default function MaintenanceDashboard() {
     return fixtures.filter(f => !searchQuery || f.FixtureNo?.toLowerCase().includes(searchQuery.toLowerCase()) || f.ModelName?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [fixtures, searchQuery]);
 
-  // 🌟 จัดเรียงคอมโบ: 1. เรียงตาม Line -> 2. เรียงตาม ProcessOrder (ลากวาง) -> 3. ถ้าไม่มีให้เรียงตาม ID
+  // จัดเรียงคอมโบ: 1. เรียงตาม Line -> 2. เรียงตาม ProcessOrder (ลากวาง) -> 3. ถ้าไม่มีให้เรียงตาม ID
   const sortedMachines = React.useMemo(() => {
     return [...machines].sort((a, b) => {
       const lineA = a.LineName || '';
@@ -1093,23 +1127,18 @@ export default function MaintenanceDashboard() {
     });
   }, [machines]);
 
+  const filteredMachines = React.useMemo(() => {
+    return sortedMachines.filter(m => 
+      (!filterLine || m.LineName === filterLine) &&
+      (!searchQuery || 
+        m.MachineID?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        m.MachineName?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    );
+  }, [sortedMachines, filterLine, searchQuery]);
   const activeMachinesCount = machines.filter(m => m.Active !== false).length;
   const inactiveMachinesCount = machines.filter(m => m.Active === false).length;
   const uniqueLinesCount = new Set(machines.map(m => m.LineName).filter(Boolean)).size;
-
-  const renderStatusBadge = (report: DashboardReport) => {
-    let badgeClass = ''; let icon = ''; let actionBtn = null;
-    switch (report.status) {
-      case 'NORMAL': badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'; icon = 'bi-check-circle-fill'; break;
-      case 'IN STOCK': badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200/50'; icon = 'bi-box-seam-fill'; break;
-      case 'MONITORING': badgeClass = 'bg-slate-100 text-slate-600 border border-slate-200'; icon = 'bi-eye-fill'; break;
-      case 'ORDER NOW': badgeClass = 'bg-amber-50 text-amber-700 border border-amber-300'; icon = 'bi-exclamation-circle-fill'; actionBtn = (<div className="flex gap-2 mt-2"> <button onClick={() => handleMarkAsOrdered(report.partId, 'part')} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-cart-check"></i> Mark as Ordered</button> <button onClick={() => handleDismissAlert(report.machineId, report.partId, report.partName)} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-eye-slash"></i> Monitor Only</button> </div>); break;
-      case 'ORDERED': badgeClass = 'bg-purple-50 text-purple-700 border border-purple-300 shadow-sm'; icon = 'bi-truck'; actionBtn = (<div className="flex gap-2 mt-2"> <span className="text-[10px] font-bold text-purple-600 bg-white px-2 py-1 rounded border border-purple-100">Awaiting Delivery...</span></div>); break;
-      case 'OVERDUE': badgeClass = 'bg-red-50 text-red-700 border border-red-300'; icon = 'bi-x-circle-fill'; actionBtn = (<div className="flex gap-2 mt-2"> <button onClick={() => handleMarkAsOrdered(report.partId, 'part')} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-red-300 text-red-700 rounded-lg hover:bg-red-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-cart-check"></i> Mark as Ordered (Urgent)</button> <button onClick={() => handleDismissAlert(report.machineId, report.partId, report.partName)} className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 active:scale-95 transition-all shadow-sm w-max"><i className="bi bi-eye-slash"></i> Monitor Only</button> </div>); break;
-      default: badgeClass = 'bg-slate-100 text-slate-800'; icon = 'bi-info-circle-fill';
-    }
-    return (<div className="flex flex-col"><span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm ${badgeClass}`}><i className={`bi ${icon} text-sm`}></i> {report.status}</span>{actionBtn}</div>);
-  };
 
   const activeActionPartDetails = parts.find(p => p.PartID === selectedActionPart?.id) || {};
 
@@ -2018,996 +2047,212 @@ export default function MaintenanceDashboard() {
 
         <div className="flex-1 relative overflow-hidden">
 
-          {/* TAB: DASHBOARD */}
+         {/* TAB: DASHBOARD */}
           {activeTab === 'dashboard' && (
             <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-6 flex-shrink-0">
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-robot"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Machines</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.machines}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-gear-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Active Parts</p><p className="text-3xl font-black text-slate-800">{isLoading ? '-' : dashboardStats.parts}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-exclamation-triangle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Out of Stock</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.outOfStock}</p></div></div> <div className="bg-white rounded-2xl p-6 shadow-sm border border-red-50 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 cursor-default group"><div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform"><i className="bi bi-x-circle-fill"></i></div><div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Overdue Jobs</p><p className="text-3xl font-black text-red-600">{isLoading ? '-' : dashboardStats.overdue}</p></div></div>
-              </div>
-              {/* 🌟 AI PREDICTIVE INSIGHTS WIDGET (พับได้) 🌟 */}
-              {mlInsights.length > 0 && (
-                <div className="bg-gradient-to-br from-slate-900 to-[#0f172a] rounded-2xl shadow-xl mb-6 border border-cyan-500/30 flex-shrink-0 relative overflow-hidden transition-all duration-300">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[50px] rounded-full pointer-events-none"></div>
+              <DashboardStatsCards isLoading={isLoading} dashboardStats={dashboardStats} />
 
-                  {/* แถบหัวข้อ (คลิกเพื่อพับ/กาง) */}
-                  <div
-                    className="flex items-center justify-between p-5 relative z-10 cursor-pointer hover:bg-white/5 transition-colors"
-                    onClick={() => setIsMlExpanded(!isMlExpanded)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-black text-xl text-white flex items-center gap-3">
-                        <i className={`bi bi-cpu-fill text-cyan-400 ${isMlExpanded ? 'animate-pulse' : ''}`}></i>
-                        ML Predictive Insights
-                      </h3>
-                      {/* แจ้งเตือนเล็กๆ เวลาพับกล่อง แล้วมีอะไหล่สีแดง */}
-                      {!isMlExpanded && mlInsights.some(i => i.trend === 'Degrading') && (
-                        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-2 py-1 rounded-md font-bold border border-rose-500/30 animate-pulse">
-                          ⚠️ พบอะไหล่เสี่ยงสูง
-                        </span>
-                      )}
-                    </div>
+              {/* 🌟 AI PREDICTIVE INSIGHTS WIDGET 🌟 */}
+              <AIPredictiveInsights 
+                mlInsights={mlInsights} 
+                isMlExpanded={isMlExpanded} 
+                setIsMlExpanded={setIsMlExpanded} 
+              /> 
 
-                    <div className="flex items-center gap-4">
-                      <span className="text-[10px] font-bold bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30 uppercase tracking-widest hidden sm:block">AI Active</span>
-                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
-                        <i className={`bi bi-chevron-${isMlExpanded ? 'up' : 'down'} text-slate-400`}></i>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* เนื้อหาการ์ด (จะโชว์ก็ต่อเมื่อ isMlExpanded เป็น true) */}
-                  {isMlExpanded && (
-                    <div className="px-5 pb-5 pt-1 relative z-10">
-                      <div className="flex overflow-x-auto gap-4 pb-2 snap-x" style={{ scrollbarWidth: 'thin' }}>
-                        {mlInsights.map((insight, idx) => (
-                          <div key={idx} className="bg-slate-800/50 backdrop-blur-md border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:border-cyan-400/50 transition-colors min-w-[320px] shrink-0 snap-start">
-                            <div className="w-12 h-12 rounded-lg bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
-                              {insight.image ? <img src={insight.image} className="w-full h-full object-contain" /> : <i className="bi bi-gear text-slate-400 text-xl"></i>}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-slate-200 text-sm truncate">{insight.partName}</p>
-                              <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                                <i className="bi bi-geo-alt-fill text-cyan-500/70 mr-1"></i> เครื่อง: {insight.machines}
-                              </p>
-                              <div className="flex items-center gap-3 mt-1.5 text-xs font-bold">
-                                <span className="text-slate-400" title="ค่าเฉลี่ยแบบเก่า">MTBF: {insight.mtbf}d</span>
-                                <span className="text-slate-600">|</span>
-                                <span className={`${insight.trend === 'Degrading' ? 'text-rose-400' : 'text-emerald-400'}`} title="AI ทำนายล่วงหน้า">
-                                  <i className={`bi ${insight.trend === 'Degrading' ? 'bi-graph-down-arrow' : 'bi-graph-up-arrow'} mr-1`}></i>
-                                  Predict: {insight.mlPrediction}d
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center p-6 border-b border-slate-100 bg-white gap-4 flex-shrink-0">
-                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Maintenance Schedule</h2>
-
-                  <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
-                    <div className="relative flex-1 xl:flex-none min-w-[150px]">
-                      <CustomDropdown
-                        value={filterLine}
-                        onChange={(val) => { setFilterLine(val); setFilterMachine(''); }}
-                        options={[
-                          { value: '', label: 'All Lines' },
-                          ...linesMaster.map(line => ({ value: line.LineName, label: line.LineName }))
-                        ]}
-                        placeholder="All Lines"
-                        iconClass="bi bi-funnel"
-                      />
-                    </div>
-                    <div className="relative flex-1 xl:flex-none min-w-[150px]">
-                      <CustomDropdown
-                        value={filterMachine}
-                        onChange={setFilterMachine}
-                        options={[
-                          { value: '', label: 'All Machines' },
-                          ...machines.filter(m => m.LineName === filterLine).map(m => ({ value: m.MachineID, label: m.MachineName }))
-                        ]}
-                        placeholder="All Machines"
-                        iconClass="bi bi-robot"
-                      />
-                    </div>
-                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white shrink-0"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                  </div>
-                </div>
-                <div className="overflow-auto flex-1 relative rounded-b-2xl">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider">
-                        <th className="py-5 px-6">Machine & Line</th>
-                        <th className="py-5 px-6">Part Info (MTBF)</th>
-                        <th className="py-5 px-6">Order Date</th>
-                        <th className="py-5 px-6">Due Date</th>
-                        <th className="py-5 px-6">Status & Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {filteredScheduleData.map((row, idx) => (
-                        <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 ${row.status === 'MONITORING' ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100' : ''}`}>
-                          <td className="py-5 px-6 align-top">
-                            <div className="font-bold text-slate-800 text-[15px]">{row.machine}</div>
-                            <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-1.5"><i className="bi bi-geo-alt-fill text-blue-400"></i> {row.line}</div>
-                          </td>
-                          <td className="py-5 px-6 align-top">
-                            <div className="font-bold text-slate-700">{row.partName}</div>
-                            <div className="text-xs text-slate-400 mt-1.5">Req: <span className="text-blue-600 font-black">{row.reqQty}</span> pcs <span className="mx-1 opacity-30">|</span> MTBF: <span className="text-emerald-600 font-black">{row.mtbfDays}</span> d</div>
-                          </td>
-                          <td className="py-5 px-6 align-top font-bold text-blue-600">{row.orderDate}</td>
-                          <td className="py-5 px-6 align-top font-bold text-red-500">{row.dueDate}</td>
-                          <td className="py-5 px-6 align-top">{renderStatusBadge(row)}</td>
-                        </tr>
-                      ))}
-                      {filteredScheduleData.length === 0 && (<tr><td colSpan={5} className="py-10 text-center text-slate-400 font-bold">No schedule data available</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {/* 🌟 ตาราง MAINTENANCE SCHEDULE 🌟 */}
+              <MaintenanceScheduleTable 
+                isLoading={isLoading}
+                fetchAllData={fetchAllData}
+                linesMaster={linesMaster}
+                machines={machines}
+                filterLine={filterLine}
+                setFilterLine={setFilterLine}
+                filterMachine={filterMachine}
+                setFilterMachine={setFilterMachine}
+                filteredScheduleData={filteredScheduleData}
+                handleMarkAsOrdered={handleMarkAsOrdered}
+                handleDismissAlert={handleDismissAlert}
+              />
             </div>
           )}
 
           {/* TAB: CURRENT STOCK */}
-          {activeTab === 'stock' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Real-time Stock Allocations</h2>
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
-                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2.5 text-sm border border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 active:scale-95 transition-all shadow-sm font-bold bg-white"><i className="bi bi-file-earmark-excel"></i> Export CSV</button>{/* 🌟 ชุดปุ่ม Import CSV 🌟 */}
-                    <input
-                      type="file"
-                      accept=".csv"
-                      id="csv-upload"
-                      className="hidden"
-                      onChange={handleImportCSV}
-                    />
-                    <label
-                      htmlFor="csv-upload"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm border border-emerald-500 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-95 transition-all shadow-sm font-bold cursor-pointer ml-2"
-                    >
-                      <i className="bi bi-cloud-arrow-up-fill"></i> Import PR Status
-                    </label>
-                    <button onClick={openNewPartModal} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-slate-900 text-white rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-md shadow-slate-900/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> New Part</button>
-                  </div>
-                </div>
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search part name, model, or location..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm transition-all" /></div></div>
+       {activeTab === 'stock' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <CurrentStockTable
+             isLoading={isLoading}
+             fetchAllData={fetchAllData}
+             handleExportCSV={handleExportCSV}
+             handleImportCSV={handleImportCSV}
+             openNewPartModal={openNewPartModal}
+             searchQuery={searchQuery}
+             setSearchQuery={setSearchQuery}
+             filteredStockData={filteredStockData}
+             stockAllocations={stockAllocations}
+             parts={parts}
+             pendingRequests={pendingRequests}
+             machines={machines}
+             openDropdownId={openDropdownId}
+             setOpenDropdownId={setOpenDropdownId}
+             openActionModal={openActionModal}
+             openMoveCategory={openMoveCategory}
+             handleDeletePart={handleDeletePart}
+             setZoomedImage={setZoomedImage}
+             handleMarkAsOrdered={handleMarkAsOrdered}
+           />
+         </div>
+       )}
 
-                <div className="overflow-auto flex-1 relative pb-12 rounded-b-2xl">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider">
-                        <th className="py-5 px-4 text-center w-16">Action</th>
-                        <th className="py-5 px-6">Location</th>
-                        <th className="py-5 px-6 text-center w-24">Image</th>
-                        <th className="py-5 px-6 w-[30%]">Part Details</th>
-                        <th className="py-5 px-6 border-l border-slate-200/50 bg-slate-100/50">Physical</th>
-                        <th className="py-5 px-6 bg-red-50/30 text-red-700">Reserved</th>
-                        <th className="py-5 px-6 bg-emerald-50/30 text-emerald-700">Available</th>
-                        <th className="py-5 px-6 text-center w-32">Order Status</th>
-                        <th className="py-5 px-6 text-center text-blue-600 w-24">P/N</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {filteredStockData.map((row, idx) => {
-                        const alloc = stockAllocations[row.PartID] || { physical: row.Balance, reserved: 0, available: row.Balance, machines: [] };
-                        const partDetails = parts.find(p => p.PartID === row.PartID) || {};
-
-                        const reqs = pendingRequests.filter(r => r.PartID === row.PartID);
-                        const mechanicReqQty = reqs.reduce((sum, r) => sum + (r.Qty || 0), 0);
-                        const totalReserved = alloc.reserved + mechanicReqQty;
-                        const finalAvailable = alloc.available - mechanicReqQty;
-
-                        const reservedMachineNames = alloc.machines.map((mId: string) => {
-                          const m = machines.find(x => x.MachineID === mId);
-                          return m ? `${m.MachineName} (${m.LineName})` : mId;
-                        });
-
-                        return (
-                          <tr key={idx} className="border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 group">
-                            <td className="py-4 px-4 text-center relative border-r border-slate-50">
-                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === row.PartID ? null : row.PartID); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
-                              {openDropdownId === row.PartID && (
-                                <div className="absolute left-14 top-2 w-56 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
-                                  <button onClick={() => openActionModal('receive', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-in-down-right text-lg"></i> Receive Stock</button>
-                                  <button onClick={() => openActionModal('reduce', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-up-right text-lg"></i> Adjust Stock</button>
-                                  <button onClick={() => openActionModal('leadTime', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-clock-history text-lg"></i> Update Lead Time</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => openActionModal('edit', row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Edit Part Info</button>
-
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => openMoveCategory('part', row.PartID)} className="w-full px-5 py-3 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Consumables</button>
-
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => handleDeletePart(row.PartID, partDetails.PartName || row.PartName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Part</button>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-4 px-6 font-bold text-slate-800"><i className="bi bi-geo-alt-fill text-blue-500 mr-2 opacity-80"></i>{row.Location || '-'}</td>
-                            <td className="py-4 px-6 text-center">
-                              {partDetails.ImageURL ? (
-                                <div className="w-16 h-12 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(partDetails.ImageURL)}>
-                                  <img src={partDetails.ImageURL} alt={partDetails.PartName} className="w-full h-full object-contain mix-blend-multiply" />
-                                </div>
-                              ) : (
-                                <div className="w-16 h-12 flex items-center justify-center mx-auto text-slate-300">
-                                  <i className="bi bi-image text-xl"></i>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="font-bold text-slate-800 text-[14px]">{partDetails.PartName || row.PartName}</div>
-                              <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">Model:</span> {partDetails.PartModel || '-'}</div>
-                            </td>
-                            <td className="py-4 px-6 border-l border-slate-100 bg-slate-50/20 font-bold text-slate-700 text-[13px] align-top pt-5">{row.Balance !== null ? row.Balance : 0} Pcs</td>
-
-                            <td className="py-4 px-6 bg-red-50/10 align-top pt-4">
-                              <span className={`px-2.5 py-1 rounded-md text-[13px] font-bold block w-max mb-2 ${totalReserved > 0 ? 'bg-red-100 text-red-600' : 'text-slate-400'}`}>
-                                {totalReserved} Pcs
-                              </span>
-                              {reservedMachineNames.length > 0 && (
-                                <div className="text-[10px] text-red-500 font-bold leading-tight">
-                                  <i className="bi bi-robot mr-1"></i>Reserved for: {reservedMachineNames.join(', ')}
-                                </div>
-                              )}
-                              {reqs.length > 0 && (
-                                <div className="text-[10px] text-amber-600 font-bold mt-1 leading-tight">
-                                  <i className="bi bi-person-fill mr-1"></i>Pending requests: {mechanicReqQty} Pcs
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-4 px-6 bg-emerald-50/10 align-top pt-5"><span className={`px-3 py-1.5 rounded-full text-[13px] font-bold shadow-sm ${finalAvailable <= 0 ? 'bg-red-500 text-white shadow-red-500/20' : 'bg-emerald-500 text-white shadow-emerald-500/20'}`}>{finalAvailable} Pcs</span></td>
-                            <td className="py-4 px-6 align-top pt-4 text-center border-l border-slate-50">
-                              {partDetails.PendingOrder ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-sm w-full justify-center">
-                                  <i className="bi bi-truck"></i> ORDERED
-                                </span>
-                              ) : (
-                                <button onClick={() => handleMarkAsOrdered(row.PartID, 'part')} className="inline-flex items-center justify-center w-full gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold bg-white text-slate-500 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 transition-all shadow-sm active:scale-95">
-                                  <i className="bi bi-cart-plus"></i> Mark Order
-                                </button>
-                              )}
-                            </td>
-                            <td className="py-4 px-6 text-[13px] font-black text-blue-600 align-top pt-5 text-center tracking-wider border-l border-slate-100 bg-blue-50/30">
-                              {partDetails.PartNumber || '-'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {filteredStockData.length === 0 && (<tr><td colSpan={8} className="py-10 text-center text-slate-400 font-bold">No data available</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 🌟 TAB: CONSUMABLES */}
-          {activeTab === 'consumables' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Consumables Inventory</h2>
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
-                    <button onClick={() => setNewConsumableModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-pink-600 text-white rounded-xl hover:bg-pink-700 active:scale-95 transition-all shadow-md shadow-pink-600/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> Add Item</button>
-                  </div>
-                </div>
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search item name, P/N, or location..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-sm shadow-sm transition-all" /></div></div>
-
-                <div className="overflow-auto flex-1 relative pb-12 rounded-b-2xl">
-                  <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-                        <th className="py-4 px-4 text-center w-16">Action</th>
-                        <th className="py-4 px-6">Location</th>
-                        <th className="py-4 px-6 text-center w-20">Image</th>
-                        <th className="py-4 pl-6 pr-2">Item Name</th>
-                        <th className="py-4 px-2">Model</th>
-                        <th className="py-4 px-4 text-center">Min (ROP)</th>
-                        <th className="py-4 px-4 text-center">Safety</th>
-                        <th className="py-4 px-4 text-center">Max</th>
-                        <th className="py-4 px-6 border-l border-slate-200/50 bg-slate-100/50 text-center">Current Balance</th>
-                        <th className="py-4 px-6 text-center">Status</th>
-                        <th className="py-4 px-6 text-center text-blue-600 w-24">P/N</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {filteredConsumables.map((item, idx) => {
-                        const safety = item.SafetyStock || 0;
-                        const min = item.MinQty || 0;
-                        const rop = min + safety;
-
-                        const isCritical = item.Balance <= safety;
-                        const isReorder = item.Balance <= rop && !isCritical;
-
-                        return (
-                          <tr key={idx} className="border-b border-slate-50 hover:bg-pink-50/40 transition-colors duration-200 group">
-                            <td className="py-3 px-4 text-center align-middle relative border-r border-slate-50">
-                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.ItemID ? null : item.ItemID); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-pink-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
-                              {openDropdownId === item.ItemID && (
-                                <div className="absolute left-14 top-2 w-48 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
-                                  <button onClick={() => { setSelectedConsumable(item); setReceiveConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-arrow-in-down-right text-lg"></i> Receive Stock</button>
-                                  <button onClick={() => { setSelectedConsumable(item); setReduceConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-square text-lg"></i> Adjust Stock</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => { setSelectedConsumable(item); setEditingConsumableData(item); setPreviewImage(item.ImageURL || null); setEditConsumableOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-pink-50 hover:text-pink-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Item Info</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => openMoveCategory('consumable', item.ItemID)} className="w-full px-5 py-3 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-arrow-left-right text-lg"></i> Move to Spare Parts</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => handleDeleteConsumable(item.ItemID, item.ItemName)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Item</button>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-3 px-6 font-bold text-slate-800 align-middle"><i className="bi bi-geo-alt-fill text-pink-500 mr-2 opacity-80"></i>{item.Location}</td>
-                            <td className="py-3 px-6 text-center align-middle">
-                              {item.ImageURL ? (
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
-                                  <img src={item.ImageURL} alt={item.ItemName} className="w-full h-full object-contain mix-blend-multiply" />
-                                </div>
-                              ) : (
-                                <div className="w-14 h-10 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
-                              )}
-                            </td>
-
-                            <td className="py-3 pl-6 pr-2 font-bold text-slate-800 text-[14px] align-middle">{item.ItemName}</td>
-                            <td className="py-3 px-2 text-[13px] font-bold text-slate-500 align-middle">{item.ItemModel || '-'}</td>
-
-                            <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-md border border-slate-200">{min}</span></td>
-                            <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-orange-600 bg-orange-50 px-2.5 py-1.5 rounded-md border border-orange-200">{safety}</span></td>
-                            <td className="py-3 px-4 text-center align-middle"><span className="text-[13px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-md border border-emerald-200">{item.MaxQty}</span></td>
-
-                            <td className="py-3 px-6 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-lg align-middle text-center">
-                              {item.Balance !== null ? item.Balance : 0} <span className="text-xs font-bold text-slate-500 ml-1">Pcs</span>
-                            </td>
-
-                            <td className="py-3 px-6 align-middle text-center">
-                              {item.PendingOrder ? (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-truck"></i> ORDERED</span>
-                              ) : isCritical ? (
-                                <div className="flex flex-col gap-2 items-center">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> Critical</span>
-                                  <button onClick={() => handleMarkAsOrdered(item.ItemID, 'consumable')} className="text-[10px] font-bold bg-white border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors active:scale-95 shadow-sm"><i className="bi bi-cart-check"></i> Mark Ordered</button>
-                                </div>
-                              ) : isReorder ? (
-                                <div className="flex flex-col gap-2 items-center">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-amber-50 text-amber-700 border border-amber-200"><i className="bi bi-cart-plus-fill"></i> ROP</span>
-                                  <button onClick={() => handleMarkAsOrdered(item.ItemID, 'consumable')} className="text-[10px] font-bold bg-white border border-amber-300 text-amber-600 px-2 py-1 rounded hover:bg-amber-50 transition-colors active:scale-95 shadow-sm"><i className="bi bi-cart-check"></i> Mark Ordered</button>
-                                </div>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> Normal</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-6 text-[13px] font-black text-blue-600 align-middle text-center tracking-wider border-l border-slate-100 bg-blue-50/30">{item.PartNumber || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                      {filteredConsumables.length === 0 && (<tr><td colSpan={11} className="py-10 text-center text-slate-400 font-bold">No consumables data available</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+{/*  TAB: CONSUMABLES */}
+       {activeTab === 'consumables' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <ConsumablesTable
+             isLoading={isLoading}
+             fetchAllData={fetchAllData}
+             setNewConsumableModalOpen={setNewConsumableModalOpen}
+             searchQuery={searchQuery}
+             setSearchQuery={setSearchQuery}
+             filteredConsumables={filteredConsumables}
+             openDropdownId={openDropdownId}
+             setOpenDropdownId={setOpenDropdownId}
+             setSelectedConsumable={setSelectedConsumable}
+             setReceiveConsumableOpen={setReceiveConsumableOpen}
+             setReduceConsumableOpen={setReduceConsumableOpen}
+             setEditingConsumableData={setEditingConsumableData}
+             setPreviewImage={setPreviewImage}
+             setEditConsumableOpen={setEditConsumableOpen}
+             openMoveCategory={openMoveCategory}
+             handleDeleteConsumable={handleDeleteConsumable}
+             setZoomedImage={setZoomedImage}
+             handleMarkAsOrdered={handleMarkAsOrdered}
+           />
+         </div>
+       )}
 
           {/* 🌟 TAB: FIXTURES */}
-          {activeTab === 'fixtures' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Fixtures Inventory</h2>
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
-                    <button onClick={() => { setPreviewImage(null); setMultiLocations([]); setNewFixtureModalOpen(true); }} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition-all shadow-md shadow-purple-600/20 font-bold ml-2"><i className="bi bi-plus-lg"></i> Add Fixture</button>
-                  </div>
-                </div>
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0"><div className="relative max-w-md"><i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" placeholder="Search Fixture No. or Model..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 text-sm shadow-sm transition-all" /></div></div>
-
-                <div className="overflow-auto flex-1 relative pb-12 rounded-b-2xl">
-                  <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider">
-                        <th className="py-5 px-4 text-center w-16">Action</th>
-                        <th className="py-5 px-6">Location</th>
-                        <th className="py-5 px-6 text-center w-24">Image</th>
-                        <th className="py-5 px-6 w-[30%]">Fixture Details</th>
-                        <th className="py-5 px-6 border-l border-slate-200/50 bg-slate-100/50 text-center">Total</th>
-                        <th className="py-5 px-6 bg-red-50/30 text-red-700 text-center">Broken</th>
-                        <th className="py-5 px-6 bg-blue-50/30 text-blue-700 text-center">Borrowed</th>
-                        <th className="py-5 px-6 bg-emerald-50/30 text-emerald-700 text-center">Available</th>
-                        <th className="py-5 px-6 text-center w-32">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {filteredFixtures.map((item, idx) => {
-                        const borrowedQty = item.BorrowedQty || 0;
-                        const availableQty = (item.TotalQty || 0) - (item.BrokenQty || 0) - borrowedQty;
-
-                        let fixStatus = 'Available';
-                        if (availableQty <= 0 && borrowedQty > 0) fixStatus = 'Fully Borrowed';
-                        else if (availableQty <= 0 && (item.BrokenQty || 0) > 0) fixStatus = 'Needs Repair';
-                        else if (borrowedQty > 0) fixStatus = 'In Use';
-
-                        const itemLocation = item.Location || '-';
-
-                        return (
-                          <tr key={idx} className="border-b border-slate-50 hover:bg-purple-50/40 transition-colors duration-200 group">
-                            <td className="py-4 px-4 text-center align-middle relative border-r border-slate-50">
-                              <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === item.FixtureNo ? null : item.FixtureNo); }} className="w-9 h-9 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-purple-600 flex items-center justify-center transition-all active:scale-95 mx-auto"><i className="bi bi-list text-2xl"></i></button>
-                              {openDropdownId === item.FixtureNo && (
-                                <div className="absolute left-14 top-2 w-52 bg-white/95 backdrop-blur-md border border-slate-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in zoom-in-95 duration-200 origin-top-left ring-1 ring-slate-900/5">
-                                  <button onClick={() => { setSelectedFixture(item); setFixtureActionReason('New Receive'); setEditFixtureStockOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-box-seam text-lg"></i> Update Stock</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => { setSelectedFixture(item); setPreviewImage(item.ImageURL || null); setMultiLocations(item.Location && item.Location !== '-' ? item.Location.split(', ').map((l: string) => l.trim()) : []); setEditFixtureInfoOpen(true); setOpenDropdownId(null); }} className="w-full px-5 py-3 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-pencil-fill text-lg"></i> Edit Fixture Info</button>
-                                  <div className="h-px bg-slate-100 my-1 mx-4"></div>
-                                  <button onClick={() => handleDeleteFixture(item.FixtureNo)} className="w-full px-5 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors font-bold text-left"><i className="bi bi-trash3-fill text-lg"></i> Delete Fixture</button>
-                                </div>
-                              )}
-                            </td>
-
-                            {/* 🌟 ย้าย Location มาไว้คอลัมน์ที่ 2 (แบบป้าย Badge) 🌟 */}
-                            <td className="py-4 px-6 align-middle">
-                              <div className="flex flex-wrap gap-1.5 max-w-[150px]">
-                                {item.Location && item.Location !== '-' ? (
-                                  item.Location.split(', ').map((loc: string, i: number) => (
-                                    <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-black uppercase shadow-sm whitespace-nowrap">
-                                      <i className="bi bi-geo-alt-fill mr-1"></i> {loc.trim()}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-slate-400 text-xs font-bold">-</span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* 🌟 ปรับขนาด Image ให้เท่ากับหน้าอะไหล่ 🌟 */}
-                            <td className="py-4 px-6 text-center align-middle">
-                              {item.ImageURL ? (
-                                <div className="w-16 h-12 flex items-center justify-center mx-auto cursor-zoom-in hover:scale-110 transition-transform" onClick={() => setZoomedImage(item.ImageURL)}>
-                                  <img src={item.ImageURL} className="w-full h-full object-contain mix-blend-multiply" />
-                                </div>
-                              ) : (
-                                <div className="w-16 h-12 flex items-center justify-center mx-auto text-slate-300"><i className="bi bi-image text-xl"></i></div>
-                              )}
-                            </td>
-
-                            {/* 🌟 รวบชื่อ Model Name กับ รหัส FIX NO ไว้ด้วยกัน 🌟 */}
-                            <td className="py-4 px-6 align-middle">
-                              <div className="font-bold text-slate-800 text-[14px] truncate">{item.ModelName || '-'}</div>
-                              <div className="text-[12px] text-slate-500 mt-0.5"><span className="uppercase tracking-wider mr-1 text-[10px]">FIX NO:</span> <span className="text-purple-600 font-bold">{item.FixtureNo}</span></div>
-                            </td>
-
-                            <td className="py-4 px-6 border-l border-slate-100 bg-slate-50/20 font-black text-slate-800 text-[15px] align-middle text-center">{item.TotalQty}</td>
-                            <td className="py-4 px-6 bg-red-50/10 font-bold text-red-600 text-[15px] align-middle text-center">{item.BrokenQty > 0 ? item.BrokenQty : '-'}</td>
-                            <td className="py-4 px-6 bg-blue-50/10 font-bold text-blue-600 text-[15px] align-middle text-center">{borrowedQty > 0 ? borrowedQty : '-'}</td>
-                            <td className="py-4 px-6 bg-emerald-50/10 font-black text-emerald-600 text-[15px] align-middle text-center">{availableQty}</td>
-
-                            <td className="py-4 px-6 align-middle text-center">
-                              {fixStatus === 'Fully Borrowed' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-purple-50 text-purple-700 border border-purple-200"><i className="bi bi-person-fill-check"></i> FULLY BORROWED</span> :
-                                fixStatus === 'Needs Repair' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-red-50 text-red-700 border border-red-200"><i className="bi bi-exclamation-triangle-fill"></i> NEEDS REPAIR</span> :
-                                  fixStatus === 'In Use' ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-blue-50 text-blue-700 border border-blue-200"><i className="bi bi-people-fill"></i> IN USE ({borrowedQty})</span> :
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold w-max shadow-sm bg-emerald-50 text-emerald-700 border border-emerald-100"><i className="bi bi-check-circle-fill"></i> AVAILABLE</span>
-                              }
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {filteredFixtures.length === 0 && (<tr><td colSpan={9} className="py-10 text-center text-slate-400 font-bold">No fixtures data available</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+       {activeTab === 'fixtures' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <FixturesTable
+             isLoading={isLoading}
+             fetchAllData={fetchAllData}
+             setPreviewImage={setPreviewImage}
+             setMultiLocations={setMultiLocations}
+             setNewFixtureModalOpen={setNewFixtureModalOpen}
+             searchQuery={searchQuery}
+             setSearchQuery={setSearchQuery}
+             filteredFixtures={filteredFixtures}
+             openDropdownId={openDropdownId}
+             setOpenDropdownId={setOpenDropdownId}
+             setSelectedFixture={setSelectedFixture}
+             setFixtureActionReason={setFixtureActionReason}
+             setEditFixtureStockOpen={setEditFixtureStockOpen}
+             setEditFixtureInfoOpen={setEditFixtureInfoOpen}
+             handleDeleteFixture={handleDeleteFixture}
+             setZoomedImage={setZoomedImage}
+           />
+         </div>
+       )}
 
           {/* TAB: MACHINES */}
-          {activeTab === 'machines' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6 flex-shrink-0">
-                {/* 1. การ์ด Active */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl"><i className="bi bi-robot"></i></div>
-                  <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Active Machines</p><p className="text-3xl font-black text-blue-600">{activeMachinesCount}</p></div>
-                </div>
-
-                {/* 2. การ์ด Inactive */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center text-2xl"><i className="bi bi-pause-circle-fill"></i></div>
-                  <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Inactive (Paused)</p><p className="text-3xl font-black text-slate-700">{inactiveMachinesCount}</p></div>
-                </div>
-                
-                {/* 3. การ์ด Total Lines (ปุ่มกดแยกเป็นกล่องเดี่ยวๆ) */}
-                <button
-                  onClick={() => setIsLineReorderModalOpen(true)}
-                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-5 hover:-translate-y-1 hover:shadow-md transition-all duration-300 text-left active:scale-95 group focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer"
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center text-2xl shrink-0"><i className="bi bi-diagram-3-fill"></i></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-between">
-                      Total Lines <i className="bi bi-pencil-square text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
-                    </p>
-                    <p className="text-3xl font-black text-indigo-600 truncate">
-                      {uniqueLinesCount} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase tracking-widest hidden lg:inline-block">(Reorder)</span>
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Machine Directory</h2>
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                    <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
-                    <button onClick={() => setNewMachineModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 text-sm bg-slate-900 text-white rounded-xl hover:bg-slate-800 active:scale-95 transition-all shadow-md shadow-slate-900/20 font-bold"><i className="bi bi-plus-lg"></i> New Machine</button>
-                  </div>
-                </div>
-
-                <div className="overflow-auto flex-1 relative rounded-b-2xl">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md shadow-sm">
-                      <tr className="text-slate-500 text-xs uppercase font-extrabold tracking-wider">
-                        <th className="py-5 px-6">Machine ID</th>
-                        <th className="py-5 px-6">Machine Name</th>
-                        <th className="py-5 px-6">Production Line</th>
-                        <th className="py-5 px-6 text-center w-40">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {machines.map((m, idx) => (
-                        <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/40 transition-colors duration-200 ${m.Active === false ? 'opacity-60 bg-slate-50/50' : ''}`}>
-                          <td className="py-4 px-6 font-extrabold text-slate-700">{m.MachineID}</td>
-                          <td className="py-4 px-6 font-bold text-slate-800">{m.MachineName}</td>
-                          <td className="py-4 px-6"><span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-md text-xs font-bold border border-indigo-100">{m.LineName || '-'}</span></td>
-                          <td className="py-4 px-6">
-                            <div className="flex items-center justify-center gap-3">
-                              <button onClick={() => { setEditingMachineData(m); setEditMachineModalOpen(true); }} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center shadow-sm active:scale-95" title="Edit Machine">
-                                <i className="bi bi-pencil-fill"></i>
-                              </button>
-                              <button onClick={() => handleToggleMachineStatus(m.MachineID, m.Active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none shadow-inner ${m.Active !== false ? 'bg-emerald-500' : 'bg-slate-300'}`} title="Toggle Active Status">
-                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-300 shadow-sm ${m.Active !== false ? 'translate-x-6' : 'translate-x-1'}`} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {machines.length === 0 && (<tr><td colSpan={4} className="py-10 text-center text-slate-400 font-bold">No data available</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+       {activeTab === 'machines' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <MachinesTable
+             isLoading={isLoading}
+             fetchAllData={fetchAllData}
+             setNewMachineModalOpen={setNewMachineModalOpen}
+             filterLine={filterLine}
+             setFilterLine={setFilterLine}
+             linesMaster={linesMaster}
+             searchQuery={searchQuery}
+             setSearchQuery={setSearchQuery}
+             filteredMachines={filteredMachines}
+             openDropdownId={openDropdownId}
+             setOpenDropdownId={setOpenDropdownId}
+             setEditingMachineData={setEditingMachineData}
+             setPreviewImage={setPreviewImage}
+             setEditMachineModalOpen={setEditMachineModalOpen}
+             handleDeleteMachine={handleDeleteMachine}
+             setZoomedImage={setZoomedImage}
+           />
+         </div>
+       )}
 
           {/* TAB: REQUEST QUEUE */}
-          {activeTab === 'requests' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <h2 className="font-bold text-slate-800 text-lg tracking-tight">Request Queue</h2>
-                  <button onClick={fetchAllData} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                </div>
-
-                <div className="overflow-y-auto flex-1 p-6 bg-slate-50/50">
-                  {requestGroups.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-70">
-                      <i className="bi bi-inbox-fill text-6xl mb-4"></i>
-                      <p className="font-bold text-lg">No pending requests</p>
-                      <p className="text-sm">Mechanics can submit requests via mobile app</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                      {requestGroups.map((group: any, idx: number) => (
-                        <div key={idx} className="bg-white border border-blue-100 rounded-3xl p-6 shadow-lg shadow-blue-900/5 relative overflow-hidden group hover:border-blue-300 transition-colors flex flex-col h-full">
-                          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
-
-                          <div className="flex justify-between items-start mb-5 border-b border-slate-100 pb-4 shrink-0">
-                            <div>
-                              <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200/50 mb-2"><i className="bi bi-hourglass-split"></i> Pending ({group.items.length} items)</span>
-                              <h3 className="font-black text-slate-800 text-lg">{group.baseId}</h3>
-                              <p className="text-xs text-slate-500 mt-1 font-medium"><i className="bi bi-person-fill text-blue-500 mr-1"></i> Picker: <span className="text-slate-700 font-bold">{group.pickerName}</span></p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Request Time</p>
-                              <p className="text-sm font-bold text-slate-600">{new Date(group.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-4 mb-6 flex-1 overflow-y-auto pr-2">
-                            {group.items.map((req: any, i: number) => {
-                              const isConsumable = req.PartID.startsWith('CSM-');
-                              const partDetails = isConsumable ? consumables.find(c => c.ItemID === req.PartID) || {} : parts.find(p => p.PartID === req.PartID) || {};
-                              const machineDetails = machines.find(m => m.MachineID === req.MachineID) || {};
-                              const stockInfo = isConsumable ? partDetails : stockData.find(s => s.PartID === req.PartID) || {};
-
-                              return (
-                                <div key={i} className="bg-slate-50 rounded-2xl p-3 border border-slate-100 flex gap-4 items-center">
-                                  <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden shadow-sm">
-                                    {partDetails.ImageURL ? <img src={partDetails.ImageURL} className="w-full h-full object-contain mix-blend-multiply p-1" /> : <i className="bi bi-image text-slate-300 text-2xl"></i>}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-extrabold text-slate-800 text-sm truncate">{partDetails.PartName || partDetails.ItemName || req.PartID}</p>
-                                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                                      <span className="text-[10px] text-slate-600 font-medium bg-white px-2 py-0.5 rounded border border-slate-200 shadow-sm"><span className="text-slate-400 mr-1">ID:</span>{req.PartID}</span>
-                                      {(partDetails.PartModel || partDetails.ItemModel) && <span className="text-[10px] text-slate-600 font-medium bg-white px-2 py-0.5 rounded border border-slate-200 shadow-sm"><span className="text-slate-400 mr-1">Model:</span>{partDetails.PartModel || partDetails.ItemModel}</span>}
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                      {!isConsumable && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded"><i className="bi bi-robot mr-1"></i>{machineDetails.MachineName || req.MachineID}</span>}
-                                      {isConsumable && <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-2 py-0.5 rounded"><i className="bi bi-box2-heart mr-1"></i>Consumable</span>}
-                                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded"><i className="bi bi-geo-alt-fill mr-1"></i>Loc: {stockInfo.Location || 'N/A'}</span>
-
-                                      {!isConsumable && req.Position && req.Position !== '-' && (
-                                        <span className="text-[10px] text-slate-600 font-medium bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shadow-sm"><span className="text-amber-600 mr-1"><i className="bi bi-geo-alt-fill"></i> Pos:</span>{req.Position}</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="text-center shrink-0 border-l border-slate-200 pl-4 pr-2 flex flex-col justify-center">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quantity</p>
-                                    <p className="text-xl font-black text-blue-600">{req.Qty}</p>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-
-                          <button onClick={() => handleApproveGroup(group)} disabled={isProcessing} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-600/30 flex justify-center items-center gap-2 shrink-0">
-                            {isProcessing ? <><i className="bi bi-arrow-repeat animate-spin text-lg"></i> Processing...</> : <><i className="bi bi-check-circle-fill text-lg"></i> Approve & Deduct Stock</>}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+       {activeTab === 'requests' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <RequestQueue
+             isLoading={isLoading}
+             fetchAllData={fetchAllData}
+             requestGroups={requestGroups}
+             consumables={consumables}
+             parts={parts}
+             machines={machines}
+             stockData={stockData}
+             isProcessing={isProcessing}
+             handleApproveGroup={handleApproveGroup}
+           />
+         </div>
+       )}
 
           {/* TAB: HISTORY & CORRECTION */}
-          {activeTab === 'history' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <div>
-                    <h2 className="font-bold text-slate-800 text-lg tracking-tight">History & Reversal</h2>
-                    <p className="text-xs text-slate-500 mt-1">ตรวจสอบประวัติ และแก้ไขสาเหตุเพื่อไม่ให้กระทบ MTBF</p>
-                  </div>
-                  <div className="flex flex-wrap gap-3 items-center w-full sm:w-auto">
-                    <div className="relative">
-                      <input type="month" value={historyMonthFilter} onChange={(e) => setHistoryMonthFilter(e.target.value)} className="pl-4 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold text-slate-700 shadow-sm" />
-                    </div>
-                    <button onClick={() => fetchHistoryData(localStorage.getItem('activeDepartment') || '')} title="Refresh Data" className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 hover:text-blue-600 active:scale-95 transition-all shadow-sm bg-white shrink-0"><i className={`bi bi-arrow-clockwise text-lg ${isLoading ? 'animate-spin' : ''}`}></i></button>
-                  </div>
-                </div>
-
-                <div className="overflow-auto flex-1 relative rounded-b-2xl bg-slate-50/30">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
-                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-                        <th className="py-4 px-6 w-32">Date</th>
-                        <th className="py-4 px-6">Machine Details</th>
-                        <th className="py-4 px-6">Part Details</th>
-                        <th className="py-4 px-4 text-center">Qty</th>
-                        <th className="py-4 px-6 w-48">Change Reason</th>
-                        <th className="py-4 px-6 text-center w-32">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm bg-white">
-                      {changeHistoryData.map((row, idx) => {
-                        const isConsumable = row.PartID.startsWith('CSM-');
-                        const pName = isConsumable ? consumables.find(c => c.ItemID === row.PartID)?.ItemName || row.PartID : parts.find(p => p.PartID === row.PartID)?.PartName || row.PartID;
-                        const mName = machines.find(m => m.MachineID === row.MachineID)?.MachineName || row.MachineID;
-
-                        return (
-                          <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors duration-200">
-                            <td className="py-4 px-6 font-bold text-slate-600">{row.ChangeDate}</td>
-                            <td className="py-4 px-6">
-                              <div className="font-bold text-slate-800">{mName}</div>
-                              <div className="text-[11px] text-slate-500 font-medium">ID: {row.MachineID}</div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="font-bold text-blue-700">{pName}</div>
-                              <div className="text-[11px] text-slate-500 mt-0.5">Pos: {row.Position || '-'}</div>
-                            </td>
-                            <td className="py-4 px-4 text-center font-black text-slate-800">{row['Required Qty'] || 0}</td>
-                            <td className="py-4 px-6">
-                              <div className="relative">
-                                <select
-                                  value={row.ReasonType}
-                                  onChange={(e) => handleChangeReason(row.RecordID, e.target.value)}
-                                  className={`w-full p-2 rounded-lg text-xs font-bold border outline-none appearance-none cursor-pointer transition-colors ${row.ReasonType === 'Normal Wear' ? 'bg-red-50 text-red-700 border-red-200' : row.ReasonType === 'Accident' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
-                                >
-                                  <option value="Normal Wear">Normal Wear</option>
-                                  <option value="Accident">Accident</option>
-                                  <option value="Improvement">Improvement</option>
-                                  <option value="Inspection-OK">Inspection-OK</option>
-                                  <option value="Consumable">Consumable (สิ้นเปลือง)</option>
-                                </select>
-                                <i className="bi bi-pencil-fill absolute right-3 top-1/2 -translate-y-1/2 text-opacity-50 text-[10px] pointer-events-none"></i>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6 text-center">
-                              <button onClick={() => handleUndoTransaction(row)} className="text-xs font-bold px-3 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5 mx-auto">
-                                <i className="bi bi-arrow-counterclockwise"></i> Undo
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {changeHistoryData.length === 0 && (
-                        <tr><td colSpan={6} className="py-12 text-center text-slate-400 font-bold bg-slate-50/30">No history found for this month</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+       {activeTab === 'history' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <HistoryTable
+             historyMonthFilter={historyMonthFilter}
+             setHistoryMonthFilter={setHistoryMonthFilter}
+             fetchHistoryData={fetchHistoryData}
+             isLoading={isLoading}
+             changeHistoryData={changeHistoryData}
+             consumables={consumables}
+             parts={parts}
+             machines={machines}
+             handleChangeReason={handleChangeReason}
+             handleUndoTransaction={handleUndoTransaction}
+           />
+         </div>
+       )}
 
           {/* ========================================================= */}
-          {/* ========================================================= */}
-          {/* ========================================================= */}
-          {/* 📦 TAB: PR TRACKING (ฟังก์ชันใหม่ล่าสุด!) */}
-          {/* ========================================================= */}
-          {activeTab === 'pr-tracking' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col flex-1 min-h-0">
-
-                {/* Header ของหน้า Tracking */}
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-b border-slate-100 gap-4 flex-shrink-0">
-                  <div>
-                    <h2 className="font-bold text-slate-800 text-lg tracking-tight">Purchase Requisition Tracking</h2>
-                    <p className="text-xs text-slate-500 mt-1">อัปเดตและติดตามสถานะการสั่งซื้ออะไหล่จากระบบ ERP</p>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-1.5">
-                    <div className="flex items-center gap-3">
-                      <input type="file" accept=".csv" id="csv-import-pr" className="hidden" onChange={handleImportCSV} />
-                      <label htmlFor="csv-import-pr" className="flex items-center gap-2 px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-900/20 font-bold cursor-pointer">
-                        <i className="bi bi-file-earmark-arrow-up"></i> Import ERP Status
-                      </label>
-                      <button onClick={fetchPrTrackingData} className="w-10 h-10 flex items-center justify-center border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 active:scale-95 bg-white"><i className="bi bi-arrow-clockwise"></i></button>
-                    </div>
-                    {/* 🌟 โชว์เวลาอัปเดตล่าสุด */}
-                    {prLastUpdated && (
-                      <div className="text-[10px] text-slate-400 font-bold mr-14 flex items-center gap-1">
-                        <i className="bi bi-clock-history"></i> Last updated: {prLastUpdated}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* ช่องค้นหา */}
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
-                  <div className="relative max-w-md">
-                    <i className="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                    <input
-                      type="text"
-                      placeholder="Search PR No. or Item Name..."
-                      value={prSearchQuery}
-                      onChange={(e) => setPrSearchQuery(e.target.value)}
-                      className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* ตารางแสดงผล */}
-                <div className="overflow-auto flex-1 relative rounded-b-2xl">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-20 backdrop-blur-md">
-                      <tr className="text-slate-500 text-[11px] uppercase font-extrabold tracking-wider">
-                        <th className="py-4 px-6 w-36">PR Number</th>
-                        <th className="py-4 px-6 w-48">Requester</th>
-                        <th className="py-4 px-6 w-auto">Item Description</th>
-                        <th className="py-4 px-4 text-center w-24">Qty</th>
-                        <th className="py-4 px-4 w-72">Status</th>
-                        <th className="py-4 px-6 w-36">Delivery Date</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {filteredPrData.map((pr, idx) => (
-                        <tr key={idx} className="border-b border-slate-50 hover:bg-emerald-50/30 transition-colors duration-200">
-                          <td className="py-4 px-6 font-black text-slate-700">{pr.PRNo}</td>
-                          <td className="py-4 px-6 text-slate-500 font-bold">{pr.IniEmpName || '-'}</td>
-                          <td className="py-4 px-6">
-                            <div className="font-bold text-slate-800 leading-tight">{pr.PRContent}</div>
-                            <div className="text-[10px] text-blue-500 mt-1 font-black uppercase tracking-widest">PO: {pr.PONo || 'AWAITING PO'}</div>
-                          </td>
-                          <td className="py-4 px-4 text-center font-black text-slate-700">
-                            {pr.PRQty} <span className="text-[10px] text-slate-400 font-normal">{pr.UnitName}</span>
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm border ${pr.PRItemStatus?.includes('Complete') ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                              pr.PRItemStatus?.includes('Ordered') || pr.PONo ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                'bg-amber-50 text-amber-600 border-amber-200'
-                              }`}>
-                              {pr.PRItemStatus || 'In Progress'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 font-bold text-slate-600">
-                            <div className="flex items-center gap-2 whitespace-nowrap">
-                              <i className="bi bi-calendar-check text-emerald-500"></i>
-                              {pr.FinalDeliveryDate || 'TBD'}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredPrData.length === 0 && (
-                        <tr><td colSpan={6} className="py-20 text-center text-slate-400 font-bold bg-slate-50/20">ยังไม่มีข้อมูลการสั่งซื้อ หรือค้นหาไม่พบ</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-          {/* ========================================================= */}
+       {/* 📦 TAB: PR TRACKING (ฟังก์ชันใหม่ล่าสุด!) */}
+       {/* ========================================================= */}
+       {activeTab === 'pr-tracking' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <PrTrackingTable
+             handleImportCSV={handleImportCSV}
+             fetchPrTrackingData={fetchPrTrackingData}
+             prLastUpdated={prLastUpdated}
+             prSearchQuery={prSearchQuery}
+             setPrSearchQuery={setPrSearchQuery}
+             filteredPrData={filteredPrData}
+           />
+         </div>
+       )}
 
           {/* TAB: BASIC INFO */}
-          {activeTab === 'basic-info' && (
-            <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="mb-6">
-                <h2 className="text-2xl font-black text-slate-800">Basic Information</h2>
-                <p className="text-slate-500 mt-1">Manage master data for fixture locations, smart cabinets, and production lines.</p>
-              </div>
-              
-              {/* ปรับ grid เป็นรองรับ 3 คอลัมน์บนหน้าจอใหญ่ */}
-              <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                
-                {/* 📦 กล่องที่ 1: Fixture Location (ปรับจาก Cabinet Location เดิม) */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-0 overflow-hidden">
-                  <div className="bg-[#6366f1] text-white p-5 flex justify-between items-center shrink-0">
-                    <h3 className="font-bold text-lg"><i className="bi bi-tools mr-2"></i> Fixture Location</h3>
-                    <button onClick={() => setBasicInfoModal({ isOpen: true, type: 'location' })} className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"><i className="bi bi-plus-lg mr-1"></i> Add New</button>
-                  </div>
-                  <div className="overflow-y-auto flex-1 bg-slate-50/30">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
-                        <tr className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">
-                          <th className="py-4 px-6 w-16">No.</th>
-                          <th className="py-4 px-6">Location Name</th>
-                          <th className="py-4 px-6 text-center w-24">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-sm">
-                        {locationsMaster.map((loc, idx) => (
-                          <tr key={idx} className="border-b border-slate-100 hover:bg-white transition-colors">
-                            <td className="py-4 px-6 text-slate-400 font-bold">{idx + 1}</td>
-                            <td className="py-4 px-6 font-bold text-slate-700">{loc.LocationName}</td>
-                            <td className="py-4 px-6 text-center">
-                              <button onClick={() => handleDeleteBasicInfo('location', loc.LocationName)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"><i className="bi bi-trash-fill"></i></button>
-                            </td>
-                          </tr>
-                        ))}
-                        {locationsMaster.length === 0 && (<tr><td colSpan={3} className="py-8 text-center text-slate-400">No data available</td></tr>)}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 🔒 กล่องที่ 2: Smart Cabinet (เพิ่มเข้ามาใหม่เพื่อโปรเจกต์ Smart Lock) */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-0 overflow-hidden">
-                  <div className="bg-[#10b981] text-white p-5 flex justify-between items-center shrink-0">
-                    <h3 className="font-bold text-lg"><i className="bi bi-safe2-fill mr-2"></i> Smart Cabinet</h3>
-                    <button onClick={() => setBasicInfoModal({ isOpen: true, type: 'cabinet' })} className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"><i className="bi bi-plus-lg mr-1"></i> Add New</button>
-                  </div>
-                  <div className="overflow-y-auto flex-1 bg-slate-50/30">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
-                        <tr className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">
-                          <th className="py-4 px-6 w-16">No.</th>
-                          <th className="py-4 px-6">Cabinet Name</th>
-                          <th className="py-4 px-6 text-center w-24">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-sm">
-                        {cabinetsMaster.map((cab, idx) => (
-                          <tr key={idx} className="border-b border-slate-100 hover:bg-white transition-colors">
-                            <td className="py-4 px-6 text-slate-400 font-bold">{idx + 1}</td>
-                            <td className="py-4 px-6 font-bold text-slate-700">{cab.CabinetName}</td>
-                            <td className="py-4 px-6 text-center">
-                              <button onClick={() => handleDeleteBasicInfo('cabinet', cab.CabinetName)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"><i className="bi bi-trash-fill"></i></button>
-                            </td>
-                          </tr>
-                        ))}
-                        {cabinetsMaster.length === 0 && (<tr><td colSpan={3} className="py-8 text-center text-slate-400">No data available</td></tr>)}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* ⚙️ กล่องที่ 3: Production Line (คงเดิมไว้) */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-0 overflow-hidden">
-                  <div className="bg-[#0ea5e9] text-white p-5 flex justify-between items-center shrink-0">
-                    <h3 className="font-bold text-lg"><i className="bi bi-diagram-3-fill mr-2"></i> Production Line</h3>
-                    <button onClick={() => setBasicInfoModal({ isOpen: true, type: 'line' })} className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"><i className="bi bi-plus-lg mr-1"></i> Add New</button>
-                  </div>
-                  <div className="overflow-y-auto flex-1 bg-slate-50/30">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
-                        <tr className="text-slate-500 text-[11px] uppercase font-bold tracking-wider">
-                          <th className="py-4 px-6 w-16">No.</th>
-                          <th className="py-4 px-6">Line Name</th>
-                          <th className="py-4 px-6 text-center w-24">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-sm">
-                        {linesMaster.map((line, idx) => (
-                          <tr key={idx} className="border-b border-slate-100 hover:bg-white transition-colors">
-                            <td className="py-4 px-6 text-slate-400 font-bold">{idx + 1}</td>
-                            <td className="py-4 px-6 font-bold text-slate-700">{line.LineName}</td>
-                            <td className="py-4 px-6 text-center">
-                              <button onClick={() => handleDeleteBasicInfo('line', line.LineName)} className="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"><i className="bi bi-trash-fill"></i></button>
-                            </td>
-                          </tr>
-                        ))}
-                        {linesMaster.length === 0 && (<tr><td colSpan={3} className="py-8 text-center text-slate-400">No data available</td></tr>)}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
+       {activeTab === 'basic-info' && (
+         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <BasicInfoTab 
+             setBasicInfoModal={setBasicInfoModal}
+             locationsMaster={locationsMaster}
+             cabinetsMaster={cabinetsMaster}
+             linesMaster={linesMaster}
+             handleDeleteBasicInfo={handleDeleteBasicInfo}
+           />
+         </div>
+       )}
 
           {/* TAB: LOG RECORD */}
-          {activeTab === 'log-record' && (
-            <div className="absolute inset-0 p-6 md:p-10 overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-10 flex flex-col">
-                <h3 className="text-2xl font-black text-slate-800 mb-8 border-b border-slate-100 pb-6 flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><i className="bi bi-tools"></i></div> Manual Record Replacement</h3>
-                <form className="space-y-8" onSubmit={handleLogRecord}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">1. Machine</label>
-                      <div className="relative">
-                        <input type="text" name="machineId" list="machine-list" required placeholder="-- Type to search machine --" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white" />
-                        <i className="bi bi-search absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                      </div>
-                      <datalist id="machine-list">
-                        {machines.map(m => <option key={m.MachineID} value={`${m.MachineID} - ${m.MachineName}`} />)}
-                      </datalist>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">2. Part Name</label>
-                      <div className="relative">
-                        <input type="text" name="partId" list="part-list" required placeholder="-- Type to search part --" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white" />
-                        <i className="bi bi-search absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                      </div>
-                      <datalist id="part-list">
-                        {parts.map(p => <option key={p.PartID} value={`${p.PartID} - ${p.PartName} ${p.PartModel ? `(${p.PartModel})` : ''}`} />)}
-                      </datalist>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div><label className="block text-xs font-bold text-slate-600 mb-2 uppercase">3. Request Qty</label><input type="number" name="qty" min="1" required defaultValue="1" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white" /></div>
-                    <div><label className="block text-xs font-bold text-slate-600 mb-2 uppercase">4. Picker Name</label><input type="text" name="picker" required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white" /></div>
-                    <div><label className="block text-xs font-bold text-slate-600 mb-2 uppercase">5. Change Date</label><input type="date" name="date" required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-600 font-medium transition-colors focus:bg-white" /></div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-2 uppercase">6. Reason for Replacement</label>
-                    <div className="relative">
-                      <select name="reason" required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 text-sm transition-all focus:bg-white appearance-none">
-                        <option value="Normal Wear">Normal Wear - Track lifespan</option>
-                        <option value="Accident">Accident - Reset without averaging</option>
-                        <option value="Improvement">Improvement - Reset lifespan</option>
-                      </select>
-                      <i className="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                    </div>
-                  </div>
-                  <button type="submit" className="w-full mt-4 bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-xl shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all text-lg"><i className="bi bi-save2 mr-2"></i>Save & Deduct Stock</button>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
+       {activeTab === 'log-record' && (
+         <div className="absolute inset-0 p-6 md:p-10 overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <LogRecordTab 
+             handleLogRecord={handleLogRecord}
+             machines={machines}
+             parts={parts}
+           />
+         </div>
+       )}
+       </div>
+       
         {/* 🌟 Modal: ระบบลากวาง จัดเรียงลำดับเครื่องจักร (โครงสร้างใหม่ ไม่บั๊ก Dropdown) 🌟 */}
       {isLineReorderModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200">
