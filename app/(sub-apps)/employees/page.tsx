@@ -60,8 +60,8 @@ export default function ShiftRosterPro() {
 
   // State สำหรับ Modal แก้ไขข้อมูลพนักงาน
   const [editingEmp, setEditingEmp] = useState<any>(null);
-  const [editForm, setEditForm] = useState<{name: string; phone: string; line_name: string; photo_url: string; photo_file: File | null; photo_preview: string}>({ 
-    name: '', phone: '', line_name: '', photo_url: '', photo_file: null, photo_preview: '' 
+  const [editForm, setEditForm] = useState<{emp_id: string; name: string; phone: string; line_name: string; photo_url: string; photo_file: File | null; photo_preview: string}>({ 
+    emp_id: '', name: '', phone: '', line_name: '', photo_url: '', photo_file: null, photo_preview: '',
   });
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -317,6 +317,7 @@ export default function ShiftRosterPro() {
   const handleOpenEditModal = (emp: any) => {
     setEditingEmp(emp);
     setEditForm({
+      emp_id: emp.id || '',
       name: emp.name || '',
       phone: emp.phone || '',
       line_name: emp.line_name || '',
@@ -366,6 +367,7 @@ export default function ShiftRosterPro() {
       // นำข้อมูลทั้งหมดและ URL รูปไปเซฟลง Table employees
       const { error: updateError } = await supabaseServiceWork.from('employees')
         .update({
+          id: editForm.emp_id,
           name: editForm.name,
           phone: editForm.phone,
           line_name: editForm.line_name,
@@ -756,9 +758,15 @@ export default function ShiftRosterPro() {
                 />
               </div>
 
+              {/* เปลี่ยนช่องรหัสพนักงานให้กรอกได้ */}
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">รหัสพนักงาน (ไม่สามารถแก้ได้)</label>
-                <input type="text" value={editingEmp.id} disabled className="w-full bg-[#0f172a] border border-slate-700/50 text-slate-500 text-sm rounded-lg px-3 py-2 cursor-not-allowed" />
+                <label className="block text-xs font-medium text-slate-400 mb-1">รหัสพนักงาน</label>
+                <input 
+                  type="text" 
+                  value={editForm.emp_id} 
+                  onChange={e => setEditForm({...editForm, emp_id: e.target.value})} 
+                  className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" 
+                />
               </div>
               
               <div>
