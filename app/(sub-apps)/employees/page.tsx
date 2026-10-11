@@ -559,12 +559,14 @@ export default function ShiftRosterPro() {
       });
 
       // สรุปกะเช้า
-      text += `กะเช้า (ตื่น)\n`;
+      text += `กะเช้า 🌞\n`;
       if (dayShift.length > 0) {
         text += dayShift.join('\n') + '\n';
       } else {
         text += `ไม่มีคนมา\n`;
       }
+
+      text += `\n`;
 
       // สรุปกะดึก
       text += `กะดึก 🌛\n`;
@@ -885,16 +887,18 @@ export default function ShiftRosterPro() {
       {/* 🌟 Modal: หน้าต่างสรุป OT ส่ง Line 🌟 */}
       {isOtSummaryModalOpen && (
         <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1e293b] border border-slate-700 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-200">
+          {/* 🟢 1. จำกัดความสูงรวมเป็น 90vh (90% ของหน้าจอ) เพื่อไม่ให้ล้นขอบบน-ล่าง */}
+          <div className="bg-[#1e293b] border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-200">
             
-            {/* ฝั่งซ้าย: เลือกวันที่ */}
-            <div className="w-full md:w-1/3 bg-[#0f172a] border-r border-slate-700 p-6 flex flex-col">
-              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            {/* 🟢 2. ฝั่งซ้าย (เลือกวันที่): ล็อคความสูงบนมือถือไว้ที่ 45vh ให้เลื่อนได้เฉพาะกล่องนี้ */}
+            <div className="w-full md:w-1/3 bg-[#0f172a] border-b md:border-b-0 md:border-r border-slate-700 p-5 md:p-6 flex flex-col h-[45vh] md:h-auto shrink-0">
+              <h3 className="text-lg font-bold text-white mb-2 md:mb-4 flex items-center gap-2 shrink-0">
                 <i className="bi bi-calendar-check text-blue-400"></i> เลือกวันที่สรุป OT
               </h3>
-              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              <p className="text-[11px] md:text-xs text-slate-400 mb-3 md:mb-4 leading-relaxed shrink-0">
                 เลือกวันที่มีพนักงานทำ OT เพื่อนำไปสรุปเป็นข้อความส่งเข้า Line อัตโนมัติ
               </p>
+              {/* กรอบล่างนี้จะเลื่อน (Scroll) ได้เองแบบลื่นๆ */}
               <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
                 {dateList.map((date) => {
                   const dateStr = formatDateStr(date);
@@ -907,9 +911,9 @@ export default function ShiftRosterPro() {
                         type="checkbox" 
                         checked={isChecked}
                         onChange={() => handleToggleOtDate(dateStr)}
-                        className="w-4 h-4 rounded accent-blue-500 bg-slate-700 border-slate-600"
+                        className="w-4 h-4 rounded accent-blue-500 bg-slate-700 border-slate-600 shrink-0"
                       />
-                      <div className="flex flex-col">
+                      <div className="flex flex-col min-w-0">
                         <span className={`text-sm font-bold ${isChecked ? 'text-blue-400' : 'text-slate-200'}`}>
                           {date.toLocaleString('th-TH', { weekday: 'long' })}ที่ {date.getDate()}
                         </span>
@@ -923,18 +927,18 @@ export default function ShiftRosterPro() {
               </div>
             </div>
 
-            {/* ฝั่งขวา: Preview และ Copy */}
-            <div className="w-full md:w-2/3 p-6 flex flex-col bg-[#1e293b]">
-              <div className="flex justify-between items-center mb-4">
+            {/* 🟢 3. ฝั่งขวา (Preview): ล็อคความสูงไว้เช่นกัน เพื่อให้เห็นปุ่ม Copy เสมอ */}
+            <div className="w-full md:w-2/3 p-5 md:p-6 flex flex-col bg-[#1e293b] h-[45vh] md:h-auto shrink-0">
+              <div className="flex justify-between items-center mb-3 md:mb-4 shrink-0">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <i className="bi bi-file-text text-emerald-400"></i> ตัวอย่างข้อความ
                 </h3>
-                <button onClick={() => setIsOtSummaryModalOpen(false)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                <button onClick={() => setIsOtSummaryModalOpen(false)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center transition-colors shrink-0">
                   <i className="bi bi-x-lg"></i>
                 </button>
               </div>
               
-              <div className="flex-1 bg-[#0f172a] rounded-xl border border-slate-700 p-4 mb-4">
+              <div className="flex-1 bg-[#0f172a] rounded-xl border border-slate-700 p-4 mb-4 min-h-0">
                 <textarea 
                   value={otSummaryText}
                   readOnly
@@ -946,9 +950,9 @@ export default function ShiftRosterPro() {
               <button 
                 onClick={handleCopyOtSummary} 
                 disabled={selectedOtDates.length === 0}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 text-[15px]"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 md:py-3.5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 text-[14px] md:text-[15px] shrink-0"
               >
-                <i className="bi bi-clipboard-check text-lg"></i> คัดลอกข้อความ (Copy to Clipboard)
+                <i className="bi bi-clipboard-check text-lg"></i> คัดลอกข้อความ
               </button>
             </div>
 
