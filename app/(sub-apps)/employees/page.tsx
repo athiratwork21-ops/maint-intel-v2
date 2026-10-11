@@ -15,6 +15,17 @@ const formatDateStr = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+// 🌟 ฟังก์ชันทำความสะอาดชื่อ (ตัด MR., นามสกุล และทำ Capitalize)
+const formatEmpNameForLine = (fullName: string) => {
+  if (!fullName) return '-';
+  // ตัดคำนำหน้า
+  let cleanName = fullName.replace(/^(MR\.|MR |MS\.|MS |MISS )/i, '').trim();
+  // ตัดนามสกุล (เอาแค่คำแรก)
+  cleanName = cleanName.split(' ')[0];
+  // ทำให้ตัวแรกพิมพ์ใหญ่ ตัวต่อไปพิมพ์เล็ก
+  return cleanName.charAt(0).toUpperCase() + cleanName.slice(1).toLowerCase();
+};
+
 export default function ShiftRosterPro() {
   const [startDate, setStartDate] = useState(() => {
     const now = new Date();
@@ -58,13 +69,17 @@ export default function ShiftRosterPro() {
   const [selectedForExport, setSelectedForExport] = useState<string[]>([]);
   const [violations, setViolations] = useState<string[]>([]);
 
-  // State สำหรับ Modal แก้ไขข้อมูลพนักงาน
   const [editingEmp, setEditingEmp] = useState<any>(null);
   const [editForm, setEditForm] = useState<{emp_id: string; name: string; phone: string; line_name: string; photo_url: string; photo_file: File | null; photo_preview: string}>({ 
     emp_id: '', name: '', phone: '', line_name: '', photo_url: '', photo_file: null, photo_preview: '',
   });
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 🌟 State สำหรับระบบสรุป OT 🌟
+  const [isOtSummaryModalOpen, setIsOtSummaryModalOpen] = useState(false);
+  const [selectedOtDates, setSelectedOtDates] = useState<string[]>([]);
+  const [otSummaryText, setOtSummaryText] = useState('');
 
   const dateList = useMemo(() => {
     const list: Date[] = [];
@@ -313,7 +328,6 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // ฟังก์ชันเปิด Modal แก้ไขพนักงาน
   const handleOpenEditModal = (emp: any) => {
     setEditingEmp(emp);
     setEditForm({
@@ -327,7 +341,6 @@ export default function ShiftRosterPro() {
     });
   };
 
-  // ฟังก์ชันรับไฟล์รูปภาพเมื่อผู้ใช้เลือกไฟล์
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -339,13 +352,11 @@ export default function ShiftRosterPro() {
     }
   };
 
-  // ฟังก์ชันกดบันทึกข้อมูลพนักงานลง Supabase พร้อมอัปโหลดรูป
   const handleSaveEmpDetails = async () => {
     setIsUploading(true);
     try {
       let finalPhotoUrl = editForm.photo_url;
 
-      // ถ้ามีการเลือกไฟล์รูปใหม่ ให้ทำการอัปโหลดขึ้น Storage ก่อน
       if (editForm.photo_file) {
         const fileExt = editForm.photo_file.name.split('.').pop();
         const fileName = `${editingEmp.id}-${Date.now()}.${fileExt}`;
@@ -356,7 +367,6 @@ export default function ShiftRosterPro() {
 
         if (uploadError) throw uploadError;
 
-        // ดึง URL แบบ Public ของรูปที่เพิ่งอัปโหลด
         const { data: publicUrlData } = supabaseServiceWork.storage
           .from('profiles')
           .getPublicUrl(fileName);
@@ -364,7 +374,6 @@ export default function ShiftRosterPro() {
         finalPhotoUrl = publicUrlData.publicUrl;
       }
 
-      // นำข้อมูลทั้งหมดและ URL รูปไปเซฟลง Table employees
       const { error: updateError } = await supabaseServiceWork.from('employees')
         .update({
           id: editForm.emp_id,
@@ -508,6 +517,87 @@ export default function ShiftRosterPro() {
     }, 300); 
   };
 
+  // =================================================================
+  // 🌟 ฟังก์ชันระบบสร้างสรุป OT สำหรับส่ง Line 🌟
+  // =================================================================
+  const handleToggleOtDate = (dateStr: string) => {
+    setSelectedOtDates(prev => 
+      prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+    );
+  };
+
+  const generateOtSummary = () => {
+    if (selectedOtDates.length === 0) return setOtSummaryText('กรุณาเลือกวันที่ต้องการสรุปครับ');
+    
+    // เรียงวันที่จากน้อยไปมาก
+    const sortedDates = [...selectedOtDates].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    
+    // หาวันที่แรกและวันที่สุดท้ายเพื่อทำหัวข้อ
+    const firstDateObj = new Date(sortedDates[0]);
+    const lastDateObj = new Date(sortedDates[sortedDates.length - 1]);
+    const headerRangeStr = `${firstDateObj.toLocaleString('th-TH', { weekday: 'long' })}ที่ ${firstDateObj.getDate()} ${firstDateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' })} - ${lastDateObj.toLocaleString('th-TH', { weekday: 'long' })}ที่ ${lastDateObj.getDate()} ${lastDateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' })}`;
+
+    let text = `📢 อัพเดตการทำงาน${headerRangeStr}\n\n`;
+
+    sortedDates.forEach(dateStr => {
+      const dObj = new Date(dateStr);
+      const displayDate = `${dObj.toLocaleString('th-TH', { weekday: 'long' })}ที่ ${dObj.getDate()} ${dObj.toLocaleString('en-US', { month: 'long', year: 'numeric' })}`;
+      
+      text += `👉🏻รายชื่อคนที่มาทำ OT วัน${displayDate}\n`;
+      
+      const dayShift: string[] = [];
+      const nightShift: string[] = [];
+
+      // ค้นหาพนักงานที่มี OT ในวันที่กำหนด
+      employees.forEach(emp => {
+        const cell = schedule[`${emp.id}_${dateStr}`];
+        if (cell && cell.isOT) {
+          const cleanName = formatEmpNameForLine(emp.name);
+          if (cell.shift === 'D') dayShift.push(`-${cleanName}`);
+          else if (cell.shift === 'N') nightShift.push(`-${cleanName}`);
+        }
+      });
+
+      // สรุปกะเช้า
+      text += `กะเช้า (ตื่น)\n`;
+      if (dayShift.length > 0) {
+        text += dayShift.join('\n') + '\n';
+      } else {
+        text += `ไม่มีคนมา\n`;
+      }
+
+      // สรุปกะดึก
+      text += `กะดึก 🌛\n`;
+      if (nightShift.length > 0) {
+        text += nightShift.join('\n') + '\n';
+      } else {
+        text += `ไม่มีคนมา\n`;
+      }
+      
+      text += `\n`;
+    });
+
+    text += `ถ้ามีการเปลี่ยนแปลงจะอัพเดตให้ทราบอีกรอบค่ะ 🙏🏻`;
+    setOtSummaryText(text);
+  };
+
+  // อัปเดตข้อความทันทีที่เปลี่ยนการเลือกวัน
+  useEffect(() => {
+    if (isOtSummaryModalOpen) generateOtSummary();
+  }, [selectedOtDates, isOtSummaryModalOpen]);
+
+  const handleCopyOtSummary = () => {
+    if (!otSummaryText) return;
+    navigator.clipboard.writeText(otSummaryText).then(() => {
+      alert("คัดลอกข้อความสรุป OT เรียบร้อยแล้ว นำไปวางใน Line ได้เลย!");
+      setIsOtSummaryModalOpen(false);
+    }).catch(() => {
+      alert("เกิดข้อผิดพลาดในการคัดลอก กรุณากด Ctrl+C เพื่อคัดลอกเองครับ");
+    });
+  };
+  // =================================================================
+
+
   if (isLoading) {
     return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-emerald-400"><i className="bi bi-arrow-repeat animate-spin text-5xl"></i></div>;
   }
@@ -555,6 +645,11 @@ export default function ShiftRosterPro() {
           )}
 
           <div className="flex items-center gap-2">
+            {/* 🌟 เพิ่มปุ่ม สรุป OT (ส่ง Line) ไว้ตรงนี้ 🌟 */}
+            <button onClick={() => { setIsOtSummaryModalOpen(true); setSelectedOtDates([]); setOtSummaryText(''); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 active:scale-95">
+              <i className="bi bi-card-text"></i> คัดลอกข้อความ
+            </button>
+
             <button onClick={handleCaptureImage} className="bg-[#1e293b] hover:bg-cyan-900/50 text-cyan-400 border border-cyan-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95"><i className="bi bi-camera"></i> จับภาพหน้าจอ</button>
             <button onClick={handleExportExcel} className="bg-[#1e293b] hover:bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2 active:scale-95"><i className="bi bi-file-earmark-excel"></i> ส่งออก SWD</button>
             <button onClick={handleSaveToSupabase} disabled={!isEditMode || isSaving} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-lg flex items-center gap-2 ${isEditMode && !isSaving ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'}`}>
@@ -731,7 +826,6 @@ export default function ShiftRosterPro() {
             </div>
 
             <div className="space-y-4">
-              {/* ส่วนพรีวิวและอัปโหลดรูปภาพ */}
               <div className="flex flex-col items-center mb-4">
                 <div 
                   className="w-24 h-24 rounded-full border-4 border-slate-600 bg-slate-800 overflow-hidden flex items-center justify-center shadow-inner relative group cursor-pointer"
@@ -749,31 +843,17 @@ export default function ShiftRosterPro() {
                 <button onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-medium text-blue-400 hover:text-blue-300">
                   กดเพื่อเปลี่ยนรูปภาพ
                 </button>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  className="hidden" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange} 
-                />
+                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
               </div>
 
-              {/* เปลี่ยนช่องรหัสพนักงานให้กรอกได้ */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">รหัสพนักงาน</label>
-                <input 
-                  type="text" 
-                  value={editForm.emp_id} 
-                  onChange={e => setEditForm({...editForm, emp_id: e.target.value})} 
-                  className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" 
-                />
+                <input type="text" value={editForm.emp_id} onChange={e => setEditForm({...editForm, emp_id: e.target.value})} className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" />
               </div>
-              
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">ชื่อ-สกุล</label>
                 <input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-[#0f172a] border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors" />
               </div>
-              
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">เบอร์โทรศัพท์</label>
@@ -790,15 +870,86 @@ export default function ShiftRosterPro() {
               <button onClick={() => handleDeleteEmployee(editingEmp.id, editingEmp.name)} disabled={isUploading} className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1">
                 <i className="bi bi-trash"></i> ลบพนักงาน
               </button>
-
               <div className="flex gap-2">
-                <button onClick={() => setEditingEmp(null)} disabled={isUploading} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50">
-                  ยกเลิก
-                </button>
+                <button onClick={() => setEditingEmp(null)} disabled={isUploading} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50">ยกเลิก</button>
                 <button onClick={handleSaveEmpDetails} disabled={isUploading} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2">
                   {isUploading ? <><i className="bi bi-arrow-repeat animate-spin"></i> กำลังอัปโหลด</> : 'บันทึกข้อมูล'}
                 </button>
               </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 Modal: หน้าต่างสรุป OT ส่ง Line 🌟 */}
+      {isOtSummaryModalOpen && (
+        <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1e293b] border border-slate-700 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col md:flex-row overflow-hidden animate-in zoom-in-95 duration-200">
+            
+            {/* ฝั่งซ้าย: เลือกวันที่ */}
+            <div className="w-full md:w-1/3 bg-[#0f172a] border-r border-slate-700 p-6 flex flex-col">
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <i className="bi bi-calendar-check text-blue-400"></i> เลือกวันที่สรุป OT
+              </h3>
+              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                เลือกวันที่มีพนักงานทำ OT เพื่อนำไปสรุปเป็นข้อความส่งเข้า Line อัตโนมัติ
+              </p>
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                {dateList.map((date) => {
+                  const dateStr = formatDateStr(date);
+                  const isChecked = selectedOtDates.includes(dateStr);
+                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  
+                  return (
+                    <label key={dateStr} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${isChecked ? 'bg-blue-500/20 border-blue-500/50' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-700'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked}
+                        onChange={() => handleToggleOtDate(dateStr)}
+                        className="w-4 h-4 rounded accent-blue-500 bg-slate-700 border-slate-600"
+                      />
+                      <div className="flex flex-col">
+                        <span className={`text-sm font-bold ${isChecked ? 'text-blue-400' : 'text-slate-200'}`}>
+                          {date.toLocaleString('th-TH', { weekday: 'long' })}ที่ {date.getDate()}
+                        </span>
+                        <span className={`text-[10px] ${isWeekend ? 'text-rose-400' : 'text-slate-500'}`}>
+                          {date.toLocaleString('en-US', { month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ฝั่งขวา: Preview และ Copy */}
+            <div className="w-full md:w-2/3 p-6 flex flex-col bg-[#1e293b]">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <i className="bi bi-file-text text-emerald-400"></i> ตัวอย่างข้อความ
+                </h3>
+                <button onClick={() => setIsOtSummaryModalOpen(false)} className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-full flex items-center justify-center transition-colors">
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              </div>
+              
+              <div className="flex-1 bg-[#0f172a] rounded-xl border border-slate-700 p-4 mb-4">
+                <textarea 
+                  value={otSummaryText}
+                  readOnly
+                  className="w-full h-full bg-transparent text-slate-300 text-sm outline-none resize-none custom-scrollbar"
+                  placeholder="กรุณาเลือกวันที่ด้านซ้าย เพื่อสร้างข้อความสรุป..."
+                />
+              </div>
+
+              <button 
+                onClick={handleCopyOtSummary} 
+                disabled={selectedOtDates.length === 0}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 text-[15px]"
+              >
+                <i className="bi bi-clipboard-check text-lg"></i> คัดลอกข้อความ (Copy to Clipboard)
+              </button>
             </div>
 
           </div>
