@@ -59,12 +59,13 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
     const partMap = new Map(rawParts.map(p => [p.PartID, p]));
     const machineMap = new Map(rawMachines.map(m => [m.MachineID, m]));
     
-    // ดึง Lead Time ล่าสุดของแต่ละอะไหล่มาเก็บไว้
+    // ดึง Lead Time "ที่นานที่สุด (Max)" ของแต่ละอะไหล่มาเผื่อเวลาสั่งของ
     const leadTimeMap = new Map();
     rawLeadTimes.forEach(lt => {
-      // เนื่องจากเรา order จากใหม่ไปเก่าข้างบนแล้ว ตัวแรกที่เจอคือล่าสุด
-      if (!leadTimeMap.has(lt.PartID)) {
-        leadTimeMap.set(lt.PartID, lt.LeadTimeDays || 0);
+      const currentMax = leadTimeMap.get(lt.PartID) || 0;
+      // ถ้าเจอเลขที่มากกว่าสถิติเดิม ให้จดเลขที่มากกว่าเสมอ
+      if (lt.LeadTimeDays > currentMax) {
+        leadTimeMap.set(lt.PartID, lt.LeadTimeDays);
       }
     });
 
@@ -219,8 +220,14 @@ export async function getSmartMaintenanceData(activeDepartment?: string | null) 
 
     scheduleData.sort((a, b) => b.alertLevel - a.alertLevel);
 
+    const enrichedParts = rawParts.map(p => ({
+      ...p,
+      LeadTime: leadTimeMap.get(p.PartID) || 0  // ดึงจาก Map ที่บอสทำไว้ข้างบนมาใส่ซะเลย!
+    }));
+
     return {
-      rawParts, rawStock, rawMachines, rawLines, rawHistory,
+      rawParts: enrichedParts, // 👈 🌟 เปลี่ยนจาก rawParts เดิม เป็น enrichedParts 🌟
+      rawStock, rawMachines, rawLines, rawHistory,
       scheduleData, allocations,
       stats: { machines: rawMachines.length, parts: rawParts.length, outOfStock: outOfStockCount, overdue: overdueCount }
     };

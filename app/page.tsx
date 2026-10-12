@@ -22,6 +22,15 @@ import LogRecordTab from '../components/main-dashboard/LogRecordTab';
 export interface DashboardReport { machineId: string; machine: string; line: string; partId: string; partName: string; reqQty: number; orderDate: string; dueDate: string; status: string; alertLevel: number; mtbfDays: number; }
 
 export default function MaintenanceDashboard() {
+  
+  // 🌟 ฝังชิปย่อหน้าจอ 80%
+  useEffect(() => {
+    document.documentElement.style.fontSize = '85%';
+    return () => {
+      document.documentElement.style.fontSize = '100%';
+    };
+  }, []);
+
   const [session, setSession] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,11 +38,8 @@ export default function MaintenanceDashboard() {
   const [showIntro, setShowIntro] = useState(false);
 
   const [departments, setDepartments] = useState<any[]>([]);
-
-  // 🚨 เติมบรรทัดนี้กลับเข้าไปครับ! (ตัวแปรเก็บแผนกที่หายไป)
   const [selectedDept, setSelectedDept] = useState('');
   
-  // 🌟 เก็บค่า Location หลายตัวสำหรับ Fixture
   const [multiLocations, setMultiLocations] = useState<string[]>([]);
   const [activeDeptName, setActiveDeptName] = useState('');
 
@@ -497,12 +503,23 @@ export default function MaintenanceDashboard() {
     else { showToast(`Error: ${error.message}`, 'error'); }
   };
 
-  const handleMarkAsOrdered = async (id: string, type: 'part' | 'consumable' = 'part') => {
+  const handleMarkAsOrdered = async (id: string, type: 'part' | 'consumable' = 'part', prNumber?: string) => {
     const table = type === 'part' ? 'Part' : 'Consumable';
     const idField = type === 'part' ? 'PartID' : 'ItemID';
-    const { error } = await supabase.from(table).update({ PendingOrder: true }).eq(idField, id);
-    if (!error) { showToast('Status updated to "ORDERED" successfully!', 'success'); fetchAllData(); }
-    else { showToast(`Error: ${error.message}`, 'error'); }
+    
+    // 🌟 อัปเดตสถานะเป็น ORDERED พร้อมแอบจดเวลา "เริ่มสั่งของ" (LastOrderDate)
+    const { error } = await supabase.from(table).update({ 
+      PendingOrder: true,
+      LastOrderDate: new Date().toISOString(), // ⏱️ เริ่มจับเวลา!
+      PendingPRNumber: prNumber
+    }).eq(idField, id);
+
+    if (!error) { 
+      showToast('Status updated to "ORDERED" successfully!', 'success'); 
+      fetchAllData(); 
+    } else { 
+      showToast(`Error: ${error.message}`, 'error'); 
+    }
   };
 
   const handleDismissAlert = (machineId: string, partId: string, partName: string) => {
@@ -688,14 +705,61 @@ export default function MaintenanceDashboard() {
   };
 
   const handleReceiveStock = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); const formData = new FormData(e.currentTarget); const pId = selectedActionPart?.id || ''; const qty = parseInt(formData.get('qty') as string); const existingStock = stockData.find(s => s.PartID === pId); const loc = existingStock?.Location || '-'; const activeDept = localStorage.getItem('activeDepartment');
-    if (existingStock) { await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); }
-    else {
-      // 🚨 ลบ PartName ออกแล้ว 🚨
+    e.preventDefault(); 
+    const formData = new FormData(e.currentTarget); 
+    const pId = selectedActionPart?.id || ''; 
+    const qty = parseInt(formData.get('qty') as string); 
+    const existingStock = stockData.find(s => s.PartID === pId); 
+    const loc = existingStock?.Location || '-'; 
+    const activeDept = localStorage.getItem('activeDepartment');
+
+    // 🌟🌟🌟 ระบบ AI คำนวณ Lead Time อัตโนมัติ 🌟🌟🌟
+    const partDetail = parts.find(p => p.PartID === pId);
+    if (partDetail && partDetail.LastOrderDate) {
+      const orderDate = new Date(partDetail.LastOrderDate);
+      const receiveDate = new Date();
+      const diffTime = Math.abs(receiveDate.getTime() - orderDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+      const { data: leadTimeData } = await supabase
+        .from('LeadTime')
+        .select('LeadTimeDays')
+        .eq('PartID', pId)
+        .order('LeadTimeDays', { ascending: false }) 
+        .limit(1);
+        
+      const currentMaxLeadTime = leadTimeData && leadTimeData.length > 0 ? leadTimeData[0].LeadTimeDays : 0;
+
+      if (diffDays > currentMaxLeadTime) {
+         await supabase.from('LeadTime').insert({
+           RecordID: Date.now().toString(),
+           PartID: pId,
+           LeadTimeDays: diffDays, 
+           RecordDate: new Date().toISOString(),
+           DepartmentID: activeDept
+         });
+         showToast(`New Max Lead Time recorded: ${diffDays} days!`, 'info'); 
+      }
+    }
+    // 🌟🌟🌟 สิ้นสุดระบบคำนวณ Lead Time 🌟🌟🌟
+
+    // 1. อัปเดตหรือเพิ่มยอดลงตาราง Stock
+    if (existingStock) { 
+      await supabase.from('Stock').update({ Balance: (parseInt(existingStock.Balance) || 0) + qty, LastUpdated: new Date().toISOString() }).eq('PartID', pId).eq('Location', loc); 
+    } else {
       await supabase.from('Stock').insert({ Location: loc, PartID: pId, Balance: qty, LastUpdated: new Date().toISOString(), DepartmentID: activeDept });
     }
-    await supabase.from('Part').update({ PendingOrder: false }).eq('PartID', pId);
-    showToast('Stock received successfully!', 'success'); setReceiveStockModalOpen(false); fetchAllData();
+    
+    // 🌟 2. อัปเดตตาราง Part: ล้างค่า PR, วันที่สั่ง, และปิดสถานะ PendingOrder 🌟
+    await supabase.from('Part').update({ 
+      PendingOrder: false,        // ปิดป้าย ORDERED
+      LastOrderDate: null,       // ล้างตัวจับเวลา Lead Time
+      PendingPRNumber: null      // ล้างเลข PR ทิ้ง
+    }).eq('PartID', pId);
+    
+    showToast('Stock received successfully!', 'success'); 
+    setReceiveStockModalOpen(false); 
+    fetchAllData();
   };
 
   const handleReduceStock = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -2036,12 +2100,53 @@ export default function MaintenanceDashboard() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50">
 
-        <header className="h-[76px] bg-white/80 backdrop-blur-md border-b border-slate-200/60 px-8 flex items-center justify-between shadow-sm flex-shrink-0 z-30 relative">
-          <div><h1 className="text-xl font-extrabold text-slate-800 flex items-center gap-3 tracking-tight"><div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${activeTab === 'consumables' ? 'bg-pink-50 text-pink-600 border-pink-100' : activeTab === 'fixtures' ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}><i className={`bi ${activeTab === 'dashboard' ? 'bi-grid-1x2-fill' : activeTab === 'stock' ? 'bi-box-seam-fill' : activeTab === 'consumables' ? 'bi-box2-heart-fill' : activeTab === 'fixtures' ? 'bi-tools' : activeTab === 'machines' ? 'bi-robot' : activeTab === 'requests' ? 'bi-ticket-detailed-fill' : activeTab === 'basic-info' ? 'bi-list-columns-reverse' : activeTab === 'history' ? 'bi-clock-history' : 'bi-tools'}`}></i></div> {activeTab === 'dashboard' ? 'Maintenance Intelligence' : activeTab === 'stock' ? 'Current Stock' : activeTab === 'consumables' ? 'Consumables Inventory' : activeTab === 'fixtures' ? 'Fixtures & Jigs' : activeTab === 'machines' ? 'Machine Management' : activeTab === 'requests' ? 'Request Queue' : activeTab === 'basic-info' ? 'Basic Information' : activeTab === 'history' ? 'History & Correction' : 'Manual Log Record'}</h1></div>
-          <div className="flex items-center gap-5">
-            <span className="text-xs font-black text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm"><i className="bi bi-building text-blue-500 mr-1.5"></i>{activeDeptName || localStorage.getItem('activeDepartment')}</span>
-            <span className="text-sm font-bold text-slate-500 hidden sm:block bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">{session?.user?.email}</span>
-            <button onClick={handleLogout} className="h-10 px-5 rounded-xl bg-red-50 text-red-600 flex items-center justify-center font-bold border border-red-100 hover:bg-red-500 hover:text-white transition-all active:scale-95 shadow-sm"><i className="bi bi-box-arrow-right mr-2"></i> Sign out</button>
+        <header className="h-[76px] bg-white border-b border-slate-200 px-6 sm:px-8 flex items-center justify-between shadow-sm flex-shrink-0 z-30 relative sticky top-0">
+  
+          {/* 🟢 ฝั่งซ้าย: โลโก้ และ ชื่อหน้า (เก็บลอจิกไอคอนของบอสไว้ครบถ้วน) */}
+          <div>
+            <h1 className="text-[22px] font-black text-slate-800 flex items-center gap-3.5 tracking-tight">
+              {/* ไอคอนหน้า: เปลี่ยนสีและสัญลักษณ์ตาม activeTab ของบอสเป๊ะ */}
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md ${activeTab === 'consumables' ? 'bg-pink-600 text-white shadow-pink-500/20' : activeTab === 'fixtures' ? 'bg-purple-600 text-white shadow-purple-500/20' : 'bg-blue-600 text-white shadow-blue-500/20'}`}>
+                <i className={`bi text-xl leading-none ${activeTab === 'dashboard' ? 'bi-grid-1x2-fill' : activeTab === 'stock' ? 'bi-box-seam-fill' : activeTab === 'consumables' ? 'bi-box2-heart-fill' : activeTab === 'fixtures' ? 'bi-tools' : activeTab === 'machines' ? 'bi-robot' : activeTab === 'requests' ? 'bi-ticket-detailed-fill' : activeTab === 'basic-info' ? 'bi-list-columns-reverse' : activeTab === 'history' ? 'bi-clock-history' : 'bi-tools'}`}></i>
+              </div> 
+              {/* ชื่อหน้า */}
+              {activeTab === 'dashboard' ? 'Maintenance Intelligence' : activeTab === 'stock' ? 'Current Stock' : activeTab === 'consumables' ? 'Consumables Inventory' : activeTab === 'fixtures' ? 'Fixtures & Jigs' : activeTab === 'machines' ? 'Machine Management' : activeTab === 'requests' ? 'Request Queue' : activeTab === 'basic-info' ? 'Basic Information' : activeTab === 'history' ? 'History & Correction' : 'Manual Log Record'}
+            </h1>
+          </div>
+
+          {/* 🟢 ฝั่งขวา: แผนก, โปรไฟล์ผู้ใช้ และ ปุ่ม Sign out (ดีไซน์ใหม่) */}
+          <div className="flex items-center gap-3 sm:gap-4 h-full">
+            
+            {/* ป้ายแผนก (ECBU_ME) */}
+            <span className="hidden sm:flex items-center gap-2 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-3.5 py-2 rounded-lg shadow-sm">
+              <i className="bi bi-building"></i>
+              {activeDeptName || localStorage.getItem('activeDepartment')}
+            </span>
+            
+            {/* Profile User (มี Avatar วงกลมเหมือนในรูป Mockup) */}
+            <div className="flex items-center gap-3 pl-3 sm:pl-4 border-l border-slate-200">
+              <div className="w-[38px] h-[38px] rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 font-black text-sm shadow-sm">
+                {session?.user?.email ? session.user.email.substring(0, 2).toUpperCase() : 'AM'}
+              </div>
+              <div className="hidden md:flex flex-col justify-center">
+                <span className="text-[13px] font-bold text-slate-800 leading-tight">
+                  {session?.user?.email || 'athmaras@deltaww.com'}
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold tracking-wide mt-0.5">
+                  User
+                </span>
+              </div>
+            </div>
+
+            {/* ปุ่ม Sign Out (สไตล์มินิมอล) */}
+            <button 
+              onClick={handleLogout} 
+              className="ml-2 flex items-center gap-2 px-3.5 h-10 rounded-lg text-[13px] font-bold text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-colors active:scale-95 border border-transparent hover:border-rose-100"
+            >
+              <i className="bi bi-box-arrow-right text-[17px] leading-none"></i>
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
+
           </div>
         </header>
 
@@ -2078,7 +2183,7 @@ export default function MaintenanceDashboard() {
 
           {/* TAB: CURRENT STOCK */}
        {activeTab === 'stock' && (
-         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+         <div className="absolute inset-0 p-3 md:p-2 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
            <CurrentStockTable
              isLoading={isLoading}
              fetchAllData={fetchAllData}
@@ -2099,13 +2204,14 @@ export default function MaintenanceDashboard() {
              handleDeletePart={handleDeletePart}
              setZoomedImage={setZoomedImage}
              handleMarkAsOrdered={handleMarkAsOrdered}
+             partHistory={changeHistoryData} 
            />
          </div>
        )}
 
 {/*  TAB: CONSUMABLES */}
        {activeTab === 'consumables' && (
-         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+         <div className="absolute inset-0 p-3 md:p-2 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
            <ConsumablesTable
              isLoading={isLoading}
              fetchAllData={fetchAllData}
@@ -2131,7 +2237,7 @@ export default function MaintenanceDashboard() {
 
           {/* 🌟 TAB: FIXTURES */}
        {activeTab === 'fixtures' && (
-         <div className="absolute inset-0 p-6 md:p-10 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+         <div className="absolute inset-0 p-3 md:p-2 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
            <FixturesTable
              isLoading={isLoading}
              fetchAllData={fetchAllData}
